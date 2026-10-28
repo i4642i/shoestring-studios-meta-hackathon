@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shoestring Studios — AI Video Team</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #ffffff; --line: #e4e4e7;
+    --ink: #111111; --dim: #6b7280; --accent: #0064e0; --accent-ink: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg); color: var(--ink); margin: 0; padding-bottom: 60px; }
+  /* top bar */
+  header { background: rgba(255,255,255,.92); border-bottom: 1px solid var(--line);
+    padding: 14px 28px; display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 10; }
+  header .sign { font-size: 17px; font-weight: 800; letter-spacing: 3px; }
+  header .sub { font-size: 12px; color: var(--dim); letter-spacing: 1px; margin-top: 2px; }
+  header nav.main { margin-left: auto; }
+  nav.about { border-left: 1px solid var(--line); padding-left: 10px; margin-left: 6px; }
+  /* tabs */
+  nav { display: flex; gap: 4px; align-items: center; }
+  nav button {
+    font-size: 15px; background: none; color: var(--dim); border: none;
+    padding: 10px 16px; cursor: pointer; border-radius: 999px;
+  }
+  nav button:hover { color: var(--ink); background: #f4f4f5; }
+  nav button.active { color: var(--ink); font-weight: 700; background: #f4f4f5; }
+  /* pages */
+  .page { display: none; padding: 32px 24px 40px; max-width: 960px; margin: 0 auto; }
+  .page.active { display: block; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 24px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; letter-spacing: 2px; margin: 0 0 12px; color: var(--ink); font-weight: 800; }
+  .card p { color: var(--dim); font-size: 14px; line-height: 1.6; }
+  /* hero */
+  #p-order { max-width: none; padding: 0 0 40px; }
+  #p-order .card { max-width: 880px; margin-left: auto; margin-right: auto; }
+  .hero { text-align: center; padding: 72px 24px 40px;
+    background-image: radial-gradient(#d4d4d8 1px, transparent 1px);
+    background-size: 22px 22px; }
+  .hero .eyebrow { font-size: 13px; letter-spacing: 3px; color: var(--dim); font-weight: 600; }
+  .hero h1 { font-size: 56px; line-height: 1.05; letter-spacing: -1px; margin: 16px 0; font-weight: 800; }
+  .hero h1 .outline { color: transparent; -webkit-text-stroke: 2px var(--ink); }
+  .hero p { font-size: 17px; color: var(--dim); max-width: 640px; margin: 0 auto; }
+  .hero button.cta { margin-top: 26px; }
+  input[type="text"], select {
+    background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+    font-size: 14px; padding: 10px 12px; margin: 6px 0; width: 100%; max-width: 460px;
+  }
+  input[type="file"] { margin: 6px 0; font-size: 14px; }
+  button.cta {
+    font-size: 15px; font-weight: 700; background: var(--accent); color: var(--accent-ink);
+    border: none; border-radius: 999px; padding: 12px 32px; margin-top: 10px; cursor: pointer;
+  }
+  button.cta:hover { filter: brightness(.93); }
+  button.cta:active { transform: translateY(1px); }
+  #queued { color: var(--accent); font-size: 13px; }
+  iframe.office { width: 100%; height: 560px; border: 1px solid var(--line); border-radius: 12px; background: #000; }
+  /* gallery reels */
+  .gal { display: flex; gap: 14px; }
+  .gal .item { flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 10px; text-align: center; }
+  .gal .thumb { background: #f4f4f5; border-radius: 8px; height: 110px; display: flex; align-items: center; justify-content: center;
+    color: var(--dim); font-size: 13px; letter-spacing: 2px; }
+  .gal p { font-size: 13px; }
+  /* crew roster */
+  .roster { font-size: 14px; }
+  .roster div { padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  .roster .dot { color: #1e7d32; }
+  .roster button.memb { display: block; width: 100%; text-align: left; font-size: 14px;
+    background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+  .roster button.memb:hover { border-color: var(--ink); }
+  #detail img.portrait { width: 120px; height: 120px; object-fit: cover; border-radius: 12px; border: 1px solid var(--line); }
+  .badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
+  .badge.on { background: #1e7d32; color: #fff; border-color: #1e7d32; }
+  .badge.off { background: #f4f4f5; color: var(--dim); }
+  pre.persona { white-space: pre-wrap; font-size: 13px; background: #fafafa;
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+  #detail h3, #p-about h3 { font-size: 13px; letter-spacing: 2px; color: var(--dim); }
+  #crewerr { color: #b3261e; font-size: 13px; min-height: 18px; }
+  textarea#f-persona { width: 100%; font-family: Consolas, monospace; font-size: 13px;
+    background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  label.tool { display: inline-block; font-size: 13px;
+    border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; margin: 0 6px 6px 0; }
+  #detail button[data-del] { font-size: 12px; margin-left: 8px; cursor: pointer; }
+  .subtabs { display: flex; gap: 6px; margin: 14px 0 12px; }
+  .subtabs button { font-size: 13px; font-weight: 600; background: none; color: var(--dim);
+    border: 1px solid var(--line); border-radius: 999px; padding: 7px 18px; cursor: pointer; }
+  .subtabs button.active { color: var(--ink); border-color: var(--ink); background: #f4f4f5; }
+  .spanel { display: none; }
+  .spanel.active { display: block; }
+  footer { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(255,255,255,.92);
+    border-top: 1px solid var(--line); padding: 10px 24px; color: var(--dim);
+    font-size: 12px; text-align: center; }
+  /* narrow viewport: keep all tabs on one reachable row */
+  @media (max-width: 560px) {
+    header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+    header .sign { font-size: 14px; letter-spacing: 2px; }
+    header .sub { display: none; }
+    nav.main { width: 100%; gap: 2px; }
+    nav.main button { flex: 1 1 0; min-width: 0; padding: 8px 2px; font-size: 12px; }
+    nav.about { width: 100%; border-left: none; padding-left: 0; margin-left: 0;
+      border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
+    .hero h1 { font-size: 36px; }
+    .page { padding: 20px 16px 40px; }
+  }
+  /* about log */
+  ul.log { font-size: 14px; padding-left: 20px; line-height: 1.6; }
+  ul.log li { margin-bottom: 8px; }
+  #p-about a { color: var(--accent); }
+  .log .when { color: var(--dim); font-size: 12px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="sign">SHOESTRING STUDIOS</div>
+    <div class="sub">AN AI VIDEO TEAM</div>
+  </div>
+  <nav class="main">
+    <button data-p="order" class="active">Order</button>
+    <button data-p="crew">Crew</button>
+    <button data-p="studio">Studio</button>
+    <button data-p="gallery">Gallery</button>
+  </nav>
+  <nav class="about">
+    <button data-p="about">About</button>
+  </nav>
+</header>
+
+<div class="page active" id="p-order">
+  <div class="hero">
+    <div class="eyebrow">SHOESTRING STUDIOS — AN AI VIDEO TEAM</div>
+    <h1>Order it.<br><span class="outline">Watch it get made.</span></h1>
+    <p>Upload a dense paper. A crew of AI specialists turns it into a publish-grade explainer video.</p>
+    <button class="cta" id="order-cta">Order a video</button>
+  </div>
+  <div class="card" id="order-form">
+    <h2>ORDER A VIDEO</h2>
+    <p>Upload a PDF paper. The crew turns it into a publish-grade explainer video.</p>
+    <input type="file" id="pdf" accept=".pdf"> <span id="pdfname"></span><br>
+    <input type="text" id="arxiv" placeholder="…or paste an arXiv URL"><br>
+    <select id="purpose">
+      <option>Journal club briefing</option>
+      <option>Public outreach</option>
+      <option>Personal study</option>
+    </select><br>
+    <button class="cta" id="start">▶ START PRODUCTION</button>
+    <p id="queued"></p>
+  </div>
+</div>
+
+<div class="page" id="p-studio">
+  <div class="card">
+    <h2>STUDIO — WATCH THE CREW WORK</h2>
+    <iframe class="office" src="office_mockup.html" title="office"></iframe>
+  </div>
+</div>
+
+<div class="page" id="p-gallery">
+  <div class="card">
+    <h2>GALLERY — PAST VIDEOS</h2>
+    <div class="gal">
+      <div class="item"><div class="thumb">REEL 01</div><p>empty slot</p></div>
+      <div class="item"><div class="thumb">REEL 02</div><p>empty slot</p></div>
+      <div class="item"><div class="thumb">REEL 03</div><p>empty slot</p></div>
+    </div>
+  </div>
+</div>
+
+<div class="page" id="p-crew">
+  <div class="card">
+    <h2>CREW — EMPLOYEES</h2>
+    <div class="roster" id="roster"></div>
+    <p id="crewerr"></p>
+    <p>Create / delete form goes here.</p>
+  </div>
+  <div class="card" id="detail" style="display:none"></div>
+</div>
+
+<div class="page" id="p-about">
+  <div class="card">
+    <h2>ABOUT — WHY WE BUILD THIS</h2>
+    <h3>MOTIVATION</h3>
+    <p>Built for the Meta Global AI Developer Hackathon 2026 (Indie track — Build for Your World): a working AI video crew, assembled in days on Meta models, that turns dense knowledge into videos worth publishing.</p>
+    <h3>THE PROBLEM</h3>
+    <p>Dense papers and technical documents are hard to share as video. NotebookLM-class auto-summarizers drop key points, skip what matters, and their videos are not good enough to publish. A busy domain expert who wants to become a solo knowledge creator cannot afford a video team — so knowledge worth sharing never ships.</p>
+    <h3>THE ANSWER</h3>
+    <p>Shoestring Studios is a full AI video crew on a shoestring budget: brief-driven explainer videos, gated by producer QA (accuracy + coverage, revise until pass), built in the open like a cooking show. Publish-grade, not summary-grade.</p>
+  </div>
+  <div class="card">
+    <h2>BUILD LOG</h2>
+    <ul class="log">
+      <li><b><a href="docs/MEETING_01_IDEA_EN.md" target="_blank" rel="noopener">Meeting 01</a> — Idea.</b> <span class="when">2026-10-27 23:24 KST</span> An AI-agent video team turning dense sources into publish-grade explainers. Minutes kept in English.</li>
+      <li><b><a href="docs/MEETING_02_POSITIONING_EN.md" target="_blank" rel="noopener">Meeting 02</a> — Positioning.</b> <span class="when">2026-10-27 23:24 KST</span> Publish-grade over summary-grade; the busy expert becoming a solo creator; figure-grounded video proposed as the hero feature.</li>
+      <li><b><a href="docs/MEETING_03_CREW_EN.md" target="_blank" rel="noopener">Meeting 03</a> — Crew &amp; platform.</b> <span class="when">2026-10-27 23:35 KST</span> One employee, one folder; bounded Lv2 agents, no self-planning; PD-first. Marty the storyboard PD built and verified; stdlib backend with a managed Crew tab; GraphRAG deferred until training data is chosen.</li>
+      <li><b>Verification.</b> <span class="when">2026-10-28</span> Handler-level HTTP pass plus a self-driving headless-Edge pass (every control operated, graph panel screenshotted) — all green.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h2>DEVELOPER</h2>
+    <p><b>Sangho Kim</b> — solo developer, Mechanical Engineering major. Loves studying and wants to share hard-won knowledge with the world. Building the video team one person cannot afford.</p>
+    <p>Company: NexTopologix · Representative: Sangho Kim<br>
+    Business Registration No. 896-01-04011 · Mail-Order Sales Registration No. 2026-Changwon Seongsan-0365<br>
+    #202, 46-14 Bieum-ro 27beon-gil, Seongsan-gu, Changwon-si, Gyeongsangnam-do, Republic of Korea<br>
+    Phone: +82-10-2533-4642 · Email: <a href="mailto:ksh4642@nextopologix.com">ksh4642@nextopologix.com</a> · GitHub: <a href="https://github.com/i4642i/shoestring-studios-meta-hackathon">i4642i/shoestring-studios-meta-hackathon</a></p>
+  </div>
+</div>
+
+<footer>SHOESTRING STUDIOS · BUILT DURING THE META GLOBAL AI DEVELOPER HACKATHON 2026</footer>
+
+<script>
+  document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+    document.querySelectorAll("nav button").forEach(x => x.classList.remove("active"));
+    document.querySelectorAll(".page").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    document.getElementById("p-" + b.dataset.p).classList.add("active");
+  });
+  document.getElementById("pdf").onchange = e => {
+    document.getElementById("pdfname").textContent =
+      e.target.files.length ? e.target.files[0].name : "";
+  };
+  document.getElementById("start").onclick = () => {
+    document.getElementById("queued").textContent = "Queued. (Pipeline not wired yet — mockup.)";
+  };
+  document.getElementById("order-cta").onclick = () => {
+    document.getElementById("order-form").scrollIntoView();
+  };
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  const api = {
+    async get(p) {
+      const r = await fetch(p);
+      if (!r.ok) throw new Error(p + " -> " + r.status);
+      return r.json();
+    },
+    async send(m, p, body, form) {
+      const o = { method: m };
+      if (form) o.body = form;
+      else { o.headers = { "Content-Type": "application/json" }; o.body = JSON.stringify(body); }
+      const r = await fetch(p, o);
+      let j = {};
+      try { j = await r.json(); } catch (e) { j = {}; }
+      if (!r.ok) throw new Error((j.error || p) + (j.details ? ": " + j.details.join("; ") : ""));
+      return j;
+    }
+  };
+  (function () {
+    const roster = document.getElementById("roster");
+    const detail = document.getElementById("detail");
+    const errline = document.getElementById("crewerr");
+    let current = null;
+    function fail(e) { errline.textContent = "Error: " + e.message; }
+    async function loadRoster() {
+      const list = await api.get("api/crew");
+      roster.innerHTML = "";
+      list.forEach(c => {
+        const b = document.createElement("button");
+        b.className = "memb";
+        b.textContent = "● " + c.id + " — " + c.title;
+        b.onclick = () => show(c.id).catch(fail);
+        roster.appendChild(b);
+      });
+      if (list.length && !current) show(list[0].id).catch(fail);
+    }
+    async function show(id) {
+      current = id;
+      errline.textContent = "";
+      const c = await api.get("api/crew/" + id);
+      const g = c.graph.state === "indexed"
+        ? '<span class="badge on">GRAPH: INDEXED</span>'
+        : '<span class="badge off">GRAPH: NOT INDEXED</span><p>' + esc(c.graph.reason || "") + "</p>";
+      const staged = (c.graph.staged || []).map(f => "<li>" + esc(f) + "</li>").join("");
+      const models = c.available_models.map(m =>
+        '<option value="' + esc(m) + '"' + (m === c.model ? " selected" : "") + ">" + esc(m) + "</option>").join("");
+      const tools = c.available_tools.map(t =>
+        '<label class="tool"><input type="checkbox" data-tool="' + esc(t) + '"' +
+        (c.tools.indexOf(t) >= 0 ? " checked" : "") + "> " + esc(t) + "</label>").join("");
+      const hb = c.handbook.map(f =>
+        "<li>" + esc(f) + ' <button data-del="' + esc(f) + '">delete</button></li>').join("");
+      detail.innerHTML =
+        "<h2>" + esc(c.name.toUpperCase()) + " — " + esc(c.title.toUpperCase()) + "</h2>" +
+        '<img class="portrait" src="' + c.portrait + '" alt="portrait">' + g +
+        "<h3>GRAPH — TRAINING RESULTS</h3><div id=\"gpanel\">loading…</div>" +
+        "<div class=\"subtabs\">" +
+        '<button data-st="model" class="active">Model</button>' +
+        '<button data-st="tools">Tools</button>' +
+        '<button data-st="persona">Persona</button></div>' +
+        "<div class=\"spanel active\" id=\"sp-model\"><select id=\"f-model\">" + models + "</select></div>" +
+        "<div class=\"spanel\" id=\"sp-tools\"><div>" + tools + "</div></div>" +
+        "<div class=\"spanel\" id=\"sp-persona\"><textarea id=\"f-persona\" rows=\"14\">" + esc(c.persona) + "</textarea></div>" +
+        '<button class="cta" id="f-save">SAVE CHANGES</button>' +
+        "<h3>DONE WHEN</h3><ul>" + c.done.map(d => "<li>" + esc(d) + "</li>").join("") + "</ul>" +
+        "<h3>HANDBOOK</h3><ul>" + (hb || "<li>none</li>") + "</ul>" +
+        '<input type="file" id="f-file" accept=".md,.txt,.pdf"> <button class="cta" id="f-upload">UPLOAD &amp; PARSE</button>' +
+        "<p><b>Max steps:</b> " + c.bounds.max_steps + "</p>";
+      detail.style.display = "block";
+      api.get("api/crew/" + id + "/graph").then(g => {
+        const ents = (g.entities || []).slice(0, 25);
+        const rels = g.relations || [];
+        const coms = g.communities || [];
+        let h = "<p>Entities: " + (g.entities || []).length +
+          " · Relations: " + rels.length +
+          " · Communities: " + coms.length + "</p>";
+        h += "<p>Staged: " + (esc((c.graph.staged || []).join(", ") || "none")) + "</p>";
+        if (!ents.length) {
+          h += "<p>No learned entities yet. Upload training files, then run indexing.</p>";
+        } else {
+          const cx = 130, cy = 100, rr = 80;
+          const pos = {};
+          ents.forEach((e, i) => {
+            const a = 2 * Math.PI * i / ents.length;
+            pos[e.name] = [cx + rr * Math.cos(a), cy + rr * Math.sin(a)];
+          });
+          h += '<svg width="260" height="220" style="border:2px solid var(--line);background:#fffdf7">';
+          rels.forEach(r => {
+            const a = pos[r.source], b = pos[r.target];
+            if (a && b) h += '<line x1="' + a[0] + '" y1="' + a[1] + '" x2="' + b[0] + '" y2="' + b[1] + '" stroke="#999" stroke-width="1"/>';
+          });
+          ents.forEach(e => {
+            const p = pos[e.name], rad = 3 + Math.min(6, e.degree || 1);
+            h += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + rad + '" fill="#e0681f" stroke="#222" stroke-width="2"/>' +
+              '<text x="' + (p[0] + rad + 2) + '" y="' + (p[1] + 4) + '" font-size="9" font-family="monospace">' + esc(e.name) + "</text>";
+          });
+          h += "</svg>";
+          h += "<ul>" + ents.slice(0, 8).map(e => "<li>" + esc(e.name) + " (degree " + (e.degree || 0) + ")</li>").join("") + "</ul>";
+        }
+        document.getElementById("gpanel").innerHTML = h;
+      }).catch(fail);
+      detail.querySelectorAll("[data-st]").forEach(b => {
+        b.onclick = () => {
+          detail.querySelectorAll("[data-st]").forEach(x => x.classList.remove("active"));
+          detail.querySelectorAll(".spanel").forEach(x => x.classList.remove("active"));
+          b.classList.add("active");
+          document.getElementById("sp-" + b.dataset.st).classList.add("active");
+        };
+      });
+      document.getElementById("f-save").onclick = async () => {
+        try {
+          errline.textContent = "";
+          const checked = Array.from(detail.querySelectorAll("[data-tool]:checked")).map(x => x.dataset.tool);
+          await api.send("PUT", "api/crew/" + id, {
+            persona: document.getElementById("f-persona").value,
+            model: document.getElementById("f-model").value,
+            tools: checked,
+          });
+          errline.textContent = "Saved.";
+          loadRoster().catch(fail);
+        } catch (e) { fail(e); }
+      };
+      detail.querySelectorAll("[data-del]").forEach(b => {
+        b.onclick = async () => {
+          try {
+            await api.send("DELETE", "api/crew/" + id + "/handbook/" + encodeURIComponent(b.dataset.del));
+            show(id).catch(fail);
+          } catch (e) { fail(e); }
+        };
+      });
+      document.getElementById("f-upload").onclick = async () => {
+        try {
+          const inp = document.getElementById("f-file");
+          if (!inp.files.length) throw new Error("choose a file first");
+          const form = new FormData();
+          form.append("file", inp.files[0]);
+          const r = await api.send("POST", "api/crew/" + id + "/train", null, form);
+          errline.textContent = "Staged " + r.saved + " (" + r.chars + " chars).";
+          show(id).catch(fail);
+        } catch (e) { fail(e); }
+      };
+    }
+    loadRoster().catch(fail);
+  })();
+</script>
+</body>
+</html>

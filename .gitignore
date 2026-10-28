@@ -1,0 +1,50 @@
+# Secrets — never commit
+.env
+
+# Generated artifacts
+output/
+data/sources/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.aac
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# JavaScript
+node_modules/
+
+# Retired trials (local only, see attic/README_EN.md)
+attic/
+
+# Tool / VCS metadata (not deliverables)
+.agents/
+.muse/
+.eden/
+.hg/
+.sl/
+
+# Pasted reference screenshots at root (chat attachments, not deliverables)
+/*.png
+/*.jpg
+/*.jpeg
+
+# Personal screenshot stash (reference only, not deliverables)
+shk/
+
+# Command-line byproducts (pip caches, temp dirs)
+/pip-*/
+/tmp*/
+/edge-cdp-*/
+*.pem
+*.log

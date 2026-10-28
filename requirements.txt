@@ -1,0 +1,11 @@
+# Shoestring Studios - install on your PC with:
+#   pip install -r requirements.txt   (Python 3.10+)
+#
+# Everything else is Python stdlib. Pinned to the latest version verified on
+# PyPI on 2026-10-28 (sandbox pip hangs, so not install-verified here).
+
+pypdf==6.21.3  # PDF handbook upload (POST /api/crew/<id>/train)
+
+# --- planned, NOT imported by any code yet (GraphRAG training, deferred) ---
+# graphrag
+# sentence-transformers
