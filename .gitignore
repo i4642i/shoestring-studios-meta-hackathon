@@ -4,6 +4,7 @@
 # Generated artifacts
 output/
 data/sources/
+graph_index/
 *.mp4
 *.avi
 *.mov
@@ -20,6 +21,11 @@ data/sources/
 __pycache__/
 *.pyc
 .venv/
+.venv-lightrag/
+
+# LightRAG experiment: local-only artifacts (see experiments/lightrag/)
+experiments/lightrag/storage/
+experiments/lightrag/models/
 
 # JavaScript
 node_modules/
