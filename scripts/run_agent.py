@@ -3,7 +3,7 @@
 Usage:
   python scripts/run_agent.py --agent agents/pd_marty --input <md> --brief <json>
       --run-id <id>
-Writes output/runs/<id>/{brief.json,input.md,events.jsonl,draft.json}.
+Writes output/runs/<id>/{brief.json,input.md,events.jsonl,<io.output>}.
 Key from MODEL_API_KEY env or .env (never printed).
 """
 import argparse

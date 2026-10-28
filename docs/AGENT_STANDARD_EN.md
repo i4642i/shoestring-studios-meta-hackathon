@@ -2,7 +2,8 @@
 
 - Status: STANDARD (binding for every employee added from now on)
 - Date: 2026-10-28
-- Implements: D14 (employee frame), D28 (folder layout)
+- Updated: 2026-10-28 (D45/D46: 2D portraits retired, appearance.json required)
+- Implements: D14 (employee frame), D28 (folder layout), D45/D46 (3D appearance)
 - Companion: AGENT_PLAN_EN.md
 
 Every directory directly under `agents/` (except `agents/_frame/`) is one
@@ -18,7 +19,7 @@ agents/<id>/
   agent.json      # machine-readable definition (REQUIRED)
   persona.md      # persona + system prompt (REQUIRED)
   handbook/       # expertise corpus, >=1 .md file (REQUIRED, D12)
-  portrait.webp   # face, square-ish, <500KB guidance (REQUIRED, D16)
+  appearance.json # 3D look: Mini variant + tint (REQUIRED, D46)
   tools/          # custom tools, one file per tool (OPTIONAL, D33)
 ```
 
@@ -29,7 +30,10 @@ No other top-level files are allowed without updating this standard.
 - `<id>`: lowercase snake, `^[a-z][a-z0-9_]*$`, must equal the folder name.
 - `agent.json`: exactly that filename. `persona.md`: exactly that filename.
 - `handbook/*.md`: topic in snake case (`story_structure.md`), H1 title inside.
-- `portrait.webp`: exactly that filename, WebP format (the Image API returns WebP).
+- `appearance.json`: exactly that filename. JSON object with `variant`
+  (a `character-*.glb` filename from the D44 list in MEETING_04) and optional
+  `tint` (`#rrggbb` whole-model multiplier, default `#ffffff`). Per-part tints
+  are impossible — the Mini GLBs carry a single material (D44).
 
 ## 3. agent.json schema
 
@@ -40,9 +44,9 @@ No other top-level files are allowed without updating this standard.
   "name": "Marty",
   "title": "Documentary PD, showrunner",
   "model": "muse-spark-1.3",
-  "tools": ["read_md_section", "query_graph", "write_draft"],
+  "tools": ["read_md_section", "write_structure"],
   "bounds": { "max_steps": 6 },
-  "io": { "inputs": ["brief.json", "input.md"], "output": "draft.json" },
+  "io": { "inputs": ["brief.json", "input.md"], "output": "structure.json" },
   "done": ["2-4 key ideas", "every scene has >=1 source ref"]
 }
 ```
@@ -107,5 +111,6 @@ This file doubles as the system prompt: the runner sends it verbatim.
 2. Fill `agent.json` (validate: id == folder, model on allowlist, tools exist).
 3. Write `persona.md` in the 4-section structure.
 4. Seed `handbook/` with >=1 expertise file.
-5. Generate `portrait.webp` (Muse Image, shared crew art style, D16).
+5. Pick a Mini variant + tint, save as `appearance.json` (D46; each
+   employee gets a unique variant combo per D44).
 6. Run `scripts/validate_agent.py agents/<new_id>` — must pass before use.

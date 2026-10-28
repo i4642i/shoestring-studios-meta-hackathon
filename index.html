@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="icon" href="data:,">
 <title>Shoestring Studios — AI Video Team</title>
 <style>
   :root {
@@ -37,6 +38,37 @@
   /* hero */
   #p-order { max-width: none; padding: 0 0 40px; }
   #p-order .card { max-width: 880px; margin-left: auto; margin-right: auto; }
+  #p-studio { max-width: 1440px; }
+  #p-studio .studiowrap { display: flex; gap: 16px; align-items: stretch; }
+  #p-studio .officebox { flex: 1 1 auto; min-width: 0; }
+  #p-studio .officebox iframe.office { height: 560px; aspect-ratio: auto; max-height: none; }
+  .chatbox { flex: 0 0 340px; display: flex; flex-direction: column; height: 560px;
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+  .chead { display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 700; letter-spacing: 2px; }
+  .chead select { margin-left: auto; font-size: 13px; padding: 5px 8px; max-width: 210px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .cmsgs { flex: 1 1 auto; overflow-y: auto; padding: 12px; display: flex;
+    flex-direction: column; gap: 8px; background: #fafafa; }
+  .cmsg { max-width: 88%; padding: 8px 12px; border-radius: 12px; font-size: 13px;
+    line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  .cmsg.me { align-self: flex-end; background: var(--accent); color: #fff;
+    border-bottom-right-radius: 4px; }
+  .cmsg.them { align-self: flex-start; background: #fff; border: 1px solid var(--line);
+    border-bottom-left-radius: 4px; }
+  .cmsg.sys { align-self: center; color: var(--dim); font-size: 12px; }
+  .cmsg.typing { color: var(--dim); }
+  .cform { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); background: #fff; }
+  .cform input { flex: 1 1 auto; min-width: 0; font-size: 14px; padding: 9px 12px;
+    border: 1px solid var(--line); border-radius: 8px; }
+  .cform button { font-size: 13px; font-weight: 700; padding: 0 16px; border: none;
+    border-radius: 8px; background: var(--ink); color: #fff; cursor: pointer; }
+  .cform button:disabled { opacity: 0.5; cursor: default; }
+  @media (max-width: 900px) {
+    #p-studio .studiowrap { flex-direction: column; }
+    #p-studio .officebox iframe.office { height: auto; aspect-ratio: 16 / 9; min-height: 0; }
+    .chatbox { flex: none; height: 380px; }
+  }
   .hero { text-align: center; padding: 72px 24px 40px;
     background-image: radial-gradient(#d4d4d8 1px, transparent 1px);
     background-size: 22px 22px; }
@@ -57,7 +89,8 @@
   button.cta:hover { filter: brightness(.93); }
   button.cta:active { transform: translateY(1px); }
   #queued { color: var(--accent); font-size: 13px; }
-  iframe.office { width: 100%; height: 560px; border: 1px solid var(--line); border-radius: 12px; background: #000; }
+  iframe.office { width: 100%; height: auto; aspect-ratio: 16 / 9; min-height: 420px; max-height: 78vh;
+    border: 1px solid var(--line); border-radius: 12px; background: #000; }
   /* gallery reels */
   .gal { display: flex; gap: 14px; }
   .gal .item { flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 10px; text-align: center; }
@@ -72,7 +105,6 @@
     background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
     padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
   .roster button.memb:hover { border-color: var(--ink); }
-  #detail img.portrait { width: 120px; height: 120px; object-fit: cover; border-radius: 12px; border: 1px solid var(--line); }
   .badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
   .badge.on { background: #1e7d32; color: #fff; border-color: #1e7d32; }
   .badge.off { background: #f4f4f5; color: var(--dim); }
@@ -91,6 +123,18 @@
   .subtabs button.active { color: var(--ink); border-color: var(--ink); background: #f4f4f5; }
   .spanel { display: none; }
   .spanel.active { display: block; }
+  .hint { font-size: 12px; color: var(--dim); }
+  .addform { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .addform input, .addform select { font-size: 13px; padding: 7px 10px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+  button.danger { font-size: 13px; font-weight: 700; background: #fff; color: #b3261e;
+    border: 1px solid #b3261e; border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+  #sp-details label { display: block; font-size: 13px; margin: 8px 0; }
+  #sp-details input, #sp-details select, #sp-details textarea { font-size: 13px; padding: 6px 8px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+  #sp-details textarea { width: 100%; font-family: Consolas, monospace; }
+  #hbview { white-space: pre-wrap; font-size: 12px; background: #fafafa;
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 260px; overflow: auto; }
   footer { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(255,255,255,.92);
     border-top: 1px solid var(--line); padding: 10px 24px; color: var(--dim);
     font-size: 12px; text-align: center; }
@@ -105,13 +149,30 @@
       border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
     .hero h1 { font-size: 36px; }
     .page { padding: 20px 16px 40px; }
+    iframe.office { height: 420px; }
   }
   /* about log */
   ul.log { font-size: 14px; padding-left: 20px; line-height: 1.6; }
   ul.log li { margin-bottom: 8px; }
   #p-about a { color: var(--accent); }
   .log .when { color: var(--dim); font-size: 12px; white-space: nowrap; }
+  /* crew 3D viewer */
+  #viewer3d { width: 100%; max-width: 440px; height: 260px; background: #8fc3ec;
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden; position: relative; }
+  #viewer3d canvas { display: block; width: 100%; height: 100%; }
+  #viewer3d .vload { position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; color: #374151; font-size: 13px; letter-spacing: 2px; }
+  #viewer3d .vhint { position: absolute; bottom: 6px; left: 0; right: 0; text-align: center;
+    color: #374151; font-size: 11px; pointer-events: none; }
 </style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/build/three.module.js",
+    "three/addons/": "./vendor/three/examples/jsm/"
+  }
+}
+</script>
 </head>
 <body>
 <header>
@@ -155,7 +216,17 @@
 <div class="page" id="p-studio">
   <div class="card">
     <h2>STUDIO — WATCH THE CREW WORK</h2>
-    <iframe class="office" src="office_mockup.html" title="office"></iframe>
+    <div class="studiowrap">
+      <div class="officebox"><iframe class="office" src="office_3d.html" title="3D office"></iframe></div>
+      <div class="chatbox">
+        <div class="chead"><span>CHAT</span><select id="chatwho" aria-label="Talk to"></select></div>
+        <div class="cmsgs" id="chatmsgs" aria-live="polite"></div>
+        <form class="cform" id="chatform" autocomplete="off">
+          <input id="chatinput" maxlength="500" placeholder="Say hi to the crew…" aria-label="Message">
+          <button type="submit">Send</button>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -175,7 +246,16 @@
     <h2>CREW — EMPLOYEES</h2>
     <div class="roster" id="roster"></div>
     <p id="crewerr"></p>
-    <p>Create / delete form goes here.</p>
+    <h3>ADD EMPLOYEE</h3>
+    <div class="addform">
+      <input id="n-id" maxlength="32" placeholder="id (lowercase_snake)" aria-label="Employee id">
+      <input id="n-name" maxlength="32" placeholder="Name" aria-label="Employee name">
+      <input id="n-title" maxlength="64" placeholder="Title (e.g. Researcher)" aria-label="Employee title">
+      <select id="n-model" aria-label="Model"></select>
+      <select id="n-variant" aria-label="3D variant"></select>
+      <button class="cta" id="n-create">CREATE</button>
+    </div>
+    <p class="hint">Scaffolds agent.json, persona.md, handbook seed and appearance.json, then validates. Unused 3D variant is picked automatically when left on Auto.</p>
   </div>
   <div class="card" id="detail" style="display:none"></div>
 </div>
@@ -191,12 +271,27 @@
     <p>Shoestring Studios is a full AI video crew on a shoestring budget: brief-driven explainer videos, gated by producer QA (accuracy + coverage, revise until pass), built in the open like a cooking show. Publish-grade, not summary-grade.</p>
   </div>
   <div class="card">
+    <h2>OPEN SOURCE</h2>
+    <p>Built on free and open-source software only (no paid packs or plans). Full license texts ship with the code where noted.</p>
+    <h3>THREE.JS 0.186.1 — MIT</h3>
+    <p>3D engine behind the Studio office and the Crew character viewer. Vendored with its license in vendor/three/. © three.js authors. <a href="https://threejs.org" target="_blank" rel="noopener">threejs.org</a></p>
+    <h3>KENNEY MINI CHARACTERS 1.0 + FURNITURE KIT 2.0 — CC0</h3>
+    <p>Crew avatars and office furniture. Public-domain dedication, no attribution required (credited here anyway). <a href="https://kenney.nl/assets/mini-characters" target="_blank" rel="noopener">Mini Characters</a> · <a href="https://kenney.nl/assets/furniture-kit" target="_blank" rel="noopener">Furniture Kit</a> — © Kenney (kenney.nl).</p>
+    <h3>PYPDF 6.21.3 — BSD-3-CLAUSE</h3>
+    <p>PDF text extraction for handbook uploads (Crew training). The only third-party Python package; everything else is the Python standard library. <a href="https://pypi.org/project/pypdf/" target="_blank" rel="noopener">PyPI</a></p>
+    <h3>PYTHON 3.11 STANDARD LIBRARY — PSF LICENSE</h3>
+    <p>The backend is stdlib-only: HTTP serving and the JSON API run with no framework.</p>
+    <h3>VERIFICATION ONLY (NOT SHIPPED)</h3>
+    <p>Playwright + Chromium drive the automated browser checks. Never bundled, never required to run the app.</p>
+  </div>
+  <div class="card">
     <h2>BUILD LOG</h2>
     <ul class="log">
       <li><b><a href="docs/MEETING_01_IDEA_EN.md" target="_blank" rel="noopener">Meeting 01</a> — Idea.</b> <span class="when">2026-10-27 23:24 KST</span> An AI-agent video team turning dense sources into publish-grade explainers. Minutes kept in English.</li>
       <li><b><a href="docs/MEETING_02_POSITIONING_EN.md" target="_blank" rel="noopener">Meeting 02</a> — Positioning.</b> <span class="when">2026-10-27 23:24 KST</span> Publish-grade over summary-grade; the busy expert becoming a solo creator; figure-grounded video proposed as the hero feature.</li>
       <li><b><a href="docs/MEETING_03_CREW_EN.md" target="_blank" rel="noopener">Meeting 03</a> — Crew &amp; platform.</b> <span class="when">2026-10-27 23:35 KST</span> One employee, one folder; bounded Lv2 agents, no self-planning; PD-first. Marty the storyboard PD built and verified; stdlib backend with a managed Crew tab; GraphRAG deferred until training data is chosen.</li>
       <li><b>Verification.</b> <span class="when">2026-10-28</span> Handler-level HTTP pass plus a self-driving headless-Edge pass (every control operated, graph panel screenshotted) — all green.</li>
+      <li><b><a href="docs/MEETING_04_CHARACTER_DESIGN_EN.md" target="_blank" rel="noopener">Meeting 04</a> — Character design.</b> <span class="when">2026-10-28</span> Kenney Mini Characters (CC0 3D, animated) chosen for the office crew; Furniture Kit for the space. Full-3D office (Three.js) locked; 2D portraits retired.</li>
     </ul>
   </div>
   <div class="card">
@@ -248,12 +343,45 @@
       return j;
     }
   };
+  const MODELS = ["muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1", "muse-wonder-1.0"];
+  const VARIANTS = ["male-a", "male-b", "male-c", "male-d", "male-e", "male-f",
+    "female-a", "female-b", "female-c", "female-d", "female-e", "female-f"]
+    .map(s => "character-" + s + ".glb");
   (function () {
     const roster = document.getElementById("roster");
     const detail = document.getElementById("detail");
     const errline = document.getElementById("crewerr");
     let current = null;
-    function fail(e) { errline.textContent = "Error: " + e.message; }
+    document.getElementById("n-model").innerHTML =
+      MODELS.map(m => '<option value="' + m + '">' + m + "</option>").join("");
+    document.getElementById("n-variant").innerHTML =
+      '<option value="">Auto (first unused)</option>' +
+      VARIANTS.map(v => '<option value="' + v + '">' + v + "</option>").join("");
+    document.getElementById("n-create").onclick = async () => {
+      try {
+        errline.textContent = "";
+        const r = await api.send("POST", "api/crew", {
+          id: document.getElementById("n-id").value.trim(),
+          name: document.getElementById("n-name").value.trim(),
+          title: document.getElementById("n-title").value.trim(),
+          model: document.getElementById("n-model").value,
+          variant: document.getElementById("n-variant").value || undefined,
+        });
+        errline.textContent = "Created " + r.id + ".";
+        document.getElementById("n-id").value = "";
+        document.getElementById("n-name").value = "";
+        document.getElementById("n-title").value = "";
+        current = null;
+        await loadRoster();
+        show(r.id).catch(fail);
+      } catch (e) { fail(e); }
+    };
+    function fail(e) {
+      const hint = /failed to fetch/i.test((e && e.message) || "")
+        ? " — start the server (start_server.bat) and open its http:// URL, not this file directly."
+        : "";
+      errline.textContent = "Error: " + e.message + hint;
+    }
     async function loadRoster() {
       const list = await api.get("api/crew");
       roster.innerHTML = "";
@@ -280,24 +408,58 @@
         '<label class="tool"><input type="checkbox" data-tool="' + esc(t) + '"' +
         (c.tools.indexOf(t) >= 0 ? " checked" : "") + "> " + esc(t) + "</label>").join("");
       const hb = c.handbook.map(f =>
-        "<li>" + esc(f) + ' <button data-del="' + esc(f) + '">delete</button></li>').join("");
+        '<li><a href="#" data-view="' + esc(f) + '">' + esc(f) + '</a> <button data-del="' + esc(f) + '">delete</button></li>').join("");
+      const variants = VARIANTS.map(v =>
+        '<option value="' + v + '"' + (v === (c.appearance.variant || "") ? " selected" : "") + ">" + v + "</option>").join("");
       detail.innerHTML =
         "<h2>" + esc(c.name.toUpperCase()) + " — " + esc(c.title.toUpperCase()) + "</h2>" +
-        '<img class="portrait" src="' + c.portrait + '" alt="portrait">' + g +
+        '<p class="hint">ID: ' + esc(c.id) + " · folder agents/" + esc(c.id) + "/ · output follows the write_* tool</p>" +
+        '<div id="viewer3d"><span class="vload">LOADING 3D…</span></div>' + g +
         "<h3>GRAPH — TRAINING RESULTS</h3><div id=\"gpanel\">loading…</div>" +
         "<div class=\"subtabs\">" +
         '<button data-st="model" class="active">Model</button>' +
         '<button data-st="tools">Tools</button>' +
-        '<button data-st="persona">Persona</button></div>' +
+        '<button data-st="persona">Persona</button>' +
+        '<button data-st="details">Details</button></div>' +
         "<div class=\"spanel active\" id=\"sp-model\"><select id=\"f-model\">" + models + "</select></div>" +
         "<div class=\"spanel\" id=\"sp-tools\"><div>" + tools + "</div></div>" +
         "<div class=\"spanel\" id=\"sp-persona\"><textarea id=\"f-persona\" rows=\"14\">" + esc(c.persona) + "</textarea></div>" +
-        '<button class="cta" id="f-save">SAVE CHANGES</button>' +
-        "<h3>DONE WHEN</h3><ul>" + c.done.map(d => "<li>" + esc(d) + "</li>").join("") + "</ul>" +
+        "<div class=\"spanel\" id=\"sp-details\">" +
+        '<label>Name <input id="f-name" maxlength="32" value="' + esc(c.name) + '"></label>' +
+        '<label>Title <input id="f-title" maxlength="64" value="' + esc(c.title) + '"></label>' +
+        '<label>Max steps <input id="f-steps" type="number" min="1" max="20" value="' + c.bounds.max_steps + '"></label>' +
+        "<label>Done when (one per line)<textarea id=\"f-done\" rows=\"3\">" + esc(c.done.join("\n")) + "</textarea></label>" +
+        "<p><b>Inputs:</b> " + esc((c.io.inputs || []).join(", ")) + " · <b>Output:</b> " + esc(c.io.output || "") + "</p>" +
+        '<label>3D variant <select id="f-variant">' + variants + "</select></label>" +
+        '<label>Tint <input id="f-tint" type="color" value="' + esc(c.appearance.tint || "#ffffff") + '"> <span id="f-tinthex">' + esc(c.appearance.tint || "#ffffff") + "</span></label>" +
+        "</div>" +
+        '<button class="cta" id="f-save">SAVE CHANGES</button> ' +
+        '<button class="danger" id="f-delete">DELETE EMPLOYEE</button>' +
         "<h3>HANDBOOK</h3><ul>" + (hb || "<li>none</li>") + "</ul>" +
-        '<input type="file" id="f-file" accept=".md,.txt,.pdf"> <button class="cta" id="f-upload">UPLOAD &amp; PARSE</button>' +
-        "<p><b>Max steps:</b> " + c.bounds.max_steps + "</p>";
+        '<pre id="hbview" style="display:none"></pre>' +
+        '<input type="file" id="f-file" accept=".md,.txt,.pdf"> <button class="cta" id="f-upload">UPLOAD &amp; PARSE</button>';
       detail.style.display = "block";
+      (function viewerMsg(box, text) {
+        if (!box || !box.isConnected) return;
+        box.innerHTML = "";
+        const s = document.createElement("span");
+        s.className = "vload";
+        s.textContent = text;
+        box.appendChild(s);
+      });
+      (function mount(box, waited) {
+        if (!box || !box.isConnected) return;
+        if (window.CrewViewer3D) {
+          try { window.CrewViewer3D.show(box, c.appearance); }
+          catch (e) { viewerMsg(box, "3D ERROR: " + String((e && e.message) || e)); }
+          return;
+        }
+        if ((waited || 0) > 5000) {
+          viewerMsg(box, "3D MODULE FAILED TO LOAD (refresh, or restart the server)");
+          return;
+        }
+        setTimeout(() => mount(box, (waited || 0) + 120), 120);
+      })(document.getElementById("viewer3d"), 0);
       api.get("api/crew/" + id + "/graph").then(g => {
         const ents = (g.entities || []).slice(0, 25);
         const rels = g.relations || [];
@@ -338,19 +500,54 @@
           document.getElementById("sp-" + b.dataset.st).classList.add("active");
         };
       });
+      document.getElementById("f-tint").oninput = e => {
+        document.getElementById("f-tinthex").textContent = e.target.value;
+      };
       document.getElementById("f-save").onclick = async () => {
         try {
           errline.textContent = "";
           const checked = Array.from(detail.querySelectorAll("[data-tool]:checked")).map(x => x.dataset.tool);
+          const done = document.getElementById("f-done").value.split("\n")
+            .map(s => s.trim()).filter(s => s);
           await api.send("PUT", "api/crew/" + id, {
+            name: document.getElementById("f-name").value,
+            title: document.getElementById("f-title").value,
             persona: document.getElementById("f-persona").value,
             model: document.getElementById("f-model").value,
             tools: checked,
+            bounds: { max_steps: parseInt(document.getElementById("f-steps").value, 10) },
+            done: done,
+            appearance: {
+              variant: document.getElementById("f-variant").value,
+              tint: document.getElementById("f-tint").value,
+            },
           });
           errline.textContent = "Saved.";
+          show(id).catch(fail);
           loadRoster().catch(fail);
         } catch (e) { fail(e); }
       };
+      document.getElementById("f-delete").onclick = async () => {
+        try {
+          if (!confirm("Delete employee " + id + " and all its files?")) return;
+          await api.send("DELETE", "api/crew/" + id);
+          errline.textContent = "Deleted " + id + ".";
+          detail.style.display = "none";
+          current = null;
+          loadRoster().catch(fail);
+        } catch (e) { fail(e); }
+      };
+      detail.querySelectorAll("[data-view]").forEach(a => {
+        a.onclick = async (e) => {
+          e.preventDefault();
+          try {
+            const r = await api.get("api/crew/" + id + "/handbook/" + encodeURIComponent(a.dataset.view));
+            const pre = document.getElementById("hbview");
+            pre.style.display = "block";
+            pre.textContent = "=== " + r.file + " ===\n" + r.content;
+          } catch (err) { fail(err); }
+        };
+      });
       detail.querySelectorAll("[data-del]").forEach(b => {
         b.onclick = async () => {
           try {
@@ -373,6 +570,230 @@
     }
     loadRoster().catch(fail);
   })();
+
+  /* Studio chat: talk to a chosen crew member. Replies also show as that
+     member's speech bubble in the office (postMessage). */
+  (function chat() {
+    const box = document.getElementById("chatmsgs");
+    const form = document.getElementById("chatform");
+    const input = document.getElementById("chatinput");
+    const who = document.getElementById("chatwho");
+    if (!box || !form) return;
+    let roster = [];
+    const history = [];
+    function addMsg(cls, text) {
+      const d = document.createElement("div");
+      d.className = "cmsg " + cls;
+      d.textContent = text;
+      box.appendChild(d);
+      box.scrollTop = box.scrollHeight;
+      return d;
+    }
+    function memberName(id) {
+      const c = roster.find((x) => x.id === id);
+      return c ? c.name : id;
+    }
+    function tellOffice(msg) {
+      const f = document.querySelector("#p-studio iframe.office");
+      if (f && f.contentWindow) f.contentWindow.postMessage(msg, location.origin);
+    }
+    async function loadWho() {
+      try {
+        const r = await fetch("api/crew", { cache: "no-store" });
+        if (!r.ok) throw new Error("roster " + r.status);
+        roster = await r.json();
+        who.innerHTML = "";
+        roster.forEach((c) => {
+          const o = document.createElement("option");
+          o.value = c.id;
+          o.textContent = c.name + " — " + c.title;
+          who.appendChild(o);
+        });
+        if (roster.length) addMsg("them", "Hey! I'm " + roster[0].name + ". Ask me anything about my work.");
+        else addMsg("sys", "No crew yet.");
+      } catch (e) {
+        addMsg("sys", "Crew list unavailable — is the server running?");
+      }
+    }
+    who.addEventListener("change", () => {
+      history.length = 0;
+      addMsg("sys", "Now talking to " + memberName(who.value) + ".");
+    });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text || !who.value || form.dataset.busy) return;
+      form.dataset.busy = "1";
+      const btn = form.querySelector("button");
+      btn.disabled = true;
+      addMsg("me", text);
+      tellOffice({ kind: "crew-chat", id: who.value });
+      history.push({ role: "user", content: text });
+      while (history.length > 12) history.shift();
+      input.value = "";
+      const typing = addMsg("them typing", "…");
+      try {
+        const r = await fetch("api/crew/" + encodeURIComponent(who.value) + "/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: history }),
+        });
+        const data = await r.json().catch(() => ({}));
+        typing.remove();
+        if (!r.ok) throw new Error(data.error || ("chat " + r.status));
+        addMsg("them", data.reply);
+        history.push({ role: "assistant", content: data.reply });
+        while (history.length > 12) history.shift();
+        tellOffice({ kind: "crew-say", id: who.value, text: data.reply.slice(0, 140) });
+      } catch (err) {
+        typing.remove();
+        const msg = String((err && err.message) || err);
+        addMsg("sys", "Error: " + msg +
+          (/failed to fetch/i.test(msg) ? " — start the server (start_server.bat) and open its http:// URL." : ""));
+      } finally {
+        delete form.dataset.busy;
+        btn.disabled = false;
+        input.focus();
+      }
+    });
+    loadWho();
+  })();
+</script>
+<script type="module">
+// Crew 3D viewer (D45): employee detail shows the Mini character from
+// appearance.json. Shows a message if WebGL/GLB fails.
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const VARIANTS = [
+  "character-male-a.glb", "character-female-a.glb",
+  "character-male-b.glb", "character-female-b.glb",
+  "character-male-c.glb", "character-female-c.glb",
+  "character-male-d.glb", "character-female-d.glb",
+  "character-male-e.glb", "character-female-e.glb",
+  "character-male-f.glb", "character-female-f.glb",
+];
+const CHAR_DIR = "vendor/kenney/mini-characters/Models/GLB format/";
+let live = null;
+
+window.CrewViewer3D = {
+  show(box, appearance) {
+    if (live) {
+      cancelAnimationFrame(live.raf);
+      live.ro.disconnect();
+      try { live.renderer.dispose(); } catch (e) { /* already gone */ }
+      live = null;
+    }
+    const fail = (reason) => {
+      if (!box.isConnected) return;
+      box.innerHTML = "";
+      const msg = document.createElement("div");
+      msg.className = "vload";
+      msg.textContent = "3D FAILED TO LOAD" + (reason ? ": " + reason : "");
+      box.appendChild(msg);
+    };
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+    } catch (e) { fail(e && e.message ? String(e.message) : "webgl"); return; }
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(box.clientWidth, box.clientHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x8fc3ec);
+    const camera = new THREE.PerspectiveCamera(
+      38, box.clientWidth / box.clientHeight, 0.1, 50);
+    camera.position.set(1.05, 0.85, 1.55);
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.5;
+    scene.add(new THREE.HemisphereLight(0xfff5e8, 0x3a3f4a, 0.7));
+    const key = new THREE.DirectionalLight(0xfff2df, 1.5);
+    key.position.set(2, 3, 2);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    scene.add(key);
+    const stage = new THREE.Mesh(new THREE.CircleGeometry(0.55, 40),
+      new THREE.MeshStandardMaterial({ color: 0xd9d2c4, roughness: 0.9 }));
+    stage.rotation.x = -Math.PI / 2;
+    stage.receiveShadow = true;
+    scene.add(stage);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0.34, 0);
+    controls.enableDamping = true;
+    controls.enablePan = false;
+    controls.minDistance = 0.8;
+    controls.maxDistance = 4;
+    controls.maxPolarAngle = 1.52;
+    controls.autoRotate = false;
+    controls.update();
+    box.innerHTML = "";
+    box.appendChild(renderer.domElement);
+    const hint = document.createElement("div");
+    hint.className = "vhint";
+    hint.textContent = "Drag to spin";
+    box.appendChild(hint);
+    const ap = appearance || {};
+    const variant = VARIANTS.includes(ap.variant) ? ap.variant : VARIANTS[0];
+    const tint = /^#[0-9a-f]{6}$/i.test(ap.tint || "") ? ap.tint.toLowerCase() : "#ffffff";
+    const slot = { mixer: null, actions: null, group: null, play: null };
+    new GLTFLoader().load(encodeURI(CHAR_DIR + variant), (gltf) => {
+      if (!box.isConnected) return;
+      gltf.scene.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        if (tint !== "#ffffff") { o.material = o.material.clone(); o.material.color.set(tint); }
+      });
+      scene.add(gltf.scene);
+      const mixer = new THREE.AnimationMixer(gltf.scene);
+      const find = (n) => THREE.AnimationClip.findByName(gltf.animations, n);
+      const idleClip = find("idle") || gltf.animations[0];
+      const walkClip = find("walk");
+      slot.mixer = mixer;
+      slot.group = gltf.scene;
+      slot.actions = {
+        idle: idleClip ? mixer.clipAction(idleClip) : null,
+        walk: walkClip ? mixer.clipAction(walkClip) : null,
+      };
+      slot.play = (n) => {
+        const a = slot.actions[n];
+        if (!a || slot.current === a) return;
+        // Same revive rule as the office fadeTo: reset() re-enables an
+        // action that a finished fade-out disabled.
+        a.reset();
+        a.setEffectiveWeight(1);
+        a.play();
+        if (slot.current) slot.current.crossFadeTo(a, 0.2, true);
+        slot.current = a;
+      };
+      slot.play("idle");
+    }, undefined, () => { if (box.isConnected) fail("model"); });
+    // Calm viewer: the member just stands (idle sways arms/head).
+    // No pacing, no auto-rotate — the user drags to spin.
+    const timer = new THREE.Timer();
+    timer.connect(document);
+    const ro = new ResizeObserver(() => {
+      camera.aspect = box.clientWidth / box.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(box.clientWidth, box.clientHeight);
+    });
+    ro.observe(box);
+    const tick = () => {
+      if (!box.isConnected) return;
+      timer.update();
+      const dt = Math.min(timer.getDelta(), 0.05);
+      if (slot.mixer) slot.mixer.update(dt);
+      controls.update();
+      renderer.render(scene, camera);
+      live.raf = requestAnimationFrame(tick);
+    };
+    live = { raf: requestAnimationFrame(tick), renderer, ro };
+  },
+};
 </script>
 </body>
 </html>

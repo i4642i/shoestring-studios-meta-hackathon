@@ -8,7 +8,7 @@ import json
 import os
 
 from . import graph
-from .schemas import validate_draft
+from .schemas import list_headings, validate_draft, validate_structure
 
 
 def read_md_section(ctx, args):
@@ -18,7 +18,7 @@ def read_md_section(ctx, args):
         text = f.read()
     lines = text.splitlines()
     heads = [(i, ln) for i, ln in enumerate(lines) if ln.startswith("#")]
-    sections = [ln.lstrip("# ").strip() for _, ln in heads]
+    sections = [t for _, t in list_headings(text)]
     want = (args.get("section") or "").strip().lower()
     if want:
         for idx, (li, ln) in enumerate(heads):
@@ -39,7 +39,18 @@ def write_draft(ctx, args):
     out = os.path.join(ctx["run_dir"], "draft.json")
     with open(out, "w", encoding="utf-8") as f:
         json.dump(draft, f, ensure_ascii=False, indent=2)
-    return {"ok": True, "path": out}
+    return {"ok": True, "path": out, "output": "draft.json"}
+
+
+def write_structure(ctx, args):
+    obj = args.get("structure")
+    errors = validate_structure(obj, ctx.get("input_md"))
+    if errors:
+        return {"ok": False, "errors": errors}
+    out = os.path.join(ctx["run_dir"], "structure.json")
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+    return {"ok": True, "path": out, "output": "structure.json"}
 
 
 def query_graph(ctx, args):
@@ -50,6 +61,13 @@ def query_graph(ctx, args):
     return {"state": "indexed",
             "answer": graph.query(ctx["agent_dir"], args.get("question", ""))}
 
+
+# Writer tool -> run output file. The server keeps agent.json io.output
+# in sync with the employee's single write_* tool.
+OUTPUTS = {
+    "write_draft": "draft.json",
+    "write_structure": "structure.json",
+}
 
 TOOLS = {
     "read_md_section": (
@@ -67,6 +85,14 @@ TOOLS = {
         {"type": "object",
          "properties": {"draft": {"type": "object"}},
          "required": ["draft"], "additionalProperties": False},
+    ),
+    "write_structure": (
+        write_structure,
+        "Save the input structure map. Fails unless every section is "
+        "mapped in source order with neighbour links.",
+        {"type": "object",
+         "properties": {"structure": {"type": "object"}},
+         "required": ["structure"], "additionalProperties": False},
     ),
     "query_graph": (
         query_graph,

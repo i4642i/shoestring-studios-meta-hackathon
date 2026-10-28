@@ -26,12 +26,12 @@ def validate(path):
     agent_js = os.path.join(path, "agent.json")
     persona_md = os.path.join(path, "persona.md")
     handbook = os.path.join(path, "handbook")
-    portrait = os.path.join(path, "portrait.webp")
+    appearance = os.path.join(path, "appearance.json")
     tools_dir = os.path.join(path, "tools")
 
     if not ID_RE.match(want_id):
         errs.append("folder id breaks naming rule: %s" % want_id)
-    for p in (agent_js, persona_md, portrait):
+    for p in (agent_js, persona_md, appearance):
         if not os.path.isfile(p):
             errs.append("missing: %s" % p)
     if not (os.path.isdir(handbook)
@@ -91,6 +91,18 @@ def validate(path):
         for t in agent.get("tools", []):
             if t not in names:
                 errs.append("unknown tool: %s" % t)
+
+    if os.path.isfile(appearance):
+        with open(appearance, encoding="utf-8") as f:
+            try:
+                ap = json.load(f)
+            except ValueError as e:
+                errs.append("appearance.json invalid: %s" % e)
+                ap = {}
+        if ap and (not isinstance(ap, dict)
+                   or not isinstance(ap.get("variant"), str)
+                   or not ap["variant"].endswith(".glb")):
+            errs.append("appearance.json needs {variant: '<file>.glb', tint?}")
 
     if os.path.isfile(persona_md):
         with open(persona_md, encoding="utf-8") as f:

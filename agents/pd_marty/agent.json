@@ -3,9 +3,9 @@
     "max_steps": 6
   },
   "done": [
-    "2-4 key ideas",
-    "every scene has >=1 source ref",
-    "coverage list attached"
+    "every section mapped",
+    "links connect all neighbours",
+    "headings match the source"
   ],
   "frame_version": 1,
   "id": "pd_marty",
@@ -14,13 +14,13 @@
       "brief.json",
       "input.md"
     ],
-    "output": "draft.json"
+    "output": "structure.json"
   },
   "model": "muse-spark-1.3",
   "name": "Marty",
   "title": "Documentary PD, showrunner",
   "tools": [
     "read_md_section",
-    "write_draft"
+    "write_structure"
   ]
 }

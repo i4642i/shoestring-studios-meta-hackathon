@@ -32,9 +32,9 @@ agents/
     persona.md            # persona + system prompt
     handbook/             # expertise corpus (*.md) -> indexed into Marty's graph
     tools.py              # Marty's custom tools (only if beyond builtins)
-    portrait.webp         # face (Muse Image, D16)
+    appearance.json       # 3D look: Mini variant + tint (D46; portraits retired, D45)
 output/
-  runs/<run-id>/          # per-run: brief.json, input.md, events.jsonl, draft.json (gitignored)
+  runs/<run-id>/          # per-run: brief.json, input.md, events.jsonl, structure.json (gitignored)
 scripts/
   run_agent.py            # CLI dev harness: run one employee on one input
 ```
@@ -43,7 +43,7 @@ Notes:
 
 - `agent.json` (not YAML) keeps the project dependency-free (stdlib only).
 - `output/` is gitignored; run artifacts are scratch, not deliverables.
-- Portraits live with their employee so the Crew tab and office render them directly.
+- appearance.json lives with its employee so the Crew tab and office render them directly.
 
 ## 3. PD Marty — filled definition
 
@@ -52,20 +52,20 @@ Notes:
 | id / name | pd_marty / Marty |
 | title | Documentary PD, showrunner |
 | persona | Veteran showrunner. Decisive, allergic to jargon, protects the viewer |
-| duties | MD + brief -> storyboard draft JSON |
+| duties | MD + brief -> structure map JSON (no storyboard) |
 | model | muse-spark-1.3 |
 | graph | handbook/ story-design expertise (+ per-run paper index) |
-| tools | read_md_section, query_graph, write_draft |
+| tools | read_md_section, write_structure |
 | apis | none direct (all external calls wrapped as tools) |
 | inputs | brief.json, input.md |
-| output | draft.json (storyboard schema v1) |
+| output | structure.json (structure-map schema v1) |
 | bounds | max 6 steps per run |
-| done | 2-4 key ideas; every scene has >=1 source ref; coverage list attached |
+| done | every section mapped; links connect all neighbours; headings match the source |
 
 ## 4. Build order (plan only)
 
 1. Frame skeleton: runner + tool registry + I/O schemas (minimal for one employee).
-2. PD instance files: agent.json, persona.md, handbook seed, portrait.
+2. PD instance files: agent.json, persona.md, handbook seed, appearance.json.
 3. GraphRAG (D31: microsoft/graphrag + local embeddings) — DEFERRED. No training yet; corpus TBD later. Marty v1 reads MD directly (Spark 1M context).
 4. CLI run on the demo paper (OPEN: which paper, D7) and verify draft.json by hand.
 5. Refine the frame from lessons learned (D14); the writer comes next.
