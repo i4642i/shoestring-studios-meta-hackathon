@@ -89,6 +89,7 @@ def get_rag(eid):
             max_token_size=8192,
             func=embed_func),
     )
+    _run(rag.initialize_storages())
     _RAGS[eid] = rag
     return rag
 

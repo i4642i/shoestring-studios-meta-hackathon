@@ -37,4 +37,64 @@
 
 - [ ] Live structure-map run on the real book chapter (needs the input .md path; inputs/outputs stay out of git).
 - [ ] Multi-crew office test (second employee via the new add form).
-- [ ] Commit the session (office_3d.html, frame, Crew UI, vendor packs, these minutes).
+- [x] Commit the session (office_3d.html, frame, Crew UI, vendor packs, these minutes) — pushed 2026-10-28 (6ddf29c).
+
+---
+
+## Addendum (same day): GraphRAG status
+
+- Fact: GraphRAG is NOT connected. Handbook uploads only stage .md files; `index_corpus`/`query` raise NotImplementedError (D31 deferred); Marty neither chats nor runs with the graph.
+- Discussed two implementation paths: (a) stdlib-only lightweight index over handbook/ (entities/relations/communities, offline, no new deps); (b) full microsoft/graphrag per D31 (heavy pip install, embeddings + LLM config, possible paid API keys).
+- Decision: PENDING — implementation choice not made yet.
+
+## Next (addendum)
+
+- [ ] Choose GraphRAG path (a) or (b), then implement index + query_graph wiring.
+
+---
+
+## Addendum 2 (same day): GraphRAG alternatives research
+
+- Verified: Meta Model API has NO embeddings. `/v1/models` lists only
+  spark/image/voice/sam models; `POST /v1/embeddings` returns 404. No public
+  launch news found. Any vector-based approach must bring its own embeddings
+  (paid API key or local model).
+- MS GraphRAG (2024 original) is NOT recommended anymore: heaviest and
+  priciest, superseded on quality-per-cost by its successors.
+- Candidates found (all need LLM + embeddings from somewhere):
+  - LightRAG (HKUDS, EMNLP 2025): simplified GraphRAG, dual-level retrieval;
+    reported comparable-or-better quality at a fraction of the cost; easy
+    incremental updates.
+  - HippoRAG 2 (OSU, ICML 2025): strongest on multi-hop QA (Personalized
+    PageRank over the graph); more setup work than LightRAG.
+  - nano-graphrag (~1100 LOC, pip-installable): hackable minimal GraphRAG;
+    standard free combo is Ollama llama3.2 (LLM) + nomic-embed-text
+    (embeddings), all local.
+- Narrowed choice: (1) nano-graphrag + Ollama (free, local, heavier setup)
+  or (2) hand-built stdlib-lite index without embeddings (lightest, same day).
+  Both keep the `index_corpus`/`query` interface so a later swap is possible.
+- Decision: STILL PENDING at the time.
+
+## Next (addendum 2)
+
+- [x] Pick a direction (see Conclusion below).
+
+---
+
+## Conclusion (same day): LightRAG experiment — D54
+
+- D54: Run a LightRAG experiment INSTEAD of microsoft/graphrag. Decided 2026-10-28.
+- Locked spec: LLM = Meta Model API (Muse Spark) via OpenAI-compatible
+  base_url — verified supported (official `lightrag_openai_compatible_demo.py`
+  takes base_url + api_key + model); embeddings = free local CPU model, 2
+  options benchmarked (small English vs multilingual bge-m3 class) then ONE
+  pick (re-pick means re-index); separate venv with pinned versions, venv +
+  storage gitignored; index `agents/pd_marty/handbook/story_structure.md`
+  first with LLM-call/token/cost/time logging, hard stop near $2;
+  `query_graph` interface unchanged so lite/LightRAG swap; 3 sample questions
+  answered by both indexes, shown side by side.
+- Gate: plan reviewed before anything is installed.
+
+## Next (conclusion)
+
+- [ ] Review the LightRAG experiment plan, then install and run it.

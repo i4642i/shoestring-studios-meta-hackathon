@@ -370,6 +370,24 @@ function buildRoom() {
     new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.85 }));
   board.position.set(3.6, 1.25, ROOM.z0 + 0.08);
   scene.add(board);
+  // Victory banner on the opposite (left) wall.
+  const bannerTex = canvasTexture(1024, 256, (g) => {
+    g.fillStyle = "#1c2a4a"; g.fillRect(0, 0, 1024, 256);
+    g.strokeStyle = "#ffd166"; g.lineWidth = 10;
+    g.strokeRect(14, 14, 996, 228);
+    g.textAlign = "center";
+    g.fillStyle = "#ffd166";
+    g.font = "800 72px Arial";
+    g.fillText("SMALL BUDGET, BIG STORY.", 512, 118, 950);
+    g.fillStyle = "#ffffff";
+    g.font = "600 44px Arial";
+    g.fillText("— Meta Hackathon 2026 —", 512, 196, 950);
+  });
+  const banner = new THREE.Mesh(new THREE.PlaneGeometry(4, 1),
+    new THREE.MeshStandardMaterial({ map: bannerTex, roughness: 0.85 }));
+  banner.rotation.y = Math.PI / 2;
+  banner.position.set(ROOM.x0 + 0.03, 1.7, 0);
+  scene.add(banner);
 }
 
 /* ================= furniture (GLBs placed from the layout table) ================= */
