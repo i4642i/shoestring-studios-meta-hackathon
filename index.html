@@ -269,6 +269,7 @@
     <button data-p="studio">Studio</button>
     <button data-p="gallery">Gallery</button>
     <button data-p="pc">PC</button>
+    <button data-p="settings">Settings</button>
   </nav>
   <nav class="about">
     <button data-p="about">About</button>
@@ -399,6 +400,46 @@
       <input id="p-tool" maxlength="32" placeholder="Tool (e.g. query_pc)" aria-label="Tool">
       <button class="cta" id="p-add">ADD</button>
     </div>
+  </div>
+</div>
+
+<div class="page" id="p-settings">
+  <div class="card">
+    <h2>SETTINGS</h2>
+    <h3>EMBEDDINGS (RAG)</h3>
+    <p class="hint">One index per profile. Switching profile never deletes the other index.</p>
+    <div id="se-profile">
+      <label><input type="radio" name="se-prof" value="local"> Local - all-MiniLM-L6-v2 (this PC)</label>
+      <label><input type="radio" name="se-prof" value="jetson"> Jetson - BAAI/bge-m3 (LAN server)</label>
+    </div>
+    <div class="addform">
+      <input id="se-url" maxlength="128" placeholder="Jetson server URL" aria-label="Jetson server URL">
+      <span id="se-token">Token: ?</span>
+      <button class="cta" id="se-save">SAVE</button>
+      <button id="se-test">TEST CONNECTION</button>
+    </div>
+    <p id="se-testout"></p>
+    <p id="se-err"></p>
+    <h3>LLM (LIGHTRAG)</h3>
+    <div class="addform">
+      <select id="se-llm" aria-label="LLM model"></select>
+    </div>
+    <h3>QUERY</h3>
+    <div class="addform">
+      <label>Mode <select id="se-mode" aria-label="Query mode"></select></label>
+      <label>Top K <input id="se-topk" type="number" min="5" max="100" aria-label="Top K"></label>
+    </div>
+    <h3>CHUNKS (NEW INDEXES ONLY)</h3>
+    <p class="hint">Chunk sizes apply when an index is built, not to existing indexes.</p>
+    <div class="addform">
+      <label>Local <input id="se-chunk-local" type="number" min="64" max="1024" aria-label="Local chunk size"></label>
+      <label>Jetson <input id="se-chunk-jetson" type="number" min="64" max="1024" aria-label="Jetson chunk size"></label>
+    </div>
+    <h3>INDEX STATUS</h3>
+    <table id="se-table">
+      <thead><tr><th>AGENT</th><th>PROFILE</th><th>STATUS</th><th>MODEL</th><th>DIM</th><th>BUILT</th><th></th></tr></thead>
+      <tbody id="se-rows"><tr><td colspan="7">Loading…</td></tr></tbody>
+    </table>
   </div>
 </div>
 
@@ -694,33 +735,35 @@
       });
       return pos;
     }
-    function renderMap(panel, lite, map, staged, comCount) {
+    function renderMap(panel, map, staged) {
       panel.innerHTML = "";
       const NS = "http://www.w3.org/2000/svg";
-      const hasLr = !!(map && map.available);
-      const counts = document.createElement("p");
-      const liteN = (lite.entities || []).length, liteR = (lite.relations || []).length;
-      counts.textContent = hasLr
-        ? "LightRAG: " + map.entities.length + " entities · " + map.relations.length + " relations" +
-          " — Lite: " + liteN + " entities · " + liteR + " relations · Communities: " + comCount
-        : "Lite: " + liteN + " entities · " + liteR + " relations · Communities: " + comCount;
-      panel.appendChild(counts);
-      if (hasLr) {
-        const b = map.built || {};
-        const how = document.createElement("p");
-        how.innerHTML = "<b>HOW BUILT</b> — files: " + esc((b.files || []).join(", ") || "unknown") +
-          " · indexed " + esc(b.indexed_at || "?") + " in " + esc(String(b.index_seconds || 0)) + "s" +
-          "<br>LLM " + esc(b.llm_model || "?") + " (" + esc(b.llm_base_url || "") + "): " +
-          esc(String(b.llm_calls || 0)) + " calls, " + esc(String(b.prompt_chars || 0)) +
-          " prompt chars, " + esc(String(b.reply_chars || 0)) + " reply chars" +
-          " · embeddings " + esc(b.embedding_model || "?") + " (" + esc(String(b.embedding_dim || 0)) + "d)" +
-          " · mode " + esc(b.mode || "?");
-        panel.appendChild(how);
-      } else {
+      if (!(map && map.available)) {
         const none = document.createElement("p");
-        none.textContent = "No LightRAG map: " + ((map && map.reason) || "unknown") + ". Showing the lite map.";
+        none.textContent = "LightRAG unavailable: " + ((map && map.reason) || "unknown") +
+          ". Fix: run start_server.bat (installs LightRAG), then build the index.";
         panel.appendChild(none);
+        const st0 = document.createElement("p");
+        st0.textContent = "Staged: " + (staged.join(", ") || "none");
+        panel.appendChild(st0);
+        return;
       }
+      const counts = document.createElement("p");
+      counts.textContent = "LightRAG: " + map.entities.length + " entities · " +
+        map.relations.length + " relations";
+      panel.appendChild(counts);
+      const b = map.built || {};
+      const how = document.createElement("p");
+      how.innerHTML = "<b>HOW BUILT</b> — files: " + esc((b.files || []).join(", ") || "unknown") +
+        " · indexed " + esc(b.indexed_at || "?") + " in " + esc(String(b.index_seconds || 0)) + "s" +
+        "<br>LLM " + esc(b.llm_model || "?") + " (" + esc(b.llm_base_url || "") + "): " +
+        esc(String(b.llm_calls || 0)) + " calls, " + esc(String(b.prompt_chars || 0)) +
+        " prompt chars, " + esc(String(b.reply_chars || 0)) + " reply chars" +
+        " · embeddings " + esc(b.embedding_model || "?") + " (" + esc(String(b.embedding_dim || 0)) + "d)" +
+        " · mode " + esc(b.mode || "?") +
+        " · profile " + esc(b.profile || "?") + " · chunk " + esc(String(b.chunk_size || 0)) +
+        " · top_k " + esc(String(b.top_k || 0));
+      panel.appendChild(how);
       const st = document.createElement("p");
       st.textContent = "Staged: " + (staged.join(", ") || "none");
       panel.appendChild(st);
@@ -732,7 +775,6 @@
         bar.appendChild(x);
         return x;
       };
-      const bLr = mkBtn("LIGHTRAG MAP"), bLite = mkBtn("LITE MAP");
       const bIn = mkBtn("+"), bOut = mkBtn("−"), bReset = mkBtn("RESET VIEW");
       panel.appendChild(bar);
       const svg = document.createElementNS(NS, "svg");
@@ -859,23 +901,11 @@
           svg.appendChild(g);
         });
       }
-      function load(which) {
+      function load() {
         sel = null;
         vb.x = 0; vb.y = 0; vb.w = W; applyVb();
-        bLr.disabled = which === "lr";
-        bLite.disabled = which === "lite";
-        if (which === "lr" && hasLr) {
-          nodes = map.entities.map(e => ({ name: e.name, type: e.type || "", desc: e.description || "", degree: e.degree || 0 }));
-          edges = map.relations.map(r => ({ a: r.source, b: r.target, w: r.weight || 1, desc: r.description || "", kw: r.keywords || "" }));
-        } else {
-          const deg = {};
-          (lite.relations || []).forEach(r => {
-            deg[r.source] = (deg[r.source] || 0) + 1;
-            deg[r.target] = (deg[r.target] || 0) + 1;
-          });
-          nodes = (lite.entities || []).map(e => ({ name: e.name, type: "", desc: "", degree: deg[e.name] || e.degree || 0 }));
-          edges = (lite.relations || []).map(r => ({ a: r.source, b: r.target, w: 1, desc: "", kw: "" }));
-        }
+        nodes = map.entities.map(e => ({ name: e.name, type: e.type || "", desc: e.description || "", degree: e.degree || 0 }));
+        edges = map.relations.map(r => ({ a: r.source, b: r.target, w: r.weight || 1, desc: r.description || "", kw: r.keywords || "" }));
         if (!nodes.length) {
           detail.innerHTML = "<p>No learned entities yet. Upload training files, then run indexing.</p>";
           while (svg.firstChild) svg.removeChild(svg.firstChild);
@@ -885,10 +915,8 @@
         draw();
         showDetail(null);
       }
-      bLr.onclick = () => load("lr");
-      bLite.onclick = () => load("lite");
       svg.addEventListener("click", () => { if (!suppressClick) showDetail(null); });
-      load(hasLr ? "lr" : "lite");
+      load();
     }
     async function show(id) {
       current = id;
@@ -961,14 +989,10 @@
         }
         setTimeout(() => mount(box, (waited || 0) + 120), 120);
       })(document.getElementById("viewer3d"), 0);
-      api.get("api/crew/" + id + "/graph").then(g => {
-        const lite = { entities: g.entities || [], relations: g.relations || [] };
-        const coms = (g.communities || []).length;
-        api.get("api/crew/" + id + "/map").then(
-          m => renderMap(document.getElementById("gpanel"), lite, m, c.graph.staged || [], coms),
-          () => renderMap(document.getElementById("gpanel"), lite,
-            { available: false, reason: "map fetch failed" }, c.graph.staged || [], coms));
-      }).catch(fail);
+      api.get("api/crew/" + id + "/map").then(
+        m => renderMap(document.getElementById("gpanel"), m, c.graph.staged || []),
+        () => renderMap(document.getElementById("gpanel"),
+          { available: false, reason: "map fetch failed" }, c.graph.staged || []));
       detail.querySelectorAll("[data-st]").forEach(b => {
         b.onclick = () => {
           detail.querySelectorAll("[data-st]").forEach(x => x.classList.remove("active"));
@@ -1446,6 +1470,101 @@
     newOrder().catch(fail);
   })();
 
+  /* Settings: embedding profiles. */
+  (function settings() {
+    const rows = document.getElementById("se-rows");
+    if (!rows) return;
+    const errline = document.getElementById("se-err");
+    const testout = document.getElementById("se-testout");
+    function fail(e) { errline.textContent = "Error: " + e.message; }
+    async function load() {
+      try {
+        errline.textContent = "";
+        const s = await api.get("api/settings");
+        document.querySelectorAll('input[name="se-prof"]').forEach(r => {
+          r.checked = r.value === s.profile;
+        });
+        document.getElementById("se-url").value = s.jetson_url || "";
+        document.getElementById("se-token").textContent =
+          "Token: " + (s.token_set ? "set" : "missing");
+        const llmSel = document.getElementById("se-llm");
+        llmSel.innerHTML = (s.llm_models || []).map(o =>
+          '<option value="' + esc(o.model) + '">' + esc(o.model) +
+          " (" + esc(o.provider) + ")</option>").join("");
+        llmSel.value = s.llm_model || "";
+        const modeSel = document.getElementById("se-mode");
+        modeSel.innerHTML = (s.query_modes || []).map(m =>
+          '<option value="' + m + '">' + m + "</option>").join("");
+        modeSel.value = s.query_mode || "hybrid";
+        document.getElementById("se-topk").value = s.top_k;
+        document.getElementById("se-chunk-local").value = s.chunk_local;
+        document.getElementById("se-chunk-jetson").value = s.chunk_jetson;
+        if (s.settings_error) errline.textContent = s.settings_error;
+        const eids = Object.keys(s.agents || {}).sort();
+        if (!eids.length) {
+          rows.innerHTML = '<tr><td colspan="7">No employees.</td></tr>';
+          return;
+        }
+        rows.innerHTML = "";
+        let anyBuilding = false;
+        eids.forEach(eid => {
+          ["local", "jetson"].forEach(prof => {
+            const st = (s.agents[eid] || {})[prof] || {};
+            if (st.building) anyBuilding = true;
+            const status = st.building ? "BUILDING…" : (st.built ? "built" : "not built");
+            const btn = (!st.built && !st.building)
+              ? '<button data-build="' + esc(eid) + "|" + prof + '">BUILD INDEX</button>' : "";
+            const tr = document.createElement("tr");
+            tr.innerHTML = "<td>" + esc(eid) + "</td><td>" + prof + "</td><td>" + status +
+              "</td><td>" + esc(st.model || "—") + "</td><td>" + esc(String(st.dim || "—")) +
+              "</td><td>" + esc(st.indexed_at || "—") + "</td><td>" + btn + "</td>";
+            rows.appendChild(tr);
+          });
+        });
+        rows.querySelectorAll("[data-build]").forEach(b => {
+          b.onclick = async () => {
+            try {
+              const parts = b.dataset.build.split("|");
+              const r = await api.send("POST", "api/crew/" + parts[0] + "/index",
+                { profile: parts[1] });
+              if (!r.started) fail(new Error(r.reason || "build refused"));
+              load();
+            } catch (e) { fail(e); }
+          };
+        });
+        if (anyBuilding) setTimeout(load, 5000);
+      } catch (e) {
+        rows.innerHTML = '<tr><td colspan="7">Settings unavailable — is the server running?</td></tr>';
+      }
+    }
+    document.getElementById("se-save").onclick = async () => {
+      try {
+        errline.textContent = "";
+        const checked = document.querySelector('input[name="se-prof"]:checked');
+        await api.send("POST", "api/settings", {
+          embed_profile: checked ? checked.value : "local",
+          jetson_url: document.getElementById("se-url").value.trim(),
+          llm_model: document.getElementById("se-llm").value,
+          query_mode: document.getElementById("se-mode").value,
+          top_k: parseInt(document.getElementById("se-topk").value, 10),
+          chunk_local: parseInt(document.getElementById("se-chunk-local").value, 10),
+          chunk_jetson: parseInt(document.getElementById("se-chunk-jetson").value, 10) });
+        load();
+      } catch (e) { fail(e); }
+    };
+    document.getElementById("se-test").onclick = async () => {
+      try {
+        testout.textContent = "Testing…";
+        const r = await api.send("POST", "api/settings/test", {
+          jetson_url: document.getElementById("se-url").value.trim() });
+        testout.textContent = r.ok
+          ? "OK: " + r.model + " on " + r.device + ", dim " + r.dim + " (" + r.ms + " ms)"
+          : "Failed: " + (r.error || "unknown");
+      } catch (e) { testout.textContent = "Failed: " + e.message; }
+    };
+    load();
+  })();
+
   /* PC fleet registry. */
   (function pcs() {
     const rows = document.getElementById("pc-rows");
@@ -1510,7 +1629,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { seatPose, checkSeated, FALLBACK_SIT_Y } from "./vendor/seating.js";
+import { seatPose, checkSeated, hipDropOf, posedBox, seatDebug,
+  FALLBACK_SIT_Y, FALLBACK_HIP_DROP } from "./vendor/seating.js";
 
 const VARIANTS = [
   "character-male-a.glb", "character-female-a.glb",
@@ -1666,6 +1786,8 @@ const RECEP_FURN = [
 ];
 const RECEP_SAM = { x: 2.13, z: 1.19, ry: 0 };
 let RECEP_HEAD_Y = 1.0;
+const SEAT_CLIP = "drive";
+const SEAT_DEBUG = new URLSearchParams(location.search).has("seatdebug");
 const RECEP_SCALE = 1.9;
 
 function mountReception(box, appearance, bub) {
@@ -1833,11 +1955,14 @@ function mountReception(box, appearance, bub) {
   // measured seat point (never the furniture center or a tuned height).
   let recepSeat = null, recepSam = null;
   let recepSeatFailed = false, recepSeated = false;
+  let recepHipDrop = null, recepDbg = null;
   function recepTrySeat() {
     if (recepSeated || !recepSam || (!recepSeat && !recepSeatFailed)) return;
     if (!box.isConnected) return;
     recepSeated = true;
-    const pose = recepSeat && seatPose(recepSeat, "loungeSofa.glb", 0, 1.15);
+    const pose = recepSeat &&
+      seatPose(recepSeat, "loungeSofa.glb", 0, 1.15,
+        recepHipDrop ?? FALLBACK_HIP_DROP);
     if (pose) {
       RECEP_SAM.x = pose.x; RECEP_SAM.z = pose.z; RECEP_SAM.ry = pose.yaw;
       RECEP_HEAD_Y = pose.sitY + 0.68;
@@ -1849,17 +1974,25 @@ function mountReception(box, appearance, bub) {
       console.warn("[seating] Sam/loungeSofa: no measured seat, using fallback");
     }
     scene.add(recepSam);
+    console.log("[seating] Sam seatY=" +
+      (pose ? pose.seatY.toFixed(3) : "fallback") + " sitY=" +
+      (pose ? pose.sitY : FALLBACK_SIT_Y).toFixed(3) + " yaw=" +
+      (RECEP_SAM.ry || 0).toFixed(3) + " hipDrop=" +
+      (recepHipDrop == null ? "fallback" : recepHipDrop.toFixed(3)));
     recepHome();
     if (!camInteracted) {
       camera.position.copy(homePos);
       controls.target.copy(homeTgt);
     }
     if (pose) {
-      recepSam.updateWorldMatrix(true, false);
-      const w = checkSeated(new THREE.Box3().setFromObject(recepSam),
+      const w = checkSeated(posedBox(recepSam),
         new THREE.Box3().setFromObject(recepSeat),
         pose.seatY, "Sam/loungeSofa", pose.yaw);
       if (w) console.warn(w);
+      if (SEAT_DEBUG) {
+        if (recepDbg) scene.remove(recepDbg);
+        recepDbg = seatDebug(scene, pose, recepSam);
+      }
     }
   }
   for (const it of RECEP_FURN) {
@@ -1914,16 +2047,33 @@ function mountReception(box, appearance, bub) {
     const h = cbox.max.y - cbox.min.y;
     gltf.scene.scale.setScalar(1.15 / h);
     recepSam = gltf.scene;
-    recepTrySeat();
     const mixer = new THREE.AnimationMixer(gltf.scene);
     const find = (n) => THREE.AnimationClip.findByName(gltf.animations, n);
-    const seatClip = find("sit") || find("idle") || gltf.animations[0];
+    const seatClip = find(SEAT_CLIP) || find("sit") || find("idle") || gltf.animations[0];
     if (seatClip) {
       const a = mixer.clipAction(seatClip);
       a.reset();
       a.setEffectiveWeight(1);
       a.play();
+      mixer.update((seatClip.duration || 0.2) / 2);
+      recepHipDrop = hipDropOf(gltf.scene);
+      // Life: layer idle's head+arm motion additively over the seat pose.
+      const idleClip = find("idle");
+      if (idleClip) {
+        const keep = idleClip.tracks.filter((t) =>
+          ["head", "arm-left", "arm-right"].includes(t.name.split(".")[0]));
+        if (keep.length) {
+          const layer = new THREE.AnimationClip(
+            "idle-head-arms", idleClip.duration, keep.map((t) => t.clone()));
+          THREE.AnimationUtils.makeClipAdditive(layer);
+          const la = mixer.clipAction(layer);
+          la.blendMode = THREE.AdditiveAnimationBlendMode;
+          la.setEffectiveWeight(1);
+          la.play();
+        }
+      }
     }
+    recepTrySeat();
     slot.mixer = mixer;
   }, undefined, () => { if (box.isConnected) fail("model"); });
   const controls = new OrbitControls(camera, renderer.domElement);

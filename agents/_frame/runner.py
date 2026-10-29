@@ -8,6 +8,8 @@ import urllib.request
 
 BASE_URL = "https://api.meta.ai/v1"
 BASETEN_URL = "https://inference.baseten.co/v1"
+LLM_MODELS = ["meta-models/muse-spark-open-1026", "muse-spark-1.3",
+              "muse-spark-1.2", "muse-spark-1.1", "muse-wonder-1.0"]
 MAX_JSON_RETRIES = 2  # tools-off correction attempts per RUN (truncation included)
 MAX_TOOL_FAILS = 5  # consecutive failures before a tool is closed for the run
 
@@ -222,6 +224,12 @@ def run(agent_dir, run_dir, brief, input_md):
             tool_ev = {"ev": "tool", "step": step, "tool": name, "ok": bool(ok)}
             if "errors" in result:
                 tool_ev["errors"] = result["errors"]
+            if "error" in result:
+                tool_ev["error"] = str(result["error"])[:500]
+            if isinstance(result, dict):
+                for k in ("profile", "model", "dim"):
+                    if result.get(k) is not None:
+                        tool_ev[k] = result[k]
             emit(tool_ev)
             payload = json.dumps(result, ensure_ascii=False)[:4000]
             messages.append({"role": "tool", "tool_call_id": call["id"],

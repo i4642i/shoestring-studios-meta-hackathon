@@ -11,6 +11,7 @@ import mimetypes
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +32,8 @@ ORDER_ID_RE = re.compile(r"^ord-[0-9]{8}-[0-9]{3}$")
 INTAKE_KEYS = ("audience", "length", "depth", "theme")
 PC_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 MAX_PDF_BYTES = 25 * 1024 * 1024
+
+_INDEX_JOBS = {}  # (eid, profile) -> Popen of a running run_index.py build
 
 
 def parse_multipart(handler):
@@ -179,6 +182,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_order_get(parts[2])
         if parts[:2] == ["api", "pcs"] and len(parts) == 2:
             return self._api_pcs_list()
+        if parts[:2] == ["api", "settings"] and len(parts) == 2:
+            return self._api_settings_get()
         return self._static(parts)
 
     def do_PUT(self):
@@ -213,6 +218,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_order_start(parts[2])
         if parts[:2] == ["api", "pcs"] and len(parts) == 2:
             return self._api_pcs_add()
+        if parts[:2] == ["api", "settings"] and len(parts) == 2:
+            return self._api_settings_save()
+        if parts[:2] == ["api", "settings"] and len(parts) == 3 \
+                and parts[2] == "test":
+            return self._api_settings_test()
+        if parts[:2] == ["api", "crew"] and len(parts) == 4 \
+                and parts[3] == "index":
+            return self._api_index_build(parts[2])
         return self._json(404, {"error": "not found"})
 
     def do_DELETE(self):
@@ -587,19 +600,149 @@ class Handler(BaseHTTPRequestHandler):
         with open(os.path.join(d, "meta.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
 
+    def _api_settings_get(self):
+        mod = graph._adapter()
+        eff = mod.resolved_settings()
+        try:
+            token_set = bool(mod.load_key("EMBED_REMOTE_TOKEN"))
+        except RuntimeError:
+            token_set = False
+        agents_out = {}
+        adir = os.path.join(ROOT, "agents")
+        for eid in sorted(os.listdir(adir)):
+            path = self._employee(eid)
+            if not path:
+                continue
+            per = {}
+            for prof in ("local", "jetson"):
+                mark = mod.read_marker(path, prof)
+                job = _INDEX_JOBS.get((eid, prof))
+                building = job is not None and job.poll() is None
+                if mark:
+                    per[prof] = {
+                        "built": True, "building": building,
+                        "model": mark.get("model", ""),
+                        "dim": mark.get("dim", 0),
+                        "chunk_size": mark.get("chunk_size", 0),
+                        "indexed_at": mark.get("indexed_at", "")}
+                else:
+                    per[prof] = {"built": False, "building": building}
+            agents_out[eid] = per
+        out = {"profile": eff["profile"], "jetson_url": eff["jetson_url"],
+               "llm_model": eff["llm_model"], "query_mode": eff["query_mode"],
+               "top_k": eff["top_k"], "chunk_local": eff["chunk_local"],
+               "chunk_jetson": eff["chunk_jetson"],
+               "llm_models": [{"model": m,
+                               "provider": runner.provider_of(m)[0]}
+                              for m in runner.LLM_MODELS],
+               "query_modes": list(mod.QUERY_MODES),
+               "token_set": token_set, "agents": agents_out}
+        if eff["problems"]:
+            out["settings_error"] = "; ".join(eff["problems"])
+        return self._json(200, out)
+
+    def _api_settings_save(self):
+        body = self._read_json()
+        if not isinstance(body, dict):
+            return self._json(400, {"error": "need JSON object"})
+        mod = graph._adapter()
+        try:
+            cleaned = mod.clean_settings(body)
+        except RuntimeError as exc:
+            return self._json(400, {"error": str(exc)})
+        spath = os.path.join(ROOT, "data", "settings.json")
+        stored = {}
+        if os.path.isfile(spath):
+            try:
+                with open(spath, encoding="utf-8") as f:
+                    stored = json.load(f)
+            except ValueError:
+                stored = {}
+        if not isinstance(stored, dict):
+            stored = {}
+        stored.update(cleaned)
+        stored.setdefault("embed_profile", "local")
+        stored.setdefault("jetson_url", mod.DEFAULT_JETSON_URL)
+        os.makedirs(os.path.join(ROOT, "data"), exist_ok=True)
+        with open(spath, "w", encoding="utf-8") as f:
+            json.dump(stored, f, ensure_ascii=False, indent=1)
+        eff = mod.resolved_settings()
+        return self._json(200, {"ok": True, "profile": eff["profile"],
+                                "jetson_url": eff["jetson_url"]})
+
+    def _api_settings_test(self):
+        body = self._read_json()
+        mod = graph._adapter()
+        url = None
+        if isinstance(body, dict) and body.get("jetson_url"):
+            url = str(body.get("jetson_url")).strip().rstrip("/")
+            if not (url.startswith("http://")
+                    or url.startswith("https://")):
+                return self._json(200, {"ok": False,
+                                        "error": "jetson_url must start with "
+                                                 "http(s)://"})
+        try:
+            base, token = mod._jetson_auth()
+        except RuntimeError as exc:
+            return self._json(200, {"ok": False, "error": str(exc)})
+        try:
+            h = mod.jetson_health(url or base, token)
+        except RuntimeError as exc:
+            return self._json(200, {"ok": False, "error": str(exc)})
+        return self._json(200, {"ok": True, "model": h.get("model"),
+                                "device": h.get("device"),
+                                "dim": h.get("dim"), "ms": h.get("ms")})
+
+    def _api_index_build(self, eid):
+        path = self._employee(eid)
+        if not path:
+            return self._json(404, {"error": "no such employee"})
+        body = self._read_json()
+        mod = graph._adapter()
+        want = str((body or {}).get("profile") or "").strip().lower()
+        try:
+            prof = mod.profile_config(want or None)["profile"]
+        except RuntimeError as exc:
+            return self._json(400, {"error": str(exc)})
+        job = _INDEX_JOBS.get((eid, prof))
+        if job is not None and job.poll() is None:
+            return self._json(200, {"started": False,
+                                    "reason": "already building"})
+        if prof == "jetson":
+            try:
+                mod.jetson_health()
+            except RuntimeError as exc:
+                return self._json(200, {"started": False,
+                                        "reason": str(exc)})
+        logdir = os.path.join(ROOT, "experiments", "lightrag", "storage",
+                              eid, prof)
+        os.makedirs(logdir, exist_ok=True)
+        logf = open(os.path.join(logdir, "build.log"), "a", encoding="utf-8")
+        try:
+            job = subprocess.Popen(
+                [sys.executable,
+                 os.path.join("experiments", "lightrag", "run_index.py"),
+                 os.path.join("agents", eid), prof],
+                cwd=ROOT, stdout=logf, stderr=subprocess.STDOUT)
+        except OSError as exc:
+            logf.close()
+            return self._json(200, {"started": False,
+                                    "reason": "spawn failed: %s" % exc})
+        logf.close()
+        _INDEX_JOBS[(eid, prof)] = job
+        return self._json(200, {"started": True, "profile": prof})
+
     @staticmethod
     def _handbook_hints(agent_dir, text):
-        """Top handbook chunks for the client's latest line ("", if none)."""
+        """LightRAG answer excerpt for the client's latest line ("", if none)."""
         try:
-            res = graph.query(agent_dir, text, top_k=2)
-        except Exception:  # noqa: BLE001 - no index, chat goes on plain
+            res = graph.query(agent_dir, text)
+        except Exception as exc:  # noqa: BLE001 - no index, chat goes on plain
+            print("[WARN] handbook hints unavailable: %s" % exc)
             return ""
-        if not isinstance(res, dict) or res.get("mode") == "lightrag":
-            return str(res.get("answer", ""))[:1200] if isinstance(res, dict) else ""
-        out = []
-        for c in res.get("chunks", [])[:2]:
-            out.append("[%s] %s" % (c.get("heading", ""), c.get("text", "")))
-        return ("\n".join(out))[:1200]
+        if not isinstance(res, dict):
+            return ""
+        return str(res.get("answer", ""))[:1200]
 
     @staticmethod
     def _check_messages(body):

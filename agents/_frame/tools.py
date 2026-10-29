@@ -73,8 +73,13 @@ def query_graph(ctx, args):
     if st["state"] != "indexed":
         return {"state": st["state"], "reason": st.get("reason", ""),
                 "hint": "read input_md directly instead"}
-    return {"state": "indexed",
-            "answer": graph.query(ctx["agent_dir"], args.get("question", ""))}
+    ans = graph.query(ctx["agent_dir"], args.get("question", ""))
+    out = {"state": "indexed", "answer": ans}
+    if isinstance(ans, dict):
+        for k in ("profile", "model", "dim"):
+            if ans.get(k) is not None:
+                out[k] = ans[k]
+    return out
 
 
 # Writer tool -> run output file. The server keeps agent.json io.output

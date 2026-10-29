@@ -1,8 +1,1 @@
-{
-  "embedding_dim": 384,
-  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-  "llm_base_url": "https://inference.baseten.co/v1",
-  "llm_key_env": "BASETEN_API_KEY",
-  "llm_model": "meta-models/muse-spark-open-1026",
-  "mode": "hybrid"
-}
+{"jetson_url": "http://192.168.0.4:8790", "llm_base_url": "https://inference.baseten.co/v1", "llm_key_env": "BASETEN_API_KEY", "llm_model": "meta-models/muse-spark-open-1026", "mode": "hybrid", "top_k": 40, "profiles": {"jetson": {"chunk_size": 512, "dim": 1024, "model": "BAAI/bge-m3"}, "local": {"chunk_size": 256, "dim": 384, "model": "sentence-transformers/all-MiniLM-L6-v2"}}}

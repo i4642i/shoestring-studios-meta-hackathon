@@ -1,6 +1,9 @@
 # Secrets — never commit
 .env
 
+# Local settings (embedding profile choice, LAN URLs; no tokens inside)
+data/settings.json
+
 # Generated artifacts
 output/
 orders/
@@ -22,6 +25,8 @@ graph_index/
 __pycache__/
 *.pyc
 .venv/
+# Legacy LightRAG venv (pre-merge). Delete this folder after the first
+# start_server.bat run with the merged requirements.txt succeeds.
 .venv-lightrag/
 
 # LightRAG experiment: local-only artifacts (see experiments/lightrag/)
