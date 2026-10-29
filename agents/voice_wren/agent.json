@@ -1,0 +1,26 @@
+{
+  "bounds": {
+    "max_steps": 10
+  },
+  "done": [
+    "lines for every page in intro/body/outro voice",
+    "every fact and number has evidence",
+    "narration category complete per RESULT_JSON_DRAFT_EN.md"
+  ],
+  "frame_version": 1,
+  "id": "voice_wren",
+  "io": {
+    "inputs": [
+      "storyboard_checked.json",
+      "plan.json"
+    ],
+    "output": "narration.json"
+  },
+  "model": "meta-models/muse-spark-open-1026",
+  "name": "Wren",
+  "title": "Narration writer",
+  "tools": [
+    "query_graph",
+    "read_md_section"
+  ]
+}
