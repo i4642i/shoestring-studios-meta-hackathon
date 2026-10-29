@@ -456,6 +456,42 @@ and Article PCs in a research corner. Each with a monitor glow
 tinted per PC. No behavior change: set dressing until the flow UI
 needs live PC status.
 
+### 8.8 Stage-2 web search (Q7 decided, Q8 open)
+
+Stage 2 uses web search, only through the PC tools:
+
+- Cleo's main goal is EASY explanations, so her main tool is general
+  web search (`pc_search_theory`), preferring explainer sources:
+  concept explainer posts, glossary-type sites, lecture notes,
+  educational sites, Q&A sites. Wikipedia for definitions. Free
+  academic APIs (arXiv, Semantic Scholar) only for "why the concept
+  came about".
+- Cleo's instructions include an "easy" test for choosing sources:
+  a curious adult can follow it; jargon is explained on the spot;
+  it has an analogy or concrete example; the core idea works without
+  formulas.
+- Rex searches cases (events, companies, people, films) via
+  `pc_search_articles` (web/news search).
+- No other web access for any agent. Every hit used must be added
+  to its PC first (`pc_add_theory` / `pc_add_article`) to get a ref.
+  "Model knowledge only" is not allowed for citations.
+
+Backend comparison for Q8 (checked 2026-10-30 via web search;
+re-verify on the vendor page before buying; UNVERIFIED = not
+confirmed):
+
+| Backend | Free tier | Paid (reported) | Rate limits | Storing excerpts |
+|---|---|---|---|---|
+| Brave Search API | No free tier since Feb 2026; $5/mo credit ≈ 1,000 searches; card + attribution required | $5/1k searches | 50 req/s (reported, UNVERIFIED) | UNVERIFIED (ToS not checked) |
+| Tavily | Researcher plan: 1,000 credits/mo (basic 1, advanced 2) | ~$8 basic / $16 advanced per 1k | UNVERIFIED | UNVERIFIED (ToS not checked) |
+| Serper | 2,500 one-time queries (reported; one source said 100/mo — conflicting) | ~$0.30–$1/1k by pack | ~300/s (reported, UNVERIFIED) | UNVERIFIED (Google SERP reseller; ToS risk not checked) |
+| Wikipedia API | Free, no key; descriptive User-Agent required | — | Varies by endpoint (exact figure UNVERIFIED) | Allowed: CC BY-SA (+GFDL), attribution + share-alike |
+| arXiv API | Free, no key | — | ≤1 req/3s, single connection (ToU) | Metadata storable/sharable; content for personal/research use (ToU) |
+| Semantic Scholar API | Free; 100 req/5min keyless (reported 2026); free key raises limits | — | Keyless 100/5min (reported); keyed figures UNVERIFIED | UNVERIFIED |
+
+Note (reported, Feb 2026): Nebius announced acquiring Tavily —
+watch pricing/roadmap stability before committing to it.
+
 ## 9. Stable reference addresses
 
 Every stored passage gets a stable address:
@@ -624,12 +660,13 @@ Code places that read the old files (Sam/Marty switch list):
 - Q6 DECIDED: cut over. Agents write only the result JSON;
   `render_report` generates every human report from it (see §11 for
   the template rules and the Sam/Marty switch list).
-- Q7 Stage 2 outside sources: which search tool, if any, do the
-  concept explainer and case researcher use — a web search API, a
-  curated source list, LightRAG over an internal corpus, or none
-  (model knowledge only, citations unverifiable)? (Q8 narrows this
-  to the API choice.)
-- Q8 Which web search API backs `pc_search_articles` (if any)?
+- Q7 DECIDED: stage 2 uses web search, only through the PC tools
+  (Cleo: `pc_search_theory` with the "easy" test; Rex:
+  `pc_search_articles`). Every used hit is added to its PC first;
+  model-knowledge-only citations are not allowed. See §8.8.
+- Q8 Which web search API backs `pc_search_theory` /
+  `pc_search_articles`? Comparison table in §8.8 (Brave, Tavily,
+  Serper + free sources); ToS/excerpt terms still UNVERIFIED.
 - Q9 Article PC: store full article text or excerpts only? Full text
   is easier to cite; excerpts are safer for copyright — and the repo
   will be public.
