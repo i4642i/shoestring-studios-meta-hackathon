@@ -18,6 +18,7 @@ ALLOW_MODELS = ("muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1",
 ALLOW_PREFIX = ("muse-glimmer-", "muse-spark-open-")
 AGENT_REQUIRED = ("frame_version", "id", "name", "title", "model", "tools",
                   "bounds", "io", "done")
+AGENT_OPTIONAL = ("flow",)
 
 
 def validate(path):
@@ -72,9 +73,12 @@ def validate(path):
         except ValueError as e:
             errs.append("agent.json invalid: %s" % e)
     if agent:
-        unknown = [k for k in agent if k not in AGENT_REQUIRED]
+        unknown = [k for k in agent
+                   if k not in AGENT_REQUIRED and k not in AGENT_OPTIONAL]
         if unknown:
             errs.append("agent.json unknown fields: %s" % unknown)
+        if "flow" in agent:
+            errs += _validate_flow(agent["flow"])
         missing = [k for k in agent if k not in agent]
         if missing:
             errs.append("agent.json missing: %s" % missing)
@@ -112,6 +116,46 @@ def validate(path):
                 errs.append("persona.md missing %s" % section)
         if not text.startswith("# "):
             errs.append("persona.md must start with '# <Name>'")
+    return errs
+
+
+def _validate_flow(flow):
+    errs = []
+    if not isinstance(flow, dict):
+        return ["flow must be an object"]
+    try:
+        with open(os.path.join(ROOT, "agents", "_frame",
+                               "categories.json"),
+                  encoding="utf-8") as f:
+            registry = json.load(f)
+    except (OSError, ValueError) as exc:
+        return ["cannot load category registry: %s" % exc]
+    for side in ("inputs", "outputs"):
+        items = flow.get(side, [])
+        if not isinstance(items, list):
+            errs.append("flow.%s must be a list" % side)
+            continue
+        for i, item in enumerate(items):
+            where = "flow.%s[%d]" % (side, i)
+            if not isinstance(item, dict):
+                errs.append("%s must be an object" % where)
+                continue
+            cat = item.get("category", "")
+            if not ID_RE.match(cat):
+                errs.append("%s.category breaks naming rule" % where)
+            elif cat not in registry:
+                errs.append("%s.category unknown: %r" % (where, cat))
+            if not isinstance(item.get("description"), str) \
+                    or not item["description"].strip():
+                errs.append("%s needs a non-empty description" % where)
+            if side == "inputs":
+                if not isinstance(item.get("required"), bool):
+                    errs.append("%s.required must be a bool" % where)
+            else:
+                fn = item.get("file", "")
+                if not isinstance(fn, str) or not fn \
+                        or "/" in fn or "\\" in fn or fn.startswith("."):
+                    errs.append("%s.file must be a plain filename" % where)
     return errs
 
 

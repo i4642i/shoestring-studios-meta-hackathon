@@ -384,7 +384,8 @@ class Handler(BaseHTTPRequestHandler):
                  "bounds": {"max_steps": 6},
                  "io": {"inputs": ["brief.json", "input.md"], "output": "structure.json"},
                  "done": ["every section mapped", "links connect all neighbours",
-                          "headings match the source"]}
+                          "headings match the source"],
+                 "flow": {"inputs": [], "outputs": []}}
         with open(os.path.join(path, "agent.json"), "w", encoding="utf-8") as f:
             json.dump(agent, f, ensure_ascii=False, indent=2)
         with open(os.path.join(path, "persona.md"), "w", encoding="utf-8") as f:

@@ -7,6 +7,18 @@
     "links connect all neighbours",
     "headings match the source"
   ],
+  "flow": {
+    "inputs": [
+      {"category": "request", "required": true,
+       "description": "Production request: what to map and why."},
+      {"category": "source", "required": false,
+       "description": "Original source for deeper mapping (optional)."}
+    ],
+    "outputs": [
+      {"category": "structure", "file": "structure.json",
+       "description": "Structure map: parts in source order plus intent."}
+    ]
+  },
   "frame_version": 1,
   "id": "pd_marty",
   "io": {
