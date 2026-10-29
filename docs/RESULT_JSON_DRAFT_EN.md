@@ -163,7 +163,66 @@ markdown file so envelopes never balloon to megabytes):
 }
 ```
 
-## 5. Rules this draft follows (from D1–D9)
+## 5. Crew plan (stages 0–7): who makes and takes what
+
+One result JSON per agent run (§1). Each role below lists the
+categories it produces and the categories it receives. Receives are
+delivered by flow lines (D1: no destinations in any JSON); a role may
+take inputs from several senders (D4). Reviewers write a new
+`*_checked` category instead of overwriting, so no two senders ever
+emit the same category into one agent (see Q4). Full JSON schemas for
+the new categories follow once the category set is approved.
+
+| Stage | Role | Receives | Produces |
+|---|---|---|---|
+| 0 | Sales (Sam) | `brief`, `source` | `request` (§2) |
+| 1 | Structure writer (Marty) | `request`, `source` | `structure` (§3) |
+| 2 | Concept explainer | `structure`, `source` | `concepts` |
+| 2 | Case researcher | `structure`, `source` | `cases` |
+| 3 | Planning PD | `request`, `structure`, `concepts`, `cases` | `plan` |
+| 4 | Storyboard writer | `plan`, `structure` | `storyboard` |
+| 5 | Storyboard reviewer | `storyboard`, `source` | `storyboard_checked` |
+| 6 | Narration writer | `storyboard_checked`, `plan` | `narration` |
+| 7 | Narration reviewer | `narration`, `source` | `narration_checked` |
+
+New category payloads (field sketches, schemas later):
+
+- `concepts`: per part `{part_id, what, origin, simple_take,
+  sources: [{title, url_or_ref, cited_for}]}` — what the concept is,
+  why it came about, how to explain it simply.
+- `cases`: `{part_id, cases: [{title, kind (event/company/person/
+  film), summary, fit_why, sources: [...]}]}` — real cases viewers
+  relate to, attached to parts.
+- `plan`: `{audience, message, angle, fun_hooks[], flow: {intro,
+  body[], conclusion}, page_budget}` — for whom, what, from which
+  angle, how to make it fun; intro → body → conclusion.
+- `storyboard`: `{pages: [{n, learn, screen, material, next_link}]}` —
+  what the viewer learns, the screen, source/material used, link to
+  the next page.
+- `storyboard_checked`: `{pages: [...same shape, corrected...],
+  fixes: [{page, was, now, why}]}` — facts fixed against source and
+  materials.
+- `narration`: `{pages: [{n, section (intro/body/outro), lines[],
+  evidence: [{fact, source_ref}]}]}` — lines per page with evidence
+  for each fact and number.
+- `narration_checked`: `{pages: [...same shape, corrected...],
+  fixes: [{page, was, now, why}]}` — lines fixed against source and
+  materials.
+
+Notes on the stage table:
+
+- Stages 0–1 are exactly §§2–3 above, restated here for the full map.
+- Planning PD receives `request` too, so audience/length/theme from
+  the client interview survive into the plan (D4 multi-sender input).
+- Storyboard writer takes `plan` + `structure` but not `concepts` /
+  `cases` directly: the plan already folds them in, keeping the writer
+  input small. If page detail suffers, add those two lines later.
+- Reviewers also receive source/materials pointers via `source`; full
+  material text stays in sidecars (cf. Q3).
+- `narration_checked` is the last agent result; scene/video assembly
+  from it is the post-processing page (D6, cf. Q5).
+
+## 6. Rules this draft follows (from D1–D9)
 
 - No destinations in any JSON (D1). No per-category files (D2): one
   JSON per run, categories inside.
@@ -172,7 +231,7 @@ markdown file so envelopes never balloon to megabytes):
 - Scene/video assembly is a post-processing page, not an agent (D6).
 - Every needed input must arrive by design; no run-time requests (D7).
 
-## 6. Open questions
+## 7. Open questions
 
 - Q1 `version`: single format version (this draft) or one version per
   category so `request` can evolve without touching `structure`?
@@ -186,3 +245,7 @@ markdown file so envelopes never balloon to megabytes):
   post-processing page output (D6) outside this format?
 - Q6 Transition: keep writing legacy sidecars (`request.md`,
   standalone `structure.json`) alongside the new JSON, or cut over?
+- Q7 Stage 2 outside sources: which search tool, if any, do the
+  concept explainer and case researcher use — a web search API, a
+  curated source list, LightRAG over an internal corpus, or none
+  (model knowledge only, citations unverifiable)?
