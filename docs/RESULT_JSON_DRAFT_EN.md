@@ -396,10 +396,9 @@ only the contents differ.
 ### 8.4 Indexing
 
 LightRAG, one index per PC per embedding profile, reusing the agent
-profile scheme (`local`, `jetson`): `storage/_pc/source/<profile>/`,
-`storage/_pc/theory/<profile>/`, `storage/_pc/article/<profile>/`.
-Same rules as agent indexes: one model+dim per index, cross-model
-queries refused, per-profile markers.
+profile scheme (`local`, `jetson`): `storage/_pc/<pc>/index/<profile>/`
+(see §10.5). Same rules as agent indexes: one model+dim per index,
+cross-model queries refused, per-profile markers.
 
 ### 8.5 Duplicates
 
@@ -558,17 +557,38 @@ The map builder is attached to the PCs, not to agents. Each PC
 automatically on every add (`pc_add_source` / `pc_add_theory` /
 `pc_add_article`):
 
-1. Content hash → id; if it exists, return the existing ref and stop.
-2. Assign paragraph/figure/table/formula addresses (§9).
-3. `build_map(entry)` (steps below).
-4. LightRAG indexing for the active embedding profile.
+1. (Theory/Article) fetch the full page text and clean boilerplate
+   (§10.1). Source entries arrive parsed, so they skip this step.
+2. Content hash → id; if it exists, return the existing ref and stop.
+3. Assign paragraph/figure/table/formula addresses (§9).
+4. `build_map(entry)` (§10.2).
+5. LightRAG indexing for the active embedding profile.
 
 Agents only call add and get the ref back; they never build maps or
-indexes. The add returns the ref immediately; steps 3–4 run in the
+indexes. The add returns the ref immediately; steps 4–5 run in the
 background and the entry shows "map: pending" until done. Paragraphs
 are readable via `open_ref` right away.
 
-### 10.1 build_map(entry)
+### 10.1 Fetch and clean (Theory/Article)
+
+Search hits are often snippets, not full articles. On add, the PC
+fetches the full page text first:
+
+- Tavily Extract endpoint (verified 2026-10-30 from Tavily docs):
+  batch up to 20 URLs per request; `basic` costs 1 credit per 5
+  successful extractions, `advanced` (adds tables and embedded
+  content) 2 per 5; failed extractions cost nothing (the cost basis
+  is successful extractions). `chunks_per_source` (1–5, ~800 chars
+  each) with `query` bounds `raw_content`; the full content comes
+  back when the page fits the chunk budget.
+- UNVERIFIED: search-time `raw_content` option and its cost — use
+  the Extract endpoint instead.
+- Clean: keep only the main article body; drop menus, ads, comments,
+  related-link lists, cookie banners.
+- If the full text cannot be fetched, store the snippet and mark the
+  entry `snippet_only`.
+
+### 10.2 build_map(entry)
 
 1. Code: split sections/subsections (Source: numbered headings;
    Theory/Article: paragraph groups).
@@ -588,7 +608,7 @@ are readable via `open_ref` right away.
 7. LLM, one call: entry summary (3–5 sentences) from section
    summaries.
 
-### 10.2 Map shape (per section)
+### 10.3 Map shape (per section)
 
 ```json
 {"ref": "…", "heading": "…",
@@ -603,9 +623,29 @@ are readable via `open_ref` right away.
 - When the writer tool rejects a claim without evidence, it suggests
   a matching "omitted" ref from the map.
 
-### 10.3 Logging
+### 10.4 Logging
 
 Per entry: map/index time, LLM calls, tokens.
+
+### 10.5 Where PC data and maps live
+
+```text
+storage/_pc/<pc>/entries/<id>/entry.json   full text, addresses, provenance
+storage/_pc/<pc>/entries/<id>/map.json     build_map result
+storage/_pc/<pc>/entries/<id>/figures/     images (Source PC)
+storage/_pc/<pc>/index/<profile>/          LightRAG index per profile
+```
+
+`<pc>` = source | theory | article; `<id>` = content-hash id from
+the ref.
+
+- The map does not depend on the embedding profile, so it lives
+  outside `index/` and is reused when the profile changes.
+- `map.json` header: `built_at`, `llm_model`, `map_version`, `status`
+  (`pending` | `partial` | `done`). Rebuild only when `map_version`
+  or `llm_model` changes.
+- `storage/_pc/` is gitignored as a whole (PC data is never
+  committed).
 
 ## 11. Cutover and render_report (Q6)
 
@@ -696,7 +736,8 @@ Code places that read the old files (Sam/Marty switch list):
   (see §8.8); Tavily AUP still UNVERIFIED.
 - Q9 DECIDED: store the full text of theory and article entries
   in their PCs — needed for the verbatim citation check and for
-  `build_map`. PC storage folders are never committed (see
-  `.gitignore`).
+  `build_map`. Fetch+clean in §10.1 (`snippet_only` fallback);
+  storage layout in §10.5. PC storage folders are never committed
+  (see `.gitignore`).
 - Q10 DECIDED: no size limits on any PC. The Settings tab shows
   entry counts and total size per PC instead.
