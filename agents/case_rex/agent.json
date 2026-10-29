@@ -1,0 +1,26 @@
+{
+  "bounds": {
+    "max_steps": 8
+  },
+  "done": [
+    "every part has >=1 attached case",
+    "every case cites a real source",
+    "cases category complete per RESULT_JSON_DRAFT_EN.md"
+  ],
+  "frame_version": 1,
+  "id": "case_rex",
+  "io": {
+    "inputs": [
+      "structure.json",
+      "source.md"
+    ],
+    "output": "cases.json"
+  },
+  "model": "meta-models/muse-spark-open-1026",
+  "name": "Rex",
+  "title": "Case researcher",
+  "tools": [
+    "query_graph",
+    "read_md_section"
+  ]
+}
