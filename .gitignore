@@ -33,6 +33,10 @@ __pycache__/
 experiments/lightrag/storage/
 experiments/lightrag/models/
 
+# Company PC storage (Source/Theory/Article entries + indexes hold full
+# texts; never commit)
+storage/_pc/
+
 # JavaScript
 node_modules/
 

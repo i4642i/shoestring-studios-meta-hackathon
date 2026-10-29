@@ -376,7 +376,7 @@ Entry format (shared with the Article PC):
   "date": "2026-01-15",
   "fetched_at": "2026-10-30T03:00:00",
   "added_by": "explain_cleo",
-  "text": "full text or excerpt (see Q9)",
+  "text": "full text (see Q9)",
   "paragraphs": [{"addr": "p12", "text": "..."}]
 }
 ```
@@ -694,7 +694,9 @@ Code places that read the old files (Sam/Marty switch list):
   Research), Serper backup. Keys in `.env`; credit log per run/day
   with an 80% stop rule. Excerpt terms checked 2026-10-30 for both
   (see §8.8); Tavily AUP still UNVERIFIED.
-- Q9 Article PC: store full article text or excerpts only? Full text
-  is easier to cite; excerpts are safer for copyright — and the repo
-  will be public.
-- Q10 Size limits for each PC (entries, chars per entry, total)?
+- Q9 DECIDED: store the full text of theory and article entries
+  in their PCs — needed for the verbatim citation check and for
+  `build_map`. PC storage folders are never committed (see
+  `.gitignore`).
+- Q10 DECIDED: no size limits on any PC. The Settings tab shows
+  entry counts and total size per PC instead.
