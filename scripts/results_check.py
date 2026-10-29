@@ -9,6 +9,7 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import results
 from agents._frame.schemas import render_cite_md
 from agents._frame.tools import write_request, write_structure

@@ -15,7 +15,7 @@
        "description": "Original source for deeper mapping (optional)."}
     ],
     "outputs": [
-      {"category": "structure", "file": "structure.json",
+      {"category": "structure",
        "description": "Structure map: parts in source order plus intent."}
     ]
   },

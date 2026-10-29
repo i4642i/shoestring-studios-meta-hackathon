@@ -15,7 +15,7 @@
        "description": "Parsed source document to summarize for production."}
     ],
     "outputs": [
-      {"category": "request", "file": "request.json",
+      {"category": "request",
        "description": "Video production request for PD/production."}
     ]
   },
