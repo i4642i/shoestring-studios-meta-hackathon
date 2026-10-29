@@ -7,18 +7,6 @@
     "source material summarized from the parsed file",
     "request.md written for PD"
   ],
-  "flow": {
-    "inputs": [
-      {"category": "brief", "required": true,
-       "description": "Order answers (audience, length, depth, theme)."},
-      {"category": "source", "required": true,
-       "description": "Parsed source document to summarize for production."}
-    ],
-    "outputs": [
-      {"category": "request", "file": "request.json",
-       "description": "Video production request for PD/production."}
-    ]
-  },
   "frame_version": 1,
   "id": "sales_sam",
   "io": {
