@@ -34,7 +34,7 @@ agents/
     tools.py              # Marty's custom tools (only if beyond builtins)
     appearance.json       # 3D look: Mini variant + tint (D46; portraits retired, D45)
 output/
-  runs/<run-id>/          # per-run: brief.json, input.md, events.jsonl, structure.json (gitignored)
+  runs/<run-id>/          # per-run: brief.json, input.md, events.jsonl, result.json + report.md (gitignored)
 scripts/
   run_agent.py            # CLI dev harness: run one employee on one input
 ```
@@ -58,7 +58,7 @@ Notes:
 | tools | read_md_section, write_structure |
 | apis | none direct (all external calls wrapped as tools) |
 | inputs | brief.json, input.md |
-| output | structure.json (structure-map schema v1) |
+| output | result.json, structure category (structure-map schema v1) |
 | bounds | max 6 steps per run |
 | done | every section mapped; links connect all neighbours; headings match the source |
 

@@ -24,7 +24,7 @@ folder on every request.
 
 - `agent.json` — frame_version 1, your id/name/title/model, tools
   `["read_md_section", "write_structure"]`, bounds max_steps 6,
-  inputs `brief.json` + `input.md`, output `structure.json`, three done lines.
+  inputs `brief.json` + `input.md`, output `result.json`, three done lines.
 - `persona.md` — `# Name — Title` plus the four required sections
   (intro, Persona, Voice, Rules), pre-filled for structure mapping.
 - `handbook/notes.md` — one seed file. Replace with real training notes.
@@ -68,9 +68,9 @@ A failed edit rolls back; no half-written member is ever kept.
 - **Tune**: Details tab edits name, title, model, tools, max_steps, done,
   persona, and 3D look. SAVE re-validates; invalid input is refused.
 - **Output follows the writer**: `io.output` is read-only in the UI. Change
-  the `write_*` tool and the server rewrites it (`write_structure` →
-  `structure.json`, `write_draft` → `draft.json`, `write_request` →
-  `request.md`).
+  the `write_*` tool and the server rewrites it (`write_structure` and
+  `write_request` → `result.json`,
+  `write_draft` → `draft.json`).
 - **Roster/chat/office**: automatic. Chat member picker and office seats
   (`DESKS`, in roster order) pick up new members with no code change.
 - **Remove**: DELETE EMPLOYEE (with confirm) deletes the whole folder.

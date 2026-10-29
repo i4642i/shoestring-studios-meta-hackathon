@@ -46,7 +46,7 @@ No other top-level files are allowed without updating this standard.
   "model": "meta-models/muse-spark-open-1026",
   "tools": ["read_md_section", "write_structure"],
   "bounds": { "max_steps": 6 },
-  "io": { "inputs": ["brief.json", "input.md"], "output": "structure.json" },
+  "io": { "inputs": ["brief.json", "input.md"], "output": "result.json" },
   "done": ["2-4 key ideas", "every scene has >=1 source ref"]
 }
 ```
