@@ -231,7 +231,138 @@ Notes on the stage table:
 - Scene/video assembly is a post-processing page, not an agent (D6).
 - Every needed input must arrive by design; no run-time requests (D7).
 
-## 7. Open questions
+## 8. Company computers (shared stores, not agents)
+
+Two shared stores. They are not agents: they hold no opinions, run no
+steps, and write no result JSON. Agents reach them only through tools
+listed in their own `agent.json` — tools are the only permission
+mechanism.
+
+### 8.1 Source PC
+
+Parsed results of the client's documents: markdown, images, section
+list. Read: all crew. Write: intake only (Sam's parser step).
+
+Entry format:
+
+```json
+{
+  "doc_id": "a3f9c1d4e2b8",
+  "title": "client document title",
+  "origin_file": "upload original name.pdf",
+  "order_id": "...",
+  "parsed_at": "2026-10-30T03:00:00",
+  "added_by": "sales_sam",
+  "sections": [{"n": "1.1", "heading": "..."}],
+  "paragraphs": [{"addr": "s1.1/p3", "text": "..."}],
+  "images": [{"file": "...", "caption": "..."}]
+}
+```
+
+- `doc_id`: content hash (§9), so re-parsing the same bytes yields the
+  same id and address.
+- Paragraphs carry short local addrs; the full stable address is
+  `pc://source/<doc_id>#s<section>/p<paragraph>` (§9).
+- Provenance on every entry: origin file, order, parse time, adder.
+
+### 8.2 Article PC
+
+External articles and materials found on the web. Read: external
+researchers (Cleo, Rex) plus granted agents (Ash, Vera, Iris — they
+must verify citations and facts). Write (add articles): external
+researchers only.
+
+Entry format:
+
+```json
+{
+  "article_id": "7b2e…",
+  "url": "https://…",
+  "title": "…",
+  "publisher": "…",
+  "date": "2026-01-15",
+  "fetched_at": "2026-10-30T03:00:00",
+  "added_by": "case_rex",
+  "text": "full text or excerpt (see Q9)",
+  "paragraphs": [{"addr": "p12", "text": "..."}]
+}
+```
+
+- `article_id`: content hash (§9). Full address:
+  `pc://article/<article_id>#p<paragraph>`.
+- Provenance on every entry: url, title, publisher, date, fetch time,
+  adder. The model never copies these by hand (§9).
+
+### 8.3 Indexing
+
+LightRAG, one index per PC per embedding profile, reusing the agent
+profile scheme (`local`, `jetson`): `storage/_pc/source/<profile>/`
+and `storage/_pc/article/<profile>/`. Same rules as agent indexes: one
+model+dim per index, cross-model queries refused, per-profile markers.
+
+### 8.4 Duplicates
+
+- Same content added twice → same id → add is a no-op returning the
+  existing address. No duplicate entry is ever stored.
+- Same url, changed content on re-fetch → a NEW entry (new id); the
+  old entry is kept, so existing refs never rot. The entry notes
+  `supersedes: <old_id>` (informational only).
+
+### 8.5 Tools and grants
+
+| Tool | PC | Effect | Granted to |
+|---|---|---|---|
+| `pc_read_source` | Source | read entry/section/paragraph | all crew |
+| `pc_add_source` | Source | store a parsed document | `sales_sam` only |
+| `pc_search_articles` | Article | web search (see Q8) | Cleo, Rex |
+| `pc_read_article` | Article | read entry/paragraph | Cleo, Rex, Ash, Vera, Iris |
+| `pc_add_article` | Article | store a fetched article | Cleo, Rex |
+| `open_ref` | either | verbatim passage + provenance (§9) | whoever holds that PC's read grant |
+
+- No web access except through `pc_search_articles`. All other agents
+  are read-only on granted PCs.
+- Writers (Penn, Wren) get no Article PC grant for now: they build
+  from plan/storyboard, and reviewers re-verify against the PCs.
+
+### 8.6 In the 3D office (idea only, no code)
+
+Two computer desks against a wall: the Source PC near intake (Sam's
+side), the Article PC in a research corner. Each with a monitor glow
+tinted per PC. No behavior change: set dressing until the flow UI
+needs live PC status.
+
+## 9. Stable reference addresses
+
+Every stored passage gets a stable address:
+
+```text
+pc://source/<doc_id>#s<section>/p<paragraph>
+pc://article/<article_id>#p<paragraph>
+```
+
+- `<doc_id>` / `<article_id>`: first 12 hex chars of SHA-256 over the
+  normalized content (whitespace-normalized, lowercased). Short to
+  write, collision-safe at our scale; re-adding the same document
+  gives the same address.
+- The model writes only the short ref plus a verbatim quote. The
+  system fills in full provenance (url, title, date, fetched_at) from
+  the PC entry — the model never copies long URLs by hand.
+- A citation in any result JSON:
+
+```json
+{"ref": "pc://article/7b2e…#p12", "quote": "<verbatim text>"}
+```
+
+- Tool `open_ref(ref)`: returns that passage verbatim with its
+  provenance. The caller's PC read grant still applies: no grant, no
+  passage.
+- Citation check: a citation passes only if `quote` appears verbatim
+  in the passage at `ref` (normalize whitespace only). Writer tools
+  run this check at write time (same pattern as the existing
+  writer-validated outputs); reviewers re-verify through `open_ref`
+  and log failures as fixes.
+
+## 10. Open questions
 
 - Q1 `version`: single format version (this draft) or one version per
   category so `request` can evolve without touching `structure`?
@@ -248,4 +379,10 @@ Notes on the stage table:
 - Q7 Stage 2 outside sources: which search tool, if any, do the
   concept explainer and case researcher use — a web search API, a
   curated source list, LightRAG over an internal corpus, or none
-  (model knowledge only, citations unverifiable)?
+  (model knowledge only, citations unverifiable)? (Q8 narrows this
+  to the API choice.)
+- Q8 Which web search API backs `pc_search_articles` (if any)?
+- Q9 Article PC: store full article text or excerpts only? Full text
+  is easier to cite; excerpts are safer for copyright — and the repo
+  will be public.
+- Q10 Size limits for each PC (entries, chars per entry, total)?
