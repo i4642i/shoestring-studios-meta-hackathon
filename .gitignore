@@ -7,6 +7,9 @@ data/settings.json
 # Generated artifacts
 output/
 orders/
+runs/
+data/flows/*
+!data/flows/default.json
 data/sources/
 graph_index/
 *.mp4
