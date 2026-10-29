@@ -83,7 +83,7 @@ Sam `?seatdebug=1` on/off, one office sit close-up.
 2. Answer Q1–Q6 in `docs/RESULT_JSON_DRAFT_EN.md` (one at a time, per D9).
 3. Jetson: test connection, build Marty's jetson index, same 3
    questions on both profiles.
-4. Push when ready: 12 commits on `night-2026-10-30`, never pushed.
+4. Push when ready: 14 commits on `night-2026-10-30` (incl. this fix), never pushed.
 5. Delete `.venv-lightrag/` after the merged install works.
 6. `data-gym-cache/` (one 3.6MB blob, unknown origin) left untracked.
 
