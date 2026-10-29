@@ -24,8 +24,10 @@ Picked over `BAAI/bge-m3` (1024 dims, ~9GB, 15min load, 72ms/sent vs
 Re-pick means re-index; see `bench_embed.py` for the bake-off.
 Models download into `models/` (gitignored) on first run.
 
-LLM calls go to the Meta Model API (`muse-spark-1.3`,
-`https://api.meta.ai/v1`, key from repo `.env`, never logged).
+LLM calls go to Baseten (`meta-models/muse-spark-open-1026`,
+`https://inference.baseten.co/v1`, key `BASETEN_API_KEY` from repo
+`.env`, never logged). Older indexes were built on the Meta Model API;
+their markers record that — re-run `run_index.py` to rebuild on Baseten.
 
 ## Run
 

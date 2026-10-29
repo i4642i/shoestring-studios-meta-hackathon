@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote
 
@@ -26,6 +27,11 @@ import validate_agent  # noqa: E402
 
 ALLOWED_UPLOAD = (".md", ".txt", ".pdf")
 
+ORDER_ID_RE = re.compile(r"^ord-[0-9]{8}-[0-9]{3}$")
+INTAKE_KEYS = ("audience", "length", "depth", "theme")
+PC_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+MAX_PDF_BYTES = 25 * 1024 * 1024
+
 
 def parse_multipart(handler):
     ctype = handler.headers.get("Content-Type", "")
@@ -35,11 +41,7 @@ def parse_multipart(handler):
         boundary = ctype.split("boundary=")[1].encode()
     except IndexError:
         return None, None
-    try:
-        length = int(handler.headers.get("Content-Length", 0))
-    except ValueError:
-        return None, None
-    body = handler.rfile.read(length)
+    body = handler._body
     fields, files = {}, {}
     for part in body.split(b"--" + boundary):
         if b"Content-Disposition" not in part:
@@ -60,12 +62,38 @@ def parse_multipart(handler):
 
 def pdf_to_text(raw):
     try:
-        from pypdf import PdfReader
+        import pdfplumber
     except ImportError:
-        raise RuntimeError("pypdf not installed (pip install pypdf)")
+        raise RuntimeError(
+            "pdfplumber not installed (pip install -r requirements.txt)")
     import io
-    reader = PdfReader(io.BytesIO(raw))
-    return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+    with pdfplumber.open(io.BytesIO(raw)) as pdf:
+        return "\n\n".join((page.extract_text() or "") for page in pdf.pages)
+
+
+def pdf_parse(raw):
+    """Split a PDF into per-page texts + images: ([str], [(name, bytes)])."""
+    try:
+        import pdfplumber
+    except ImportError:
+        raise RuntimeError(
+            "pdfplumber not installed (pip install -r requirements.txt)")
+    import io
+    pages, images = [], []
+    with pdfplumber.open(io.BytesIO(raw)) as pdf:
+        for i, page in enumerate(pdf.pages):
+            pages.append(page.extract_text() or "")
+            for j, img in enumerate(page.images):
+                try:
+                    crop = page.crop((img["x0"], img["top"],
+                                      img["x1"], img["bottom"]))
+                    buf = io.BytesIO()
+                    crop.to_image(resolution=150).original.save(buf, format="PNG")
+                    images.append(("p%02d-img%02d.png" % (i + 1, j + 1),
+                                   buf.getvalue()))
+                except Exception:  # noqa: BLE001 - one bad image skips, parse goes on
+                    continue
+    return pages, images
 
 
 def load_dotenv(path):
@@ -93,13 +121,20 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _read_json(self):
+    def _slurp(self):
+        """Read the request body once, up front.
+
+        Every POST/PUT route calls this first so a 404/400 never leaves
+        an unread body on the socket (which aborts the connection)."""
         try:
             length = int(self.headers.get("Content-Length", 0))
         except ValueError:
-            return None
+            length = 0
+        self._body = self.rfile.read(length) if length > 0 else b""
+
+    def _read_json(self):
         try:
-            return json.loads(self.rfile.read(length).decode())
+            return json.loads(self._body.decode())
         except ValueError:
             return None
 
@@ -138,15 +173,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_handbook_file(parts[2], parts[4])
         if parts[:2] == ["api", "crew"] and len(parts) == 4 and parts[3] == "graph":
             return self._api_graph(parts[2])
+        if parts[:2] == ["api", "crew"] and len(parts) == 4 and parts[3] == "map":
+            return self._api_map(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 3:
+            return self._api_order_get(parts[2])
+        if parts[:2] == ["api", "pcs"] and len(parts) == 2:
+            return self._api_pcs_list()
         return self._static(parts)
 
     def do_PUT(self):
+        self._slurp()
         parts = [p for p in unquote(self.path).split("?", 1)[0].split("/") if p]
         if parts[:2] == ["api", "crew"] and len(parts) == 3:
             return self._api_crew_update(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 4 and parts[3] == "intake":
+            return self._api_order_intake(parts[2])
         return self._json(404, {"error": "not found"})
 
     def do_POST(self):
+        self._slurp()
         parts = [p for p in unquote(self.path).split("?", 1)[0].split("/") if p]
         if parts[:2] == ["api", "crew"] and len(parts) == 2:
             return self._api_crew_create()
@@ -154,6 +199,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_train(parts[2])
         if parts[:2] == ["api", "crew"] and len(parts) == 4 and parts[3] == "chat":
             return self._api_chat(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 2:
+            return self._api_order_create()
+        if parts[:2] == ["api", "orders"] and len(parts) == 4 and parts[3] == "upload":
+            return self._api_order_upload(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 4 and parts[3] == "chat":
+            return self._api_order_chat(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 4 and parts[3] == "complete":
+            return self._api_order_complete(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 4 and parts[3] == "approve":
+            return self._api_order_approve(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 4 and parts[3] == "start":
+            return self._api_order_start(parts[2])
+        if parts[:2] == ["api", "pcs"] and len(parts) == 2:
+            return self._api_pcs_add()
         return self._json(404, {"error": "not found"})
 
     def do_DELETE(self):
@@ -162,6 +221,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_crew_delete(parts[2])
         if parts[:2] == ["api", "crew"] and len(parts) == 5 and parts[3] == "handbook":
             return self._api_handbook_delete(parts[2], parts[4])
+        if parts[:2] == ["api", "pcs"] and len(parts) == 3:
+            return self._api_pcs_delete(parts[2])
         return self._json(404, {"error": "not found"})
 
     def _api_crew_list(self):
@@ -197,7 +258,8 @@ class Handler(BaseHTTPRequestHandler):
             "appearance": self._appearance(path),
             "handbook": hb, "graph": graph.get_status(path),
             "available_tools": available,
-            "available_models": ["muse-spark-1.3", "muse-spark-1.2",
+            "available_models": ["meta-models/muse-spark-open-1026",
+                                 "muse-spark-1.3", "muse-spark-1.2",
                                  "muse-spark-1.1", "muse-wonder-1.0"],
         })
 
@@ -209,7 +271,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(body, dict):
             return self._json(400, {"error": "need JSON object"})
         agent = self._load_agent(path)
-        backup_json = json.dumps(agent, ensure_ascii=False)
+        backup_json = json.dumps(agent, ensure_ascii=False, indent=2)
         with open(os.path.join(path, "persona.md"), encoding="utf-8") as f:
             backup_persona = f.read()
         ap_path = os.path.join(path, "appearance.json")
@@ -302,7 +364,7 @@ class Handler(BaseHTTPRequestHandler):
         path = os.path.join(ROOT, "agents", eid)
         if os.path.exists(path):
             return self._json(409, {"error": "employee exists: " + eid})
-        model = body.get("model") or "muse-spark-1.3"
+        model = body.get("model") or "meta-models/muse-spark-open-1026"
         os.makedirs(os.path.join(path, "handbook"))
         agent = {"frame_version": 1, "id": eid, "name": name, "title": title,
                  "model": model, "tools": ["read_md_section", "write_structure"],
@@ -413,6 +475,16 @@ class Handler(BaseHTTPRequestHandler):
                         "communities": []})
         return self._json(200, out)
 
+    def _api_map(self, eid):
+        path = self._employee(eid)
+        if not path:
+            return self._json(404, {"error": "no such employee"})
+        m = graph.map_lightrag(path)
+        if m is None:
+            return self._json(200, {"available": False,
+                                    "reason": "no LightRAG storage yet"})
+        return self._json(200, m)
+
     def _api_handbook_delete(self, eid, filename):
         path = self._employee(eid)
         if not path:
@@ -476,8 +548,9 @@ class Handler(BaseHTTPRequestHandler):
         agent = self._load_agent(path)
         with open(os.path.join(path, "persona.md"), encoding="utf-8") as f:
             persona = f.read()
-        if not (os.environ.get("MODEL_API_KEY") or os.environ.get("META_API_KEY")):
-            return self._json(503, {"error": "MODEL_API_KEY missing: add it to .env"})
+        if not runner.key_present(agent["model"]):
+            return self._json(503, {"error": "%s missing: add it to .env"
+                                    % runner.key_var(agent["model"])})
         system = (persona + "\n\n[LIVE CHAT — reply in English as %s, %s. "
                   "Always reply in English only: never Korean or any other "
                   "language, no matter what language the user writes in. "
@@ -489,13 +562,457 @@ class Handler(BaseHTTPRequestHandler):
                 agent["model"],
                 [{"role": "system", "content": system}]
                 + [{"role": m["role"], "content": m["content"]} for m in msgs],
-                None, max_tokens=400, timeout=120)
+                None, timeout=120)
             reply = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
             if not isinstance(reply, str) or not reply.strip():
                 raise ValueError("empty reply")
         except Exception as exc:  # noqa: BLE001 - surfaced as 502, key never leaks
             return self._json(502, {"error": "model API error: %s" % exc})
         return self._json(200, {"reply": reply.strip()})
+
+    # ---- orders ----
+    def _order_dir(self, oid):
+        if not ORDER_ID_RE.match(oid or ""):
+            return None
+        d = os.path.join(ROOT, "orders", oid)
+        return d if os.path.isdir(d) else None
+
+    @staticmethod
+    def _order_meta(d):
+        with open(os.path.join(d, "meta.json"), encoding="utf-8") as f:
+            return json.load(f)
+
+    @staticmethod
+    def _order_save_meta(d, meta):
+        with open(os.path.join(d, "meta.json"), "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def _handbook_hints(agent_dir, text):
+        """Top handbook chunks for the client's latest line ("", if none)."""
+        try:
+            res = graph.query(agent_dir, text, top_k=2)
+        except Exception:  # noqa: BLE001 - no index, chat goes on plain
+            return ""
+        if not isinstance(res, dict) or res.get("mode") == "lightrag":
+            return str(res.get("answer", ""))[:1200] if isinstance(res, dict) else ""
+        out = []
+        for c in res.get("chunks", [])[:2]:
+            out.append("[%s] %s" % (c.get("heading", ""), c.get("text", "")))
+        return ("\n".join(out))[:1200]
+
+    @staticmethod
+    def _check_messages(body):
+        msgs = body.get("messages") if isinstance(body, dict) else None
+        if (not isinstance(msgs, list) or not msgs
+                or any(not isinstance(m, dict)
+                       or m.get("role") not in ("user", "assistant")
+                       or not isinstance(m.get("content"), str)
+                       or not m["content"].strip()
+                       or len(m["content"]) > 2000 for m in msgs)):
+            return None
+        return [{"role": m["role"], "content": m["content"]} for m in msgs]
+
+    @staticmethod
+    def _transcript_turns(d):
+        """Full order transcript as chat turns (oldest first, ~8000 chars)."""
+        turns = []
+        chat = os.path.join(d, "chat.jsonl")
+        if os.path.isfile(chat):
+            with open(chat, encoding="utf-8") as f:
+                for ln in f.read().splitlines():
+                    try:
+                        turn = json.loads(ln)
+                    except ValueError:
+                        continue
+                    if turn.get("user"):
+                        turns.append({"role": "user",
+                                      "content": turn["user"]})
+                    if turn.get("reply"):
+                        turns.append({"role": "assistant",
+                                      "content": turn["reply"]})
+        total = sum(len(t["content"]) for t in turns)
+        while total > 8000 and len(turns) > 2:
+            total -= len(turns.pop(0)["content"])
+        return turns
+
+    def _api_order_create(self):
+        body = self._read_json()
+        if not isinstance(body, dict):
+            return self._json(400, {"error": "need JSON object"})
+        assignee = body.get("assignee") or "sales_sam"
+        if not self._employee(assignee):
+            return self._json(400, {"error": "unknown assignee: " + str(assignee)})
+        day = time.strftime("%Y%m%d")
+        odir = os.path.join(ROOT, "orders")
+        os.makedirs(odir, exist_ok=True)
+        oid = None
+        for n in range(1, 1000):
+            cand = "ord-%s-%03d" % (day, n)
+            if not os.path.exists(os.path.join(odir, cand)):
+                oid = cand
+                break
+        if not oid:
+            return self._json(503, {"error": "order book full for today"})
+        d = os.path.join(odir, oid)
+        os.makedirs(d)
+        meta = {"id": oid, "assignee": assignee,
+                "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "status": "consulting", "answers": {}, "files": {}}
+        self._order_save_meta(d, meta)
+        print("order create %s (%s)" % (oid, assignee), flush=True)
+        return self._json(201, meta)
+
+    def _api_order_get(self, oid):
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        meta = self._order_meta(d)
+        turns = self._transcript_turns(d)
+        meta["transcript"] = [{"user": turns[i]["content"],
+                               "reply": turns[i + 1]["content"]
+                               if i + 1 < len(turns)
+                               and turns[i + 1]["role"] == "assistant" else ""}
+                              for i in range(0, len(turns), 2)
+                              if turns[i]["role"] == "user"]
+        return self._json(200, meta)
+
+    def _api_order_upload(self, oid):
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        _, files = parse_multipart(self)
+        if not files or "file" not in files:
+            return self._json(400, {"error": "need multipart field 'file'"})
+        raw_name, raw = files["file"]
+        base = os.path.basename(raw_name)
+        if not base.lower().endswith(".pdf"):
+            return self._json(400, {"error": "accepts .pdf only"})
+        if len(raw) > MAX_PDF_BYTES:
+            return self._json(400, {"error": "PDF over 25 MB"})
+        with open(os.path.join(d, "source.pdf"), "wb") as f:
+            f.write(raw)
+        try:
+            pages, images = pdf_parse(raw)
+        except RuntimeError as e:
+            return self._json(500, {"error": str(e)})
+        except Exception as exc:  # noqa: BLE001 - broken PDF, reported
+            return self._json(400, {"error": "cannot parse PDF: %s" % exc})
+        text = "\n\n".join(pages)
+        if not text.strip():
+            return self._json(400, {"error": "no extractable text in PDF"})
+        parsed = ["# Parsed source: %s" % base, ""]
+        for i, p in enumerate(pages):
+            parsed += ["## Page %d" % (i + 1), "", p.strip(), ""]
+        with open(os.path.join(d, "parsed.md"), "w", encoding="utf-8") as f:
+            f.write("\n".join(parsed))
+        imgdir = os.path.join(d, "images")
+        os.makedirs(imgdir, exist_ok=True)
+        for name, blob in images:
+            with open(os.path.join(imgdir, name), "wb") as f:
+                f.write(blob)
+        meta = self._order_meta(d)
+        meta["files"] = {"source": "source.pdf", "parsed": "parsed.md",
+                         "images": ["images/" + n for n, _ in images],
+                         "pages": len(pages)}
+        self._order_save_meta(d, meta)
+        print("order upload %s/%s (%d pages, %d chars, %d images)"
+              % (oid, base, len(pages), len(text), len(images)), flush=True)
+        return self._json(200, {"ok": True, "pages": len(pages),
+                                "chars": len(text), "images": len(images)})
+
+    def _api_order_intake(self, oid):
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        body = self._read_json()
+        answers = body.get("answers") if isinstance(body, dict) else None
+        if not isinstance(answers, dict):
+            return self._json(400, {"error": "need {answers: {...}}"})
+        clean = {}
+        for k in INTAKE_KEYS:
+            v = answers.get(k)
+            if not isinstance(v, str) or not v.strip() or len(v) > 500:
+                return self._json(400, {"error":
+                    "answers.%s must be 1-500 chars" % k})
+            clean[k] = v.strip()
+        meta = self._order_meta(d)
+        meta["answers"] = clean
+        self._order_save_meta(d, meta)
+        print("order intake %s" % oid, flush=True)
+        return self._json(200, {"ok": True, "answers": clean})
+
+    def _api_order_chat(self, oid):
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        body = self._read_json()
+        msgs = self._check_messages(body)
+        if msgs is None:
+            return self._json(400, {"error":
+                "need {messages: [{role, content}*]} (<=2000 chars each)"})
+        meta = self._order_meta(d)
+        free = isinstance(body, dict) and body.get("mode") == "free"
+        path = self._employee(meta["assignee"])
+        agent = self._load_agent(path)
+        with open(os.path.join(path, "persona.md"), encoding="utf-8") as f:
+            persona = f.read()
+        if not runner.key_present(agent["model"]):
+            return self._json(503, {"error": "%s missing: add it to .env"
+                                    % runner.key_var(agent["model"])})
+        missing = [k for k in INTAKE_KEYS if k not in meta.get("answers", {})]
+        if not meta.get("files", {}).get("parsed"):
+            missing.append("source PDF")
+        answers = meta.get("answers", {})
+        recorded = ("; ".join("%s is %s" % (k, answers[k])
+                              for k in INTAKE_KEYS if k in answers)
+                    or "none yet")
+        context = ["[ORDER CONSULTATION for %s. Recorded answers: %s."
+                   % (oid, recorded),
+                   "Still missing: %s. Steer the chat toward them, one "
+                   "question at a time." % (", ".join(missing) or "nothing")]
+        parsed = os.path.join(d, "parsed.md")
+        if os.path.isfile(parsed):
+            with open(parsed, encoding="utf-8") as f:
+                context.append("Parsed source head:\n" + f.read(1500))
+        hints = self._handbook_hints(path, msgs[-1]["content"])
+        if hints:
+            context.append("Handbook examples for this topic (follow their "
+                           "style when the client is vague; never present "
+                           "an example as the client's own words):\n" + hints)
+        if free:
+            context.append("Free-chat mode: converse naturally like a friendly "
+                           "sales call, but still cover every missing topic "
+                           "before the client is done.")
+        system = (persona + "\n\n" + "\n".join(context)
+                  + "\nAlways reply in English only: never Korean or any other "
+                  "language, no matter what language the user writes in. "
+                  "Keep replies to 1-3 short sentences. "
+                  "Reply in plain conversational sentences only: never "
+                  "output JSON, code, or tool calls.")
+        try:
+            tail = [msgs[-1]] if msgs[-1]["role"] == "user" else msgs
+            resp = runner._chat(
+                agent["model"],
+                [{"role": "system", "content": system}]
+                + self._transcript_turns(d) + tail,
+                None, timeout=120)
+            reply = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
+            if not isinstance(reply, str) or not reply.strip():
+                raise ValueError("empty reply")
+        except Exception as exc:  # noqa: BLE001 - surfaced as 502, key never leaks
+            return self._json(502, {"error": "model API error: %s" % exc})
+        with open(os.path.join(d, "chat.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"user": msgs[-1]["content"],
+                                "reply": reply.strip()},
+                               ensure_ascii=False) + "\n")
+        return self._json(200, {"reply": reply.strip()})
+
+    def _api_order_complete(self, oid):
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        code, obj = self._do_complete(oid, d, self._order_meta(d),
+                                      self._read_json(), "complete")
+        return self._json(code, obj)
+
+    def _api_order_approve(self, oid):
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        body = self._read_json()
+        if not isinstance(body, dict) or body.get("approved") is not True:
+            return self._json(400, {"error": "need {approved: true}"})
+        meta = self._order_meta(d)
+        meta["approved"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                            "answers": dict(meta.get("answers", {}))}
+        self._order_save_meta(d, meta)
+        print("order approve %s" % oid, flush=True)
+        return self._json(200, {"ok": True, "approved": True})
+
+    def _api_order_start(self, oid):
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        meta = self._order_meta(d)
+        if not meta.get("approved"):
+            return self._json(409, {"error": "not approved yet"})
+        code, obj = self._do_complete(oid, d, meta, self._read_json(),
+                                      "in_production")
+        return self._json(code, obj)
+
+    def _do_complete(self, oid, d, meta, body, final_status):
+        """Shared consultation pipeline. Returns (code, obj)."""
+        if meta.get("status") in ("complete", "in_production"):
+            with open(os.path.join(d, "request.md"), encoding="utf-8") as f:
+                md = f.read()
+            with open(os.path.join(d, "intake.json"), encoding="utf-8") as f:
+                intake = json.load(f)
+            return (200, {"ok": True, "repeated": True, "intake": intake,
+                          "request_md": md,
+                          "files": ["intake.json", "request.md",
+                                    "request.json"]})
+        if isinstance(body, dict) and body.get("extract"):
+            problem = self._extract_intake(d, meta)
+            if problem:
+                return problem
+        missing = [k for k in INTAKE_KEYS if k not in meta.get("answers", {})]
+        if missing:
+            return (409, {"error": "intake incomplete", "missing": missing})
+        if not meta.get("files", {}).get("parsed"):
+            return (409, {"error": "no parsed PDF yet"})
+        agent_dir = self._employee(meta["assignee"])
+        run_model = self._load_agent(agent_dir)["model"]
+        if not runner.key_present(run_model):
+            return (503, {"error": "%s missing: add it to .env"
+                          % runner.key_var(run_model)})
+        brief = {"order_id": oid, "answers": meta["answers"],
+                 "source_file": meta["files"].get("source", "source.pdf")}
+        run_dir = os.path.join(ROOT, "output", "runs", oid)
+        result = runner.run(agent_dir, run_dir, brief,
+                            os.path.join(d, "parsed.md"))
+        if not result.get("ok"):
+            reason = "unknown"
+            for ev in reversed(result.get("events", [])):
+                if ev.get("ev") == "run_fail":
+                    reason = ev.get("reason", reason)
+                    break
+            return (502, {"error": "sales run failed: " + reason,
+                          "usage": result.get("usage")})
+        for fn in ("request.md", "request.json"):
+            shutil.copyfile(os.path.join(run_dir, fn), os.path.join(d, fn))
+        intake = {"order_id": oid,
+                  "answers": dict(meta["answers"],
+                                  source=meta["files"].get("source",
+                                                           "source.pdf")),
+                  "files": {"source": meta["files"].get("source"),
+                            "parsed": meta["files"].get("parsed"),
+                            "images": meta["files"].get("images", [])}}
+        with open(os.path.join(d, "intake.json"), "w", encoding="utf-8") as f:
+            json.dump(intake, f, ensure_ascii=False, indent=2)
+        meta["status"] = final_status
+        self._order_save_meta(d, meta)
+        with open(os.path.join(d, "request.md"), encoding="utf-8") as f:
+            md = f.read()
+        print("order %s %s (%s)"
+              % ("start" if final_status == "in_production" else "complete",
+                 oid, result.get("usage")), flush=True)
+        return (200, {"ok": True, "intake": intake, "request_md": md,
+                      "files": ["intake.json", "request.md", "request.json"],
+                      "usage": result.get("usage")})
+
+    def _extract_intake(self, d, meta):
+        """Free-chat mode: pull the 4 answers from chat.jsonl, one LLM call.
+
+        Returns None when intake is complete, else (code, obj) to send."""
+        missing = [k for k in INTAKE_KEYS if k not in meta.get("answers", {})]
+        if not missing:
+            return None
+        lines = []
+        chat = os.path.join(d, "chat.jsonl")
+        if os.path.isfile(chat):
+            with open(chat, encoding="utf-8") as f:
+                for ln in f.read().splitlines():
+                    try:
+                        turn = json.loads(ln)
+                    except ValueError:
+                        continue
+                    if turn.get("user"):
+                        lines.append("Client: " + turn["user"])
+        if not lines:
+            return (409, {"error": "intake incomplete", "missing": missing,
+                          "tip": "chat first: no conversation to extract from"})
+        agent = self._load_agent(self._employee(meta["assignee"]))
+        if not runner.key_present(agent["model"]):
+            return (503, {"error": "%s missing: add it to .env"
+                          % runner.key_var(agent["model"])})
+        prompt = ("Extract the client's video-order answers from this sales "
+                  "consultation. Reply with ONLY a JSON object, no other text:\n"
+                  '{"audience": "..."|null, "length": "..."|null, '
+                  '"depth": "..."|null, "theme": "..."|null}\n'
+                  "Use null for anything the client never stated. "
+                  "English values, one line each.\n\nTRANSCRIPT:\n"
+                  + "\n".join(lines))
+        try:
+            resp = runner._chat(agent["model"],
+                                [{"role": "user", "content": prompt}],
+                                None, timeout=120)
+            text = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
+            obj, status = runner.parse_json_answer(text or "")
+            if status != "ok" or not isinstance(obj, dict):
+                raise ValueError("no JSON in extraction reply")
+        except Exception as exc:  # noqa: BLE001 - surfaced, key never leaks
+            return (502, {"error": "answer extraction failed: %s" % exc})
+        answers = dict(meta.get("answers", {}))
+        for k in INTAKE_KEYS:
+            v = obj.get(k)
+            if isinstance(v, str) and v.strip():
+                answers[k] = v.strip()[:500]
+        meta["answers"] = answers
+        self._order_save_meta(d, meta)
+        missing = [k for k in INTAKE_KEYS if k not in answers]
+        if missing:
+            return (409, {"error": "intake incomplete", "missing": missing,
+                          "tip": "keep chatting about: " + ", ".join(missing)})
+        return None
+
+    # ---- PC fleet registry ----
+    def _pcs_path(self):
+        p = os.path.join(ROOT, "data", "pcs.json")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        if not os.path.isfile(p):
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({"pcs": []}, f, ensure_ascii=False, indent=2)
+        return p
+
+    def _pcs_load(self):
+        with open(self._pcs_path(), encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("pcs", []) if isinstance(data, dict) else []
+
+    def _api_pcs_list(self):
+        return self._json(200, {"pcs": self._pcs_load()})
+
+    def _api_pcs_add(self):
+        body = self._read_json()
+        if not isinstance(body, dict):
+            return self._json(400, {"error": "need JSON object"})
+        name = (body.get("name") or "").strip()
+        if not name or len(name) > 64:
+            return self._json(400, {"error": "name must be 1-64 chars"})
+        pid = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        if not PC_ID_RE.match(pid or ""):
+            return self._json(400, {"error": "name yields no valid id"})
+        pcs = self._pcs_load()
+        if any(p.get("id") == pid for p in pcs):
+            return self._json(409, {"error": "PC exists: " + pid})
+        mats = body.get("materials") or []
+        if (not isinstance(mats, list)
+                or any(not isinstance(m, str) for m in mats)):
+            return self._json(400, {"error": "materials must be a string list"})
+        pc = {"id": pid, "name": name,
+              "materials": [m.strip() for m in mats if m.strip()],
+              "owner": (body.get("owner") or "studio").strip() or "studio",
+              "capability": (body.get("capability") or "").strip(),
+              "tool": (body.get("tool") or "").strip(),
+              "state": "planned"}
+        pcs.append(pc)
+        with open(self._pcs_path(), "w", encoding="utf-8") as f:
+            json.dump({"pcs": pcs}, f, ensure_ascii=False, indent=2)
+        print("pc add %s" % pid, flush=True)
+        return self._json(201, {"ok": True, "id": pid})
+
+    def _api_pcs_delete(self, pid):
+        if not PC_ID_RE.match(pid or ""):
+            return self._json(404, {"error": "no such PC"})
+        pcs = self._pcs_load()
+        keep = [p for p in pcs if p.get("id") != pid]
+        if len(keep) == len(pcs):
+            return self._json(404, {"error": "no such PC"})
+        with open(self._pcs_path(), "w", encoding="utf-8") as f:
+            json.dump({"pcs": keep}, f, ensure_ascii=False, indent=2)
+        print("pc delete %s" % pid, flush=True)
+        return self._json(200, {"ok": True, "deleted": pid})
 
     # ---- static ----
     def _static(self, parts):

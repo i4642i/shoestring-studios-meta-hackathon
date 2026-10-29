@@ -1,10 +1,11 @@
 # Shoestring Studios - install on your PC with:
 #   pip install -r requirements.txt   (Python 3.10+)
 #
-# Everything else is Python stdlib. Pinned to the latest version verified on
-# PyPI on 2026-10-28 (sandbox pip hangs, so not install-verified here).
+# Everything else is Python stdlib. Installed and verified in the project
+# .venv (2026-10-28): smoke PDF-parse check + live order E2E green.
+# (pdfminer.six, Pillow, etc. arrive automatically as pdfplumber deps.)
 
-pypdf==6.21.3  # PDF handbook upload (POST /api/crew/<id>/train)
+pdfplumber==0.11.10  # PDF text+image extraction (order intake, handbook upload)
 
 # --- planned, NOT imported by any code yet (GraphRAG training, deferred) ---
 # graphrag

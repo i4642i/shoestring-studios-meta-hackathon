@@ -3,6 +3,7 @@
 
 # Generated artifacts
 output/
+orders/
 data/sources/
 graph_index/
 *.mp4

@@ -52,10 +52,12 @@ A failed edit rolls back; no half-written member is ever kept.
 
 - id matches `^[a-z][a-z0-9_]*$` (UI caps input at 32 chars);
   folder `agents/<id>/` must not exist yet.
-- model is `muse-spark-1.3/1.2/1.1`, `muse-wonder-1.0`, or a
+- model is `meta-models/muse-spark-open-1026` (default, via Baseten),
+  `muse-spark-1.3/1.2/1.1`, `muse-wonder-1.0`, or a
   `muse-glimmer-` / `muse-spark-open-` prefixed id.
 - every tool exists in the frame registry (`read_md_section`,
-  `write_structure`, `write_draft`, `query_graph`) or `tools/*.py`.
+  `write_structure`, `write_draft`, `write_request`, `query_graph`)
+  or `tools/*.py`.
 - persona.md keeps `# Name` plus `## Persona` / `## Voice` / `## Rules`.
 - done is a non-empty list; max_steps is int 1–20; variant ends `.glb`.
 
@@ -67,7 +69,8 @@ A failed edit rolls back; no half-written member is ever kept.
   persona, and 3D look. SAVE re-validates; invalid input is refused.
 - **Output follows the writer**: `io.output` is read-only in the UI. Change
   the `write_*` tool and the server rewrites it (`write_structure` →
-  `structure.json`, `write_draft` → `draft.json`).
+  `structure.json`, `write_draft` → `draft.json`, `write_request` →
+  `request.md`).
 - **Roster/chat/office**: automatic. Chat member picker and office seats
   (`DESKS`, in roster order) pick up new members with no code change.
 - **Remove**: DELETE EMPLOYEE (with confirm) deletes the whole folder.

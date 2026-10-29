@@ -7,7 +7,7 @@ import time
 import urllib.request
 
 BASE_URL = "https://api.meta.ai/v1"
-MAX_TOKENS = 8000  # Spark spends heavily on reasoning; budget generously
+BASETEN_URL = "https://inference.baseten.co/v1"
 MAX_JSON_RETRIES = 2  # tools-off correction attempts per RUN (truncation included)
 MAX_TOOL_FAILS = 5  # consecutive failures before a tool is closed for the run
 
@@ -49,22 +49,52 @@ def parse_json_answer(text):
     return None, "invalid"
 
 
-def _key():
-    key = os.environ.get("MODEL_API_KEY") or os.environ.get("META_API_KEY")
+def provider_of(model):
+    """Route a model name to (provider, base_url, key_env_var).
+
+    meta-models/* goes to Baseten (OpenAI-compatible); everything else
+    stays on the Meta Model API.
+    """
+    if (model or "").startswith("meta-models/"):
+        return ("baseten", BASETEN_URL, "BASETEN_API_KEY")
+    return ("meta", BASE_URL, "MODEL_API_KEY")
+
+
+def key_var(model):
+    return provider_of(model)[2]
+
+
+def key_present(model):
+    name, _, var = provider_of(model)
+    if os.environ.get(var):
+        return True
+    return name == "meta" and bool(os.environ.get("META_API_KEY"))
+
+
+def _key(model=None):
+    name, _, var = provider_of(model)
+    key = os.environ.get(var)
+    if not key and name == "meta":
+        key = os.environ.get("META_API_KEY")
     if not key:
-        raise RuntimeError("MODEL_API_KEY missing")
+        raise RuntimeError("%s missing" % var)
     return key
 
 
-def _chat(model, messages, tools, max_tokens=MAX_TOKENS, timeout=300):
-    body = {"model": model, "messages": messages, "max_tokens": max_tokens}
+def _chat(model, messages, tools, max_tokens=None, timeout=300):
+    # No token cap by default (user decision 2026-10-28): the caller passes
+    # max_tokens only when a bound is wanted. Step/loop bounds still apply.
+    body = {"model": model, "messages": messages}
+    if max_tokens is not None:
+        body["max_tokens"] = max_tokens
     if tools:
         body["tools"] = tools
         body["tool_choice"] = "auto"
+    _, url, _ = provider_of(model)
     req = urllib.request.Request(
-        BASE_URL + "/chat/completions",
+        url + "/chat/completions",
         data=json.dumps(body).encode(),
-        headers={"Authorization": "Bearer " + _key(),
+        headers={"Authorization": "Bearer " + _key(model),
                 "Content-Type": "application/json"},
         method="POST",
     )

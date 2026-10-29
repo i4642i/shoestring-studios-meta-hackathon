@@ -2,7 +2,7 @@
 
 - Status: STANDARD (binding for every employee added from now on)
 - Date: 2026-10-28
-- Updated: 2026-10-28 (D45/D46: 2D portraits retired, appearance.json required)
+- Updated: 2026-10-28 (D45/D46: 2D portraits retired, appearance.json required; D55-D63: write_request/request.md for sales orders)
 - Implements: D14 (employee frame), D28 (folder layout), D45/D46 (3D appearance)
 - Companion: AGENT_PLAN_EN.md
 
@@ -43,7 +43,7 @@ No other top-level files are allowed without updating this standard.
   "id": "pd_marty",
   "name": "Marty",
   "title": "Documentary PD, showrunner",
-  "model": "muse-spark-1.3",
+  "model": "meta-models/muse-spark-open-1026",
   "tools": ["read_md_section", "write_structure"],
   "bounds": { "max_steps": 6 },
   "io": { "inputs": ["brief.json", "input.md"], "output": "structure.json" },
@@ -56,13 +56,17 @@ Rules:
 - All fields above are REQUIRED. Unknown fields are rejected.
 - `frame_version`: integer; the runner refuses versions it does not support.
 - `id` MUST equal the parent folder name.
-- `model` MUST be on the allowlist (D15): `muse-spark-1.3`,
-  `muse-wonder-1.0`, `muse-glimmer-*`, `muse-spark-open-*`.
+- `model` MUST be on the allowlist (D15): `meta-models/muse-spark-open-1026`
+  (default, served via Baseten), `muse-spark-1.3`, `muse-wonder-1.0`,
+  `muse-glimmer-*`, `muse-spark-open-*`.
 - Every name in `tools` MUST exist in the registry (`agents/_frame/tools.py`)
   or in the employee's own `tools.py` (custom tools take precedence on collision).
 - `bounds.max_steps`: integer 1–20 (D11: bounded ReAct, no unbounded loops).
 - `io.output`: single filename; the runner validates it against
   `agents/_frame/schemas.py` when a schema exists.
+- Builtin writers (`OUTPUTS` in `agents/_frame/tools.py`): `write_draft`
+  → `draft.json`, `write_structure` → `structure.json`, `write_request` →
+  `request.md` (plus machine-readable `request.json` beside it).
 - `done`: human-readable completion checklist, >=1 item.
 
 ## 4. persona.md structure

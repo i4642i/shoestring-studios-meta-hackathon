@@ -8,7 +8,8 @@ import json
 import os
 
 from . import graph
-from .schemas import list_headings, validate_draft, validate_structure
+from .schemas import (list_headings, render_request_md, validate_draft,
+                      validate_request, validate_structure)
 
 
 def read_md_section(ctx, args):
@@ -53,6 +54,20 @@ def write_structure(ctx, args):
     return {"ok": True, "path": out, "output": "structure.json"}
 
 
+def write_request(ctx, args):
+    obj = args.get("request")
+    errors = validate_request(obj)
+    if errors:
+        return {"ok": False, "errors": errors}
+    out_json = os.path.join(ctx["run_dir"], "request.json")
+    with open(out_json, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+    out_md = os.path.join(ctx["run_dir"], "request.md")
+    with open(out_md, "w", encoding="utf-8") as f:
+        f.write(render_request_md(obj))
+    return {"ok": True, "path": out_md, "output": "request.md"}
+
+
 def query_graph(ctx, args):
     st = graph.get_status(ctx["agent_dir"])
     if st["state"] != "indexed":
@@ -67,6 +82,7 @@ def query_graph(ctx, args):
 OUTPUTS = {
     "write_draft": "draft.json",
     "write_structure": "structure.json",
+    "write_request": "request.md",
 }
 
 TOOLS = {
@@ -93,6 +109,15 @@ TOOLS = {
         {"type": "object",
          "properties": {"structure": {"type": "object"}},
          "required": ["structure"], "additionalProperties": False},
+    ),
+    "write_request": (
+        write_request,
+        "Save the video production request for an order. Writes request.md "
+        "(human-readable, for PD/production) plus request.json beside it. "
+        "Fails unless all 5 intake answers and production notes validate.",
+        {"type": "object",
+         "properties": {"request": {"type": "object"}},
+         "required": ["request"], "additionalProperties": False},
     ),
     "query_graph": (
         query_graph,

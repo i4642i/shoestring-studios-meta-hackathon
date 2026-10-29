@@ -37,7 +37,7 @@
   .card p { color: var(--dim); font-size: 14px; line-height: 1.6; }
   /* hero */
   #p-order { max-width: none; padding: 0 0 40px; }
-  #p-order .card { max-width: 880px; margin-left: auto; margin-right: auto; }
+  #p-order .card { max-width: 1120px; margin-left: auto; margin-right: auto; }
   #p-studio { max-width: 1440px; }
   #p-studio .studiowrap { display: flex; gap: 16px; align-items: stretch; }
   #p-studio .officebox { flex: 1 1 auto; min-width: 0; }
@@ -76,12 +76,17 @@
   .hero h1 { font-size: 56px; line-height: 1.05; letter-spacing: -1px; margin: 16px 0; font-weight: 800; }
   .hero h1 .outline { color: transparent; -webkit-text-stroke: 2px var(--ink); }
   .hero p { font-size: 17px; color: var(--dim); max-width: 640px; margin: 0 auto; }
-  .hero button.cta { margin-top: 26px; }
   input[type="text"], select {
     background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
     font-size: 14px; padding: 10px 12px; margin: 6px 0; width: 100%; max-width: 460px;
   }
   input[type="file"] { margin: 6px 0; font-size: 14px; }
+  .filebtn { display: inline-block; font-size: 13px; font-weight: 600; background: #fff;
+    color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 14px; cursor: pointer; }
+  .filebtn:hover { border-color: var(--ink); }
+  .filebtn input[type="file"] { display: none; }
+  .filename { font-size: 13px; color: var(--dim); margin-left: 8px; }
   button.cta {
     font-size: 15px; font-weight: 700; background: var(--accent); color: var(--accent-ink);
     border: none; border-radius: 999px; padding: 12px 32px; margin-top: 10px; cursor: pointer;
@@ -98,19 +103,26 @@
     color: var(--dim); font-size: 13px; letter-spacing: 2px; }
   .gal p { font-size: 13px; }
   /* crew roster */
-  .roster { font-size: 14px; }
-  .roster div { padding: 8px 4px; border-bottom: 1px solid var(--line); }
-  .roster .dot { color: #1e7d32; }
-  .roster button.memb { display: block; width: 100%; text-align: left; font-size: 14px;
-    background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
-    padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
-  .roster button.memb:hover { border-color: var(--ink); }
+  .idgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 12px; margin: 12px 0; }
+  .idcard { position: relative; text-align: left; font-family: inherit; background: #fff;
+    color: var(--ink); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 14px 12px 24px; cursor: pointer; }
+  .idcard:hover { border-color: var(--ink); }
+  .idcard .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 10px;
+    border-radius: 12px 0 0 12px; }
+  .idcard .nm { display: block; font-size: 18px; font-weight: 800; }
+  .idcard .ti { display: block; font-size: 13px; color: var(--dim); margin: 2px 0 8px; }
+  .idcard .meta { display: block; font-size: 12px; color: var(--dim); font-family: monospace; }
+  .idcard .g { display: block; font-size: 11px; font-weight: 700; margin-top: 8px; color: var(--dim); }
+  .idcard .g.on { color: #1e7d32; }
+  .idempty { font-size: 14px; color: var(--dim); }
   .badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
   .badge.on { background: #1e7d32; color: #fff; border-color: #1e7d32; }
   .badge.off { background: #f4f4f5; color: var(--dim); }
   pre.persona { white-space: pre-wrap; font-size: 13px; background: #fafafa;
     border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
-  #detail h3, #p-about h3 { font-size: 13px; letter-spacing: 2px; color: var(--dim); }
+  #detail h3, #p-about h3, #ct-add h3 { font-size: 13px; letter-spacing: 2px; color: var(--dim); }
   #crewerr { color: #b3261e; font-size: 13px; min-height: 18px; }
   textarea#f-persona { width: 100%; font-family: Consolas, monospace; font-size: 13px;
     background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
@@ -155,6 +167,20 @@
   ul.log { font-size: 14px; padding-left: 20px; line-height: 1.6; }
   ul.log li { margin-bottom: 8px; }
   #p-about a { color: var(--accent); }
+  .mdmodal { display: none; position: fixed; inset: 0; z-index: 60;
+    background: rgba(20, 16, 10, 0.55); }
+  .mdmodal-card { background: #fffdf7; color: var(--ink); max-width: 760px;
+    max-height: 84vh; margin: 6vh auto; border: 2px solid var(--ink);
+    border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
+  .mdmodal-head { display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; border-bottom: 2px solid var(--line); }
+  .mdmodal-title { font-weight: 800; font-size: 15px; }
+  .mdmodal-x { font-size: 20px; line-height: 1; padding: 2px 10px; }
+  .mdmodal-body { padding: 6px 18px 18px; overflow-y: auto; font-size: 14px; line-height: 1.6; }
+  .mdmodal-body pre { background: #f4f1ea; padding: 10px; border-radius: 8px; overflow-x: auto; }
+  .mdmodal-body code { font-family: monospace; font-size: 13px; }
+  .mdmodal-body ul { padding-left: 20px; }
+  .mdmodal-body a { color: var(--accent); }
   .log .when { color: var(--dim); font-size: 12px; white-space: nowrap; }
   /* crew 3D viewer */
   #viewer3d { width: 100%; max-width: 440px; height: 260px; background: #8fc3ec;
@@ -164,6 +190,63 @@
     justify-content: center; color: #374151; font-size: 13px; letter-spacing: 2px; }
   #viewer3d .vhint { position: absolute; bottom: 6px; left: 0; right: 0; text-align: center;
     color: #374151; font-size: 11px; pointer-events: none; }
+  /* order consultation */
+  .orow { display: flex; gap: 16px; align-items: stretch; margin: 12px 0; }
+  .orecep { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+  #o-scene { width: 100%; height: 340px; background: #8fc3ec; position: relative; overflow: hidden; }
+  #o-scene canvas { display: block; width: 100%; height: 100%; }
+  #o-scene .vload { position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; color: #374151; font-size: 12px; letter-spacing: 2px; }
+  .vhint-below { text-align: center; color: #374151; font-size: 11px;
+    padding: 4px 0 2px; pointer-events: none; }
+  #o-bubbles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .bub { position: absolute; max-width: 68%; padding: 8px 12px; border-radius: 12px;
+    font-size: 13px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  .bub-sam { background: #fff; border: 2px solid #111; border-radius: 10px;
+    font-size: 12px; transform: translate(-50%, -100%); margin-top: -16px;
+    visibility: hidden; }
+  .bub-sam::after { content: ""; position: absolute; left: 50%; bottom: -7px;
+    width: 10px; height: 10px; background: #fff; border-right: 2px solid #111;
+    border-bottom: 2px solid #111; transform: translateX(-50%) rotate(45deg); }
+  .bub-sam b { display: block; font-size: 10px; letter-spacing: 1px; color: #0064e0; }
+  #o-mebub { position: absolute; right: 10px; bottom: 24px; display: flex;
+    flex-direction: column; gap: 6px; align-items: flex-end; max-width: 60%; }
+  #o-mebub .bub-me { position: static; background: var(--accent); color: #fff;
+    border-bottom-right-radius: 4px; max-width: 100%; }
+  #o-sysbub { position: absolute; top: 8px; left: 10px;
+    background: rgba(255,255,255,.92); color: var(--dim); font-size: 12px;
+    padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line);
+    max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none; }
+  #order-form .q label { display: block; font-size: 13px; margin: 8px 0; }
+  #order-form .q input[type="text"] { margin-left: 8px; }
+  #o-msg { color: var(--accent); font-size: 13px; min-height: 18px; }
+  #o-approve { border: 1px solid var(--line); border-radius: 12px;
+    padding: 4px 16px 12px; margin: 12px 0; background: #fff; }
+  #o-approve pre { white-space: pre-wrap; font-size: 13px; margin: 8px 0; }
+  #o-result { white-space: pre-wrap; font-size: 12px; background: #fafafa;
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 320px; overflow: auto; }
+  /* order page: fit the working UI without page scroll (desktop) */
+  #p-order .hero { padding: 22px 24px 12px; }
+  #p-order .hero h1 { font-size: 32px; margin: 8px 0; }
+  #p-order .hero p { font-size: 15px; }
+  #order-form { padding-top: 14px; padding-bottom: 14px; }
+  #order-form h2 { margin-bottom: 6px; }
+  #order-form h3 { margin: 10px 0 6px; font-size: 14px; }
+  #order-form > p { margin: 6px 0; }
+  #o-modes { margin: 6px 0; }
+  #o-modehint { margin: 4px 0 8px; }
+  #o-scene { height: 380px; }
+  .orow { margin: 8px 0; }
+  #order-form .q label { margin: 4px 0; }
+  button.cta#start, button.cta#o-ok { margin-top: 6px; }
+  #o-approve { margin: 8px 0; padding: 2px 16px 8px; }
+  @media (max-width: 700px) { #o-scene { height: 280px; } }
+  /* pc fleet */
+  #pc-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  #pc-table th, #pc-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  #pc-table th { font-size: 12px; letter-spacing: 1px; color: var(--dim); }
+  #pcerr { color: #b3261e; font-size: 13px; min-height: 18px; }
 </style>
 <script type="importmap">
 {
@@ -185,6 +268,7 @@
     <button data-p="crew">Crew</button>
     <button data-p="studio">Studio</button>
     <button data-p="gallery">Gallery</button>
+    <button data-p="pc">PC</button>
   </nav>
   <nav class="about">
     <button data-p="about">About</button>
@@ -194,21 +278,50 @@
 <div class="page active" id="p-order">
   <div class="hero">
     <div class="eyebrow">SHOESTRING STUDIOS — AN AI VIDEO TEAM</div>
-    <h1>Order it.<br><span class="outline">Watch it get made.</span></h1>
+    <h1>Order it. <span class="outline">Watch it get made.</span></h1>
     <p>Upload a dense paper. A crew of AI specialists turns it into a publish-grade explainer video.</p>
-    <button class="cta" id="order-cta">Order a video</button>
   </div>
   <div class="card" id="order-form">
-    <h2>ORDER A VIDEO</h2>
-    <p>Upload a PDF paper. The crew turns it into a publish-grade explainer video.</p>
-    <input type="file" id="pdf" accept=".pdf"> <span id="pdfname"></span><br>
-    <input type="text" id="arxiv" placeholder="…or paste an arXiv URL"><br>
-    <select id="purpose">
-      <option>Journal club briefing</option>
-      <option>Public outreach</option>
-      <option>Personal study</option>
-    </select><br>
-    <button class="cta" id="start">▶ START PRODUCTION</button>
+    <h2>ORDER CONSULTATION</h2>
+    <p id="o-status">Starting…</p>
+    <div class="subtabs" id="o-modes">
+      <button data-m="free" class="active">FREE CHAT</button>
+      <button data-m="guided">GUIDED — 5 QUESTIONS</button>
+    </div>
+    <p class="hint" id="o-modehint">Guided: fill the answers, choose the PDF, approve, press START PRODUCTION.</p>
+    <div class="orow" id="o-row">
+      <div class="orecep" id="o-recep">
+        <div id="o-scene">
+          <span class="vload">LOADING 3D…</span>
+          <div id="o-bubbles" aria-live="polite">
+            <div class="bub bub-sam" id="o-sambub"></div>
+            <div id="o-mebub"></div>
+            <div id="o-sysbub"></div>
+          </div>
+        </div>
+        <form class="cform" id="o-form" autocomplete="off">
+          <label class="filebtn" title="Attach source PDF">Attach PDF<input type="file" id="o-chatpdf" accept=".pdf" aria-label="Attach source PDF"></label>
+          <input id="o-input" maxlength="500" placeholder="Talk to sales…" aria-label="Message">
+          <button type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+    <h3 id="o-qh">THE 5 QUESTIONS</h3>
+    <div class="q" id="o-q">
+      <label>1. Audience level <input type="text" id="o-audience" maxlength="120" placeholder="e.g. beginners"></label>
+      <label>2. Target length <input type="text" id="o-length" maxlength="120" placeholder="e.g. 10 minutes"></label>
+      <label>3. Depth <input type="text" id="o-depth" maxlength="120" placeholder="comprehensive / key concepts"></label>
+      <label>4. Theme direction <input type="text" id="o-theme" maxlength="120" placeholder="e.g. story-led"></label>
+      <label>5. Source PDF <span class="filebtn">Choose PDF<input type="file" id="o-pdf" accept=".pdf"></span><span class="filename" id="o-pdfname">No file chosen</span></label>
+    </div>
+    <p><button class="cta" id="start" disabled>▶ START PRODUCTION</button></p>
+    <div id="o-approve" style="display:none">
+      <h3>REVIEW &amp; APPROVE</h3>
+      <pre id="o-appsummary"></pre>
+      <p><button class="cta" id="o-ok">APPROVE &amp; ENABLE</button></p>
+    </div>
+    <p id="o-msg"></p>
+    <pre id="o-result" style="display:none"></pre>
     <p id="queued"></p>
   </div>
 </div>
@@ -244,20 +357,49 @@
 <div class="page" id="p-crew">
   <div class="card">
     <h2>CREW — EMPLOYEES</h2>
-    <div class="roster" id="roster"></div>
-    <p id="crewerr"></p>
-    <h3>ADD EMPLOYEE</h3>
-    <div class="addform">
-      <input id="n-id" maxlength="32" placeholder="id (lowercase_snake)" aria-label="Employee id">
-      <input id="n-name" maxlength="32" placeholder="Name" aria-label="Employee name">
-      <input id="n-title" maxlength="64" placeholder="Title (e.g. Researcher)" aria-label="Employee title">
-      <select id="n-model" aria-label="Model"></select>
-      <select id="n-variant" aria-label="3D variant"></select>
-      <button class="cta" id="n-create">CREATE</button>
+    <div class="subtabs" id="crew-tabs">
+      <button data-ct="list" class="active">EMPLOYEES</button>
+      <button data-ct="add">ADD EMPLOYEE</button>
     </div>
-    <p class="hint">Scaffolds agent.json, persona.md, handbook seed and appearance.json, then validates. Unused 3D variant is picked automatically when left on Auto.</p>
+    <p id="crewerr"></p>
+    <div id="ct-list">
+      <div class="idgrid" id="roster"></div>
+    </div>
+    <div id="ct-add" style="display:none">
+      <h3>ADD EMPLOYEE</h3>
+      <div class="addform">
+        <input id="n-id" maxlength="32" placeholder="id (lowercase_snake)" aria-label="Employee id">
+        <input id="n-name" maxlength="32" placeholder="Name" aria-label="Employee name">
+        <input id="n-title" maxlength="64" placeholder="Title (e.g. Researcher)" aria-label="Employee title">
+        <select id="n-model" aria-label="Model"></select>
+        <select id="n-variant" aria-label="3D variant"></select>
+        <button class="cta" id="n-create">CREATE</button>
+      </div>
+      <p class="hint">Scaffolds agent.json, persona.md, handbook seed and appearance.json, then validates. Unused 3D variant is picked automatically when left on Auto.</p>
+    </div>
   </div>
   <div class="card" id="detail" style="display:none"></div>
+</div>
+
+<div class="page" id="p-pc">
+  <div class="card">
+    <h2>PC — COMPANY FLEET</h2>
+    <p class="hint">Registry of company PCs and the materials each holds. Employees reach PC materials through a tool, never directly.</p>
+    <table id="pc-table">
+      <thead><tr><th>NAME</th><th>MATERIALS</th><th>OWNER</th><th>CAPABILITY</th><th>TOOL</th><th>STATE</th><th></th></tr></thead>
+      <tbody id="pc-rows"><tr><td colspan="7">Loading…</td></tr></tbody>
+    </table>
+    <p id="pcerr"></p>
+    <h3>ADD PC</h3>
+    <div class="addform">
+      <input id="p-name" maxlength="64" placeholder="Name (e.g. Shared PC 2)" aria-label="PC name">
+      <input id="p-materials" maxlength="200" placeholder="Materials, comma separated" aria-label="Materials">
+      <input id="p-owner" maxlength="32" placeholder="Owner" aria-label="Owner">
+      <input id="p-cap" maxlength="32" placeholder="Capability (lightrag/embedding)" aria-label="Capability">
+      <input id="p-tool" maxlength="32" placeholder="Tool (e.g. query_pc)" aria-label="Tool">
+      <button class="cta" id="p-add">ADD</button>
+    </div>
+  </div>
 </div>
 
 <div class="page" id="p-about">
@@ -277,8 +419,8 @@
     <p>3D engine behind the Studio office and the Crew character viewer. Vendored with its license in vendor/three/. © three.js authors. <a href="https://threejs.org" target="_blank" rel="noopener">threejs.org</a></p>
     <h3>KENNEY MINI CHARACTERS 1.0 + FURNITURE KIT 2.0 — CC0</h3>
     <p>Crew avatars and office furniture. Public-domain dedication, no attribution required (credited here anyway). <a href="https://kenney.nl/assets/mini-characters" target="_blank" rel="noopener">Mini Characters</a> · <a href="https://kenney.nl/assets/furniture-kit" target="_blank" rel="noopener">Furniture Kit</a> — © Kenney (kenney.nl).</p>
-    <h3>PYPDF 6.21.3 — BSD-3-CLAUSE</h3>
-    <p>PDF text extraction for handbook uploads (Crew training). The only third-party Python package; everything else is the Python standard library. <a href="https://pypi.org/project/pypdf/" target="_blank" rel="noopener">PyPI</a></p>
+    <h3>PDFPLUMBER 0.11.10 — MIT</h3>
+    <p>PDF text/image extraction for handbook uploads (Crew training) and order intake (consultation PDFs). The only third-party Python package (its pdfminer.six/Pillow dependencies arrive with it); everything else is the Python standard library. <a href="https://pypi.org/project/pdfplumber/" target="_blank" rel="noopener">PyPI</a></p>
     <h3>PYTHON 3.11 STANDARD LIBRARY — PSF LICENSE</h3>
     <p>The backend is stdlib-only: HTTP serving and the JSON API run with no framework.</p>
     <h3>VERIFICATION ONLY (NOT SHIPPED)</h3>
@@ -293,6 +435,9 @@
       <li><b>Verification.</b> <span class="when">2026-10-28</span> Handler-level HTTP pass plus a self-driving headless-Edge pass (every control operated, graph panel screenshotted) — all green.</li>
       <li><b><a href="docs/MEETING_04_CHARACTER_DESIGN_EN.md" target="_blank" rel="noopener">Meeting 04</a> — Character design.</b> <span class="when">2026-10-28</span> Kenney Mini Characters (CC0 3D, animated) chosen for the office crew; Furniture Kit for the space. Full-3D office (Three.js) locked; 2D portraits retired.</li>
       <li><b><a href="docs/MEETING_05_STUDIO_PLATFORM_EN.md" target="_blank" rel="noopener">Meeting 05</a> — Studio &amp; platform.</b> <span class="when">2026-10-28</span> Office scene rules, real-world scale, seating and warm lighting; Studio chat with seat-trip; Marty repurposed to structure mapping; full Crew management (view, edit, add, delete); GraphRAG options researched, decision pending.</li>
+      <li><b><a href="docs/MEETING_06_SALES_EN.md" target="_blank" rel="noopener">Meeting 06</a> — Sales &amp; orders.</b> <span class="when">2026-10-28</span> Sam the frontline sales rep; Order-page consultation (5 questions, chat PDF intake, auto-parse to md+images); per-order intake.json + production request.md; PC fleet registry tab.</li>
+      <li><b><a href="docs/MEETING_07_BASETEN_PARSER_EN.md" target="_blank" rel="noopener">Meeting 07</a> — Cost &amp; parser.</b> <span class="when">2026-10-29</span> Baseten added as second provider and made the default (agents + LightRAG LLM); PDF parser verified; dead attach buttons fixed (label activation).</li>
+      <li><b><a href="docs/MEETING_08_SALES_OFFICE_EN.md" target="_blank" rel="noopener">Meeting 08</a> — Sales office space.</b> <span class="when">2026-10-29</span> Warm consultation room for Sam (now 5x4m): sunlit window, rug + lounge set, seated Sam, plants, lamp, bookcase, studio sign; office-grade lighting. Round-2 layout applied, screenshot review pending.</li>
     </ul>
   </div>
   <div class="card">
@@ -314,19 +459,84 @@
     b.classList.add("active");
     document.getElementById("p-" + b.dataset.p).classList.add("active");
   });
-  document.getElementById("pdf").onchange = e => {
-    document.getElementById("pdfname").textContent =
-      e.target.files.length ? e.target.files[0].name : "";
-  };
-  document.getElementById("start").onclick = () => {
-    document.getElementById("queued").textContent = "Queued. (Pipeline not wired yet — mockup.)";
-  };
-  document.getElementById("order-cta").onclick = () => {
-    document.getElementById("order-form").scrollIntoView();
-  };
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
+  function mdToHtml(src) {
+    const lines = String(src).replace(/\r\n/g, "\n").split("\n");
+    let h = "", inCode = false, inList = false;
+    const inline = (t) => t
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,
+        (m, txt, url) => '<a href="' + url.replace(/"/g, "%22") +
+          '" target="_blank" rel="noopener">' + txt + "</a>");
+    const closeList = () => { if (inList) { h += "</ul>"; inList = false; } };
+    for (const ln of lines) {
+      if (/^```/.test(ln)) {
+        closeList();
+        h += inCode ? "</code></pre>" : "<pre><code>";
+        inCode = !inCode;
+        continue;
+      }
+      if (inCode) { h += esc(ln) + "\n"; continue; }
+      let m;
+      if ((m = ln.match(/^(#{1,4})\s+(.*)$/))) {
+        closeList();
+        const lv = m[1].length + 1;
+        h += "<h" + lv + ">" + inline(esc(m[2])) + "</h" + lv + ">";
+      } else if (/^---+$/.test(ln.trim())) {
+        closeList();
+        h += "<hr>";
+      } else if ((m = ln.match(/^\s*-\s+(.*)$/))) {
+        if (!inList) { h += "<ul>"; inList = true; }
+        h += "<li>" + inline(esc(m[1])) + "</li>";
+      } else if (!ln.trim()) {
+        closeList();
+      } else {
+        closeList();
+        h += "<p>" + inline(esc(ln)) + "</p>";
+      }
+    }
+    closeList();
+    if (inCode) h += "</code></pre>";
+    return h;
+  }
+  (function mdViewer() {
+    let modal = null;
+    const close = () => { if (modal) modal.style.display = "none"; };
+    function ensureModal() {
+      if (modal) return modal;
+      modal = document.createElement("div");
+      modal.className = "mdmodal";
+      modal.innerHTML = '<div class="mdmodal-card"><div class="mdmodal-head">' +
+        '<span class="mdmodal-title"></span>' +
+        '<button class="mdmodal-x" aria-label="Close">×</button></div>' +
+        '<div class="mdmodal-body"></div></div>';
+      document.body.appendChild(modal);
+      modal.querySelector(".mdmodal-x").onclick = close;
+      modal.onclick = (e) => { if (e.target === modal) close(); };
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && modal.style.display === "block") close();
+      });
+      return modal;
+    }
+    document.querySelectorAll('#p-about a[href$=".md"]').forEach(a => {
+      a.onclick = (e) => {
+        e.preventDefault();
+        const m = ensureModal();
+        m.querySelector(".mdmodal-title").textContent = a.textContent;
+        const body = m.querySelector(".mdmodal-body");
+        body.innerHTML = "<p>Loading…</p>";
+        m.style.display = "block";
+        fetch(a.getAttribute("href")).then((r) => {
+          if (!r.ok) throw new Error(a.getAttribute("href") + " (" + r.status + ")");
+          return r.text();
+        }).then((t) => { body.innerHTML = mdToHtml(t); body.scrollTop = 0; })
+          .catch((err) => { body.innerHTML = "<p>Error: " + esc(err.message) + "</p>"; });
+      };
+    });
+  })();
   const api = {
     async get(p) {
       const r = await fetch(p);
@@ -344,7 +554,7 @@
       return j;
     }
   };
-  const MODELS = ["muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1", "muse-wonder-1.0"];
+  const MODELS = ["meta-models/muse-spark-open-1026", "muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1", "muse-wonder-1.0"];
   const VARIANTS = ["male-a", "male-b", "male-c", "male-d", "male-e", "male-f",
     "female-a", "female-b", "female-c", "female-d", "female-e", "female-f"]
     .map(s => "character-" + s + ".glb");
@@ -373,6 +583,7 @@
         document.getElementById("n-name").value = "";
         document.getElementById("n-title").value = "";
         current = null;
+        crewTab("list");
         await loadRoster();
         show(r.id).catch(fail);
       } catch (e) { fail(e); }
@@ -383,17 +594,301 @@
         : "";
       errline.textContent = "Error: " + e.message + hint;
     }
+    function crewTab(which) {
+      document.querySelectorAll("#crew-tabs [data-ct]").forEach(x =>
+        x.classList.toggle("active", x.dataset.ct === which));
+      document.getElementById("ct-list").style.display = which === "list" ? "" : "none";
+      document.getElementById("ct-add").style.display = which === "add" ? "" : "none";
+      document.getElementById("detail").style.display = "none";
+      current = null;
+    }
+    document.querySelectorAll("#crew-tabs [data-ct]").forEach(b => {
+      b.onclick = () => crewTab(b.dataset.ct);
+    });
     async function loadRoster() {
       const list = await api.get("api/crew");
       roster.innerHTML = "";
+      if (!list.length) {
+        const p = document.createElement("p");
+        p.className = "idempty";
+        p.textContent = "No employees yet — add one on the ADD EMPLOYEE tab.";
+        roster.appendChild(p);
+      }
       list.forEach(c => {
+        const tint = /^#[0-9a-f]{6}$/i.test((c.appearance || {}).tint || "")
+          ? c.appearance.tint.toLowerCase() : "#111111";
         const b = document.createElement("button");
-        b.className = "memb";
-        b.textContent = "● " + c.id + " — " + c.title;
+        b.className = "idcard";
+        b.setAttribute("aria-label", "Employee " + c.id);
+        const stripe = document.createElement("span");
+        stripe.className = "stripe";
+        stripe.style.background = tint;
+        const nm = document.createElement("span");
+        nm.className = "nm";
+        nm.textContent = c.name;
+        const ti = document.createElement("span");
+        ti.className = "ti";
+        ti.textContent = c.title;
+        const meta = document.createElement("span");
+        meta.className = "meta";
+        meta.textContent = c.id + " · " + c.model;
+        const g = document.createElement("span");
+        const ready = c.graph === "indexed";
+        g.className = "g" + (ready ? " on" : "");
+        g.textContent = ready ? "● GRAPH READY" : "○ NO GRAPH";
+        b.append(stripe, nm, ti, meta, g);
         b.onclick = () => show(c.id).catch(fail);
         roster.appendChild(b);
       });
-      if (list.length && !current) show(list[0].id).catch(fail);
+    }
+    const MAP_COLORS = ["#e0681f", "#2e7d6f", "#8a6d1d", "#4a6fa5", "#a5432e", "#5d7a4a"];
+    function mapColor(type, name) {
+      if (!type) return "#777";
+      let h = 0;
+      const s = type;
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return MAP_COLORS[h % MAP_COLORS.length];
+    }
+    function mapLayout(nodes, edges, W, H) {
+      const pos = {};
+      const cx = W / 2, cy = H / 2;
+      if (!nodes.length) return pos;
+      const adj = {};
+      nodes.forEach(n => { adj[n.name] = []; });
+      edges.forEach(e => {
+        if (adj[e.a] && adj[e.b]) { adj[e.a].push(e.b); adj[e.b].push(e.a); }
+      });
+      Object.keys(adj).forEach(k => adj[k].sort());
+      const byDeg = nodes.slice().sort((p, q) => (q.degree || 0) - (p.degree || 0) ||
+        (p.name < q.name ? -1 : 1));
+      const depth = {}, order = [];
+      const roots = byDeg.filter(n => adj[n.name].length).concat(byDeg.filter(n => !adj[n.name].length));
+      roots.forEach(r => {
+        if (depth[r.name] !== undefined) return;
+        depth[r.name] = order.length ? 99 : 0;
+        const q = [r.name];
+        order.push(r.name);
+        while (q.length) {
+          const cur = q.shift();
+          adj[cur].forEach(nb => {
+            if (depth[nb] === undefined) {
+              depth[nb] = depth[cur] >= 99 ? 99 : depth[cur] + 1;
+              q.push(nb);
+              order.push(nb);
+            }
+          });
+        }
+      });
+      const rings = {};
+      order.forEach(name => {
+        const d = Math.min(depth[name], 4);
+        (rings[d] = rings[d] || []).push(name);
+      });
+      const R = [0, 0.20, 0.33, 0.44, 0.52].map(f => f * Math.min(W, H));
+      Object.keys(rings).forEach(dk => {
+        const ring = rings[dk], r = R[Math.min(Number(dk), 4)];
+        ring.forEach((name, i) => {
+          const a = -Math.PI / 2 + 2 * Math.PI * (i + Number(dk) * 0.5) / Math.max(1, ring.length);
+          pos[name] = { x: cx + r * Math.cos(a) * (W / H > 1.2 ? 1.35 : 1), y: cy + r * Math.sin(a) };
+        });
+      });
+      return pos;
+    }
+    function renderMap(panel, lite, map, staged, comCount) {
+      panel.innerHTML = "";
+      const NS = "http://www.w3.org/2000/svg";
+      const hasLr = !!(map && map.available);
+      const counts = document.createElement("p");
+      const liteN = (lite.entities || []).length, liteR = (lite.relations || []).length;
+      counts.textContent = hasLr
+        ? "LightRAG: " + map.entities.length + " entities · " + map.relations.length + " relations" +
+          " — Lite: " + liteN + " entities · " + liteR + " relations · Communities: " + comCount
+        : "Lite: " + liteN + " entities · " + liteR + " relations · Communities: " + comCount;
+      panel.appendChild(counts);
+      if (hasLr) {
+        const b = map.built || {};
+        const how = document.createElement("p");
+        how.innerHTML = "<b>HOW BUILT</b> — files: " + esc((b.files || []).join(", ") || "unknown") +
+          " · indexed " + esc(b.indexed_at || "?") + " in " + esc(String(b.index_seconds || 0)) + "s" +
+          "<br>LLM " + esc(b.llm_model || "?") + " (" + esc(b.llm_base_url || "") + "): " +
+          esc(String(b.llm_calls || 0)) + " calls, " + esc(String(b.prompt_chars || 0)) +
+          " prompt chars, " + esc(String(b.reply_chars || 0)) + " reply chars" +
+          " · embeddings " + esc(b.embedding_model || "?") + " (" + esc(String(b.embedding_dim || 0)) + "d)" +
+          " · mode " + esc(b.mode || "?");
+        panel.appendChild(how);
+      } else {
+        const none = document.createElement("p");
+        none.textContent = "No LightRAG map: " + ((map && map.reason) || "unknown") + ". Showing the lite map.";
+        panel.appendChild(none);
+      }
+      const st = document.createElement("p");
+      st.textContent = "Staged: " + (staged.join(", ") || "none");
+      panel.appendChild(st);
+      const bar = document.createElement("p");
+      const mkBtn = (label) => {
+        const x = document.createElement("button");
+        x.textContent = label;
+        x.style.marginRight = "6px";
+        bar.appendChild(x);
+        return x;
+      };
+      const bLr = mkBtn("LIGHTRAG MAP"), bLite = mkBtn("LITE MAP");
+      const bIn = mkBtn("+"), bOut = mkBtn("−"), bReset = mkBtn("RESET VIEW");
+      panel.appendChild(bar);
+      const svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("width", "100%");
+      svg.setAttribute("height", "420");
+      svg.style.border = "2px solid var(--line)";
+      svg.style.background = "#fffdf7";
+      svg.style.cursor = "grab";
+      panel.appendChild(svg);
+      const hint = document.createElement("p");
+      hint.textContent = "Drag to pan · wheel or +/− to zoom · click a word to see how it connects.";
+      panel.appendChild(hint);
+      const detail = document.createElement("div");
+      detail.style.borderTop = "1px solid var(--line)";
+      detail.style.marginTop = "6px";
+      detail.style.minHeight = "40px";
+      panel.appendChild(detail);
+      const W = 900, H = 560;
+      let nodes = [], edges = [], pos = {}, sel = null;
+      const vb = { x: 0, y: 0, w: W };
+      const applyVb = () => svg.setAttribute("viewBox",
+        vb.x + " " + vb.y + " " + vb.w + " " + (vb.w * H / W));
+      function zoomAt(cx, factor) {
+        const nw = Math.max(60, Math.min(1400, vb.w * factor));
+        const r = (cx - vb.x) / vb.w;
+        vb.x = cx - nw * r;
+        vb.w = nw;
+        vb.y = Math.max(-200, Math.min(H - 100, vb.y));
+        applyVb();
+      }
+      svg.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const r = svg.getBoundingClientRect();
+        zoomAt(vb.x + vb.w * (e.clientX - r.left) / r.width, e.deltaY > 0 ? 1.18 : 1 / 1.18);
+      }, { passive: false });
+      let drag = null, suppressClick = false;
+      svg.addEventListener("pointerdown", (e) => {
+        drag = { x: e.clientX, y: e.clientY, vx: vb.x, vy: vb.y, moved: false };
+      });
+      window.addEventListener("pointermove", (e) => {
+        if (!drag) return;
+        if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) drag.moved = true;
+        if (!drag.moved) return;
+        const r = svg.getBoundingClientRect(), k = vb.w / r.width;
+        vb.x = drag.vx - (e.clientX - drag.x) * k;
+        vb.y = drag.vy - (e.clientY - drag.y) * k;
+        applyVb();
+      });
+      window.addEventListener("pointerup", () => {
+        if (drag && drag.moved) {
+          suppressClick = true;
+          setTimeout(() => { suppressClick = false; }, 0);
+        }
+        drag = null;
+      });
+      bIn.onclick = () => zoomAt(vb.x + vb.w / 2, 1 / 1.3);
+      bOut.onclick = () => zoomAt(vb.x + vb.w / 2, 1.3);
+      bReset.onclick = () => { vb.x = 0; vb.y = 0; vb.w = W; applyVb(); };
+      function showDetail(n) {
+        sel = n ? n.name : null;
+        draw();
+        if (!n) { detail.innerHTML = "<p>Click a word to see its description and connections.</p>"; return; }
+        const linked = edges.filter(e => e.a === n.name || e.b === n.name);
+        let h = "<p><b>" + esc(n.name) + "</b>" + (n.type ? " · " + esc(n.type) : "") +
+          " · degree " + linked.length + "</p>";
+        if (n.desc) h += "<p>" + esc(n.desc) + "</p>";
+        if (!linked.length) h += "<p>No connections.</p>";
+        else {
+          h += "<ul>" + linked.map(e => {
+            const other = e.a === n.name ? e.b : e.a;
+            let t = "<li><b>" + esc(other) + "</b>";
+            if (e.kw) t += " — " + esc(e.kw);
+            if (e.desc) t += "<br>" + esc(e.desc);
+            return t + "</li>";
+          }).join("") + "</ul>";
+        }
+        detail.innerHTML = h;
+      }
+      function draw() {
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+        const adj = {};
+        if (sel) edges.forEach(e => {
+          if (e.a === sel) adj[e.b] = e;
+          if (e.b === sel) adj[e.a] = e;
+        });
+        edges.forEach(e => {
+          if (!pos[e.a] || !pos[e.b]) return;
+          const hot = sel && (e.a === sel || e.b === sel);
+          const ln = document.createElementNS(NS, "line");
+          ln.setAttribute("x1", pos[e.a].x); ln.setAttribute("y1", pos[e.a].y);
+          ln.setAttribute("x2", pos[e.b].x); ln.setAttribute("y2", pos[e.b].y);
+          ln.setAttribute("stroke", hot ? "#e0681f" : "#999");
+          ln.setAttribute("stroke-width", hot ? 3 : Math.min(3, 0.8 + (e.w || 1) * 0.4));
+          ln.setAttribute("opacity", !sel || hot ? 1 : 0.2);
+          svg.appendChild(ln);
+        });
+        nodes.forEach(n => {
+          const p = pos[n.name];
+          const g = document.createElementNS(NS, "g");
+          const isSel = sel === n.name, isAdj = !!adj[n.name];
+          const c = document.createElementNS(NS, "circle");
+          c.setAttribute("cx", p.x); c.setAttribute("cy", p.y);
+          c.setAttribute("r", 9 + Math.min(11, (n.degree || 1) * 1.4));
+          c.setAttribute("fill", mapColor(n.type, n.name));
+          c.setAttribute("stroke", isSel ? "#e0681f" : "#222");
+          c.setAttribute("stroke-width", isSel ? 4 : 2);
+          c.setAttribute("opacity", !sel || isSel || isAdj ? 1 : 0.25);
+          c.style.cursor = "pointer";
+          c.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (!suppressClick) showDetail(isSel ? null : n);
+          });
+          g.appendChild(c);
+          const t = document.createElementNS(NS, "text");
+          const left = p.x > W / 2 + 40;
+          t.setAttribute("x", p.x + (left ? -14 : 14)); t.setAttribute("y", p.y + 5);
+          t.setAttribute("text-anchor", left ? "end" : "start");
+          t.setAttribute("font-size", "13");
+          t.setAttribute("font-family", "monospace");
+          t.setAttribute("opacity", !sel || isSel || isAdj ? 1 : 0.25);
+          t.style.pointerEvents = "none";
+          t.textContent = n.name;
+          g.appendChild(t);
+          svg.appendChild(g);
+        });
+      }
+      function load(which) {
+        sel = null;
+        vb.x = 0; vb.y = 0; vb.w = W; applyVb();
+        bLr.disabled = which === "lr";
+        bLite.disabled = which === "lite";
+        if (which === "lr" && hasLr) {
+          nodes = map.entities.map(e => ({ name: e.name, type: e.type || "", desc: e.description || "", degree: e.degree || 0 }));
+          edges = map.relations.map(r => ({ a: r.source, b: r.target, w: r.weight || 1, desc: r.description || "", kw: r.keywords || "" }));
+        } else {
+          const deg = {};
+          (lite.relations || []).forEach(r => {
+            deg[r.source] = (deg[r.source] || 0) + 1;
+            deg[r.target] = (deg[r.target] || 0) + 1;
+          });
+          nodes = (lite.entities || []).map(e => ({ name: e.name, type: "", desc: "", degree: deg[e.name] || e.degree || 0 }));
+          edges = (lite.relations || []).map(r => ({ a: r.source, b: r.target, w: 1, desc: "", kw: "" }));
+        }
+        if (!nodes.length) {
+          detail.innerHTML = "<p>No learned entities yet. Upload training files, then run indexing.</p>";
+          while (svg.firstChild) svg.removeChild(svg.firstChild);
+          return;
+        }
+        pos = mapLayout(nodes, edges, W, H);
+        draw();
+        showDetail(null);
+      }
+      bLr.onclick = () => load("lr");
+      bLite.onclick = () => load("lite");
+      svg.addEventListener("click", () => { if (!suppressClick) showDetail(null); });
+      load(hasLr ? "lr" : "lite");
     }
     async function show(id) {
       current = id;
@@ -413,6 +908,7 @@
       const variants = VARIANTS.map(v =>
         '<option value="' + v + '"' + (v === (c.appearance.variant || "") ? " selected" : "") + ">" + v + "</option>").join("");
       detail.innerHTML =
+        '<button id="f-back">← BACK TO EMPLOYEES</button>' +
         "<h2>" + esc(c.name.toUpperCase()) + " — " + esc(c.title.toUpperCase()) + "</h2>" +
         '<p class="hint">ID: ' + esc(c.id) + " · folder agents/" + esc(c.id) + "/ · output follows the write_* tool</p>" +
         '<div id="viewer3d"><span class="vload">LOADING 3D…</span></div>' + g +
@@ -438,16 +934,20 @@
         '<button class="danger" id="f-delete">DELETE EMPLOYEE</button>' +
         "<h3>HANDBOOK</h3><ul>" + (hb || "<li>none</li>") + "</ul>" +
         '<pre id="hbview" style="display:none"></pre>' +
-        '<input type="file" id="f-file" accept=".md,.txt,.pdf"> <button class="cta" id="f-upload">UPLOAD &amp; PARSE</button>';
+        '<label class="filebtn">Choose file<input type="file" id="f-file" accept=".md,.txt,.pdf"></label>' +
+        '<span class="filename" id="f-filename">No file chosen</span> <button class="cta" id="f-upload">UPLOAD &amp; PARSE</button>';
+      document.getElementById("ct-list").style.display = "none";
+      document.getElementById("ct-add").style.display = "none";
       detail.style.display = "block";
-      (function viewerMsg(box, text) {
+      detail.scrollIntoView();
+      function viewerMsg(box, text) {
         if (!box || !box.isConnected) return;
         box.innerHTML = "";
         const s = document.createElement("span");
         s.className = "vload";
         s.textContent = text;
         box.appendChild(s);
-      });
+      }
       (function mount(box, waited) {
         if (!box || !box.isConnected) return;
         if (window.CrewViewer3D) {
@@ -462,36 +962,12 @@
         setTimeout(() => mount(box, (waited || 0) + 120), 120);
       })(document.getElementById("viewer3d"), 0);
       api.get("api/crew/" + id + "/graph").then(g => {
-        const ents = (g.entities || []).slice(0, 25);
-        const rels = g.relations || [];
-        const coms = g.communities || [];
-        let h = "<p>Entities: " + (g.entities || []).length +
-          " · Relations: " + rels.length +
-          " · Communities: " + coms.length + "</p>";
-        h += "<p>Staged: " + (esc((c.graph.staged || []).join(", ") || "none")) + "</p>";
-        if (!ents.length) {
-          h += "<p>No learned entities yet. Upload training files, then run indexing.</p>";
-        } else {
-          const cx = 130, cy = 100, rr = 80;
-          const pos = {};
-          ents.forEach((e, i) => {
-            const a = 2 * Math.PI * i / ents.length;
-            pos[e.name] = [cx + rr * Math.cos(a), cy + rr * Math.sin(a)];
-          });
-          h += '<svg width="260" height="220" style="border:2px solid var(--line);background:#fffdf7">';
-          rels.forEach(r => {
-            const a = pos[r.source], b = pos[r.target];
-            if (a && b) h += '<line x1="' + a[0] + '" y1="' + a[1] + '" x2="' + b[0] + '" y2="' + b[1] + '" stroke="#999" stroke-width="1"/>';
-          });
-          ents.forEach(e => {
-            const p = pos[e.name], rad = 3 + Math.min(6, e.degree || 1);
-            h += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + rad + '" fill="#e0681f" stroke="#222" stroke-width="2"/>' +
-              '<text x="' + (p[0] + rad + 2) + '" y="' + (p[1] + 4) + '" font-size="9" font-family="monospace">' + esc(e.name) + "</text>";
-          });
-          h += "</svg>";
-          h += "<ul>" + ents.slice(0, 8).map(e => "<li>" + esc(e.name) + " (degree " + (e.degree || 0) + ")</li>").join("") + "</ul>";
-        }
-        document.getElementById("gpanel").innerHTML = h;
+        const lite = { entities: g.entities || [], relations: g.relations || [] };
+        const coms = (g.communities || []).length;
+        api.get("api/crew/" + id + "/map").then(
+          m => renderMap(document.getElementById("gpanel"), lite, m, c.graph.staged || [], coms),
+          () => renderMap(document.getElementById("gpanel"), lite,
+            { available: false, reason: "map fetch failed" }, c.graph.staged || [], coms));
       }).catch(fail);
       detail.querySelectorAll("[data-st]").forEach(b => {
         b.onclick = () => {
@@ -503,6 +979,11 @@
       });
       document.getElementById("f-tint").oninput = e => {
         document.getElementById("f-tinthex").textContent = e.target.value;
+      };
+      document.getElementById("f-back").onclick = () => {
+        crewTab("list");
+        current = null;
+        document.getElementById("roster").scrollIntoView();
       };
       document.getElementById("f-save").onclick = async () => {
         try {
@@ -534,6 +1015,7 @@
           await api.send("DELETE", "api/crew/" + id);
           errline.textContent = "Deleted " + id + ".";
           detail.style.display = "none";
+          crewTab("list");
           current = null;
           loadRoster().catch(fail);
         } catch (e) { fail(e); }
@@ -557,6 +1039,10 @@
           } catch (e) { fail(e); }
         };
       });
+      document.getElementById("f-file").onchange = (e) => {
+        document.getElementById("f-filename").textContent =
+          e.target.files.length ? e.target.files[0].name : "No file chosen";
+      };
       document.getElementById("f-upload").onclick = async () => {
         try {
           const inp = document.getElementById("f-file");
@@ -659,6 +1145,363 @@
     });
     loadWho();
   })();
+
+  /* Order consultation: assignee + chat + 5 questions + PDF + mini-3D seat. */
+  (function order() {
+    const statusEl = document.getElementById("o-status");
+    let whoId = null;
+    const form = document.getElementById("o-form");
+    const input = document.getElementById("o-input");
+    const msg = document.getElementById("o-msg");
+    if (!statusEl || !form) return;
+    let oid = null, roster = [];
+    let mode = "free";
+    let lastSam = "";
+    let repName = "SAM";
+    let approved = false;
+    let approvedSnap = "";
+    let serverPdf = false;
+    const history = [];
+    function readAnswers() {
+      return {
+        audience: document.getElementById("o-audience").value.trim(),
+        length: document.getElementById("o-length").value.trim(),
+        depth: document.getElementById("o-depth").value.trim(),
+        theme: document.getElementById("o-theme").value.trim(),
+      };
+    }
+    function checkReady() {
+      const boxEl = document.getElementById("o-approve");
+      const startBtn = document.getElementById("start");
+      if (mode !== "guided" || !oid) { boxEl.style.display = "none"; return; }
+      const a = readAnswers();
+      const pdf = document.getElementById("o-pdf");
+      const pdfName = pdf.files.length ? pdf.files[0].name
+        : (serverPdf ? "(PDF already attached in chat)" : "");
+      const snap = JSON.stringify(a) + "|" + pdfName;
+      if (approved && snap !== approvedSnap) {
+        approved = false;
+        startBtn.disabled = true;
+        msg.textContent = "Answers changed — please approve again.";
+      }
+      if (approved || !a.audience || !a.length || !a.depth || !a.theme || !pdfName) {
+        boxEl.style.display = "none";
+        return;
+      }
+      document.getElementById("o-appsummary").textContent =
+        "Audience: " + a.audience + "\nLength: " + a.length +
+        "\nDepth: " + a.depth + "\nTheme: " + a.theme +
+        "\nPDF: " + pdfName;
+      boxEl.style.display = "block";
+    }
+    function samSay(text) {
+      const el = document.getElementById("o-sambub");
+      el.innerHTML = "";
+      const who = document.createElement("b");
+      who.textContent = repName;
+      const line = document.createElement("span");
+      line.textContent = text;
+      el.append(who, line);
+      return el;
+    }
+    document.querySelectorAll("#o-modes [data-m]").forEach((b) => {
+      b.onclick = () => {
+        mode = b.dataset.m;
+        document.querySelectorAll("#o-modes [data-m]").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        const free = mode === "free";
+        document.getElementById("o-q").style.display = free ? "none" : "block";
+        document.getElementById("o-qh").style.display = free ? "none" : "block";
+        document.getElementById("o-row").style.display = free ? "flex" : "none";
+        document.getElementById("o-modehint").textContent = free
+          ? "Free chat: just talk with Sam. To produce a video, fill the guided form."
+          : "Guided: fill the answers, choose the PDF, approve, press START PRODUCTION.";
+        document.getElementById("start").style.display = free ? "none" : "";
+        addMsg("sys", free ? "Free-chat mode." : "Guided mode.");
+        checkReady();
+      };
+    });
+    ["o-audience", "o-length", "o-depth", "o-theme"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", checkReady);
+    });
+    document.querySelector('#o-modes [data-m="free"]').click(); // free chat first
+    function addMsg(cls, text) {
+      if (cls === "them") {
+        lastSam = text;
+        return samSay(text);
+      }
+      if (cls === "typing") {
+        return samSay(text);
+      }
+      if (cls === "me") {
+        const wrap = document.getElementById("o-mebub");
+        const d = document.createElement("div");
+        d.className = "bub bub-me";
+        d.textContent = text;
+        wrap.appendChild(d);
+        while (wrap.children.length > 2) wrap.firstChild.remove();
+        return d;
+      }
+      const el = document.getElementById("o-sysbub");
+      el.style.display = "block";
+      el.textContent = text;
+      clearTimeout(el.dataset.t || 0);
+      el.dataset.t = setTimeout(() => { el.style.display = "none"; }, 5000);
+      return el;
+    }
+    function fail(e) {
+      const hint = /failed to fetch/i.test((e && e.message) || "")
+        ? " — start the server (start_server.bat) and open its http:// URL, not this file directly."
+        : "";
+      msg.textContent = "Error: " + e.message + hint;
+    }
+    function member(id) { return roster.find((x) => x.id === id); }
+    function mountReception(waited) {
+      const el = document.getElementById("o-scene");
+      const m = member(whoId);
+      if (window.CrewViewer3D && m) {
+        try {
+          window.CrewViewer3D.showReception(
+            el, m.appearance, document.getElementById("o-sambub"));
+        } catch (e) {
+          el.querySelector(".vload").textContent = "3D ERROR";
+        }
+        return;
+      }
+      if ((waited || 0) > 5000) {
+        el.querySelector(".vload").textContent = "3D UNAVAILABLE";
+        return;
+      }
+      setTimeout(() => mountReception((waited || 0) + 120), 120);
+    }
+    async function newOrder() {
+      statusEl.textContent = "Starting…";
+      msg.textContent = "";
+      document.getElementById("o-sambub").textContent = "";
+      document.getElementById("o-mebub").innerHTML = "";
+      document.getElementById("o-sysbub").style.display = "none";
+      approved = false;
+      approvedSnap = "";
+      document.getElementById("start").disabled = true;
+      document.getElementById("o-approve").style.display = "none";
+      ["o-audience", "o-length", "o-depth", "o-theme"].forEach((id) => {
+        document.getElementById(id).value = "";
+      });
+      document.getElementById("o-pdf").value = "";
+      document.getElementById("o-pdfname").textContent = "No file chosen";
+      serverPdf = false;
+      history.length = 0;
+      document.getElementById("o-result").style.display = "none";
+      try {
+        roster = await api.get("api/crew");
+        if (!roster.length) throw new Error("no crew yet");
+        const sales = roster.find((c) => (c.tools || []).indexOf("write_request") >= 0);
+        whoId = sales ? sales.id : roster[0].id;
+        const stored = sessionStorage.getItem("shoestring_order");
+        if (stored) {
+          try {
+            const o = await api.get("api/orders/" + encodeURIComponent(stored));
+            if (o.status === "consulting" && member(o.assignee)) {
+              oid = o.id;
+              whoId = o.assignee;
+              if (o.files && o.files.parsed) {
+                serverPdf = true;
+                document.getElementById("o-pdfname").textContent = "(PDF already attached)";
+              }
+              (o.transcript || []).forEach((t) => {
+                history.push({ role: "user", content: t.user });
+                if (t.reply) history.push({ role: "assistant", content: t.reply });
+              });
+              const m = member(whoId);
+              repName = String(m.name || whoId).toUpperCase();
+              statusEl.textContent = "Order " + oid + " — consulting with " + m.name + ".";
+              mountReception(0);
+              const turns = o.transcript || [];
+              turns.slice(-2).forEach((t) => addMsg("me", t.user));
+              if (turns.length && turns[turns.length - 1].reply) {
+                addMsg("them", turns[turns.length - 1].reply);
+              } else {
+                addMsg("them", "Hi! I'm " + m.name + ". I'll walk you through 5 quick questions, then write the production request for our crew.");
+              }
+              addMsg("sys", "Resumed " + oid + " (" + turns.length + " turns).");
+              msg.textContent = "Resumed " + oid + " (" + turns.length + " turns).";
+              return;
+            }
+          } catch (e) { /* fall through to a fresh order */ }
+        }
+        const r = await api.send("POST", "api/orders", { assignee: whoId });
+        oid = r.id;
+        sessionStorage.setItem("shoestring_order", oid);
+        const m = member(whoId);
+        repName = String(m.name || whoId).toUpperCase();
+        statusEl.textContent = "Order " + oid + " — consulting with " + m.name + ".";
+        mountReception(0);
+        addMsg("them", "Hi! I'm " + m.name + ". I'll walk you through 5 quick questions, then write the production request for our crew.");
+      } catch (e) {
+        statusEl.textContent = "Order unavailable.";
+        fail(e);
+      }
+    }
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text || !oid || form.dataset.busy) return;
+      form.dataset.busy = "1";
+      const btn = form.querySelector("button");
+      btn.disabled = true;
+      addMsg("me", text);
+      history.push({ role: "user", content: text });
+      input.value = "";
+      addMsg("typing", "…");
+      try {
+        const r = await api.send("POST", "api/orders/" + oid + "/chat", { messages: history, mode: mode });
+        addMsg("them", r.reply);
+        history.push({ role: "assistant", content: r.reply });
+      } catch (err) {
+        addMsg("them", lastSam);
+        addMsg("sys", "Error: " + err.message);
+      } finally {
+        delete form.dataset.busy;
+        btn.disabled = false;
+        input.focus();
+      }
+    });
+    document.getElementById("o-pdf").onchange = (e) => {
+      document.getElementById("o-pdfname").textContent =
+        e.target.files.length ? e.target.files[0].name : "No file chosen";
+      checkReady();
+    };
+    document.getElementById("o-ok").onclick = async () => {
+      try {
+        if (!oid) throw new Error("no order yet");
+        await api.send("POST", "api/orders/" + oid + "/approve", { approved: true });
+        approved = true;
+        const a = readAnswers();
+        const pdf = document.getElementById("o-pdf");
+        approvedSnap = JSON.stringify(a) + "|" + (pdf.files.length ? pdf.files[0].name
+          : (serverPdf ? "(PDF already attached in chat)" : ""));
+        document.getElementById("o-approve").style.display = "none";
+        document.getElementById("start").disabled = false;
+        msg.textContent = "Approved — press START PRODUCTION.";
+      } catch (e) { fail(e); }
+    };
+    document.getElementById("o-chatpdf").onchange = async (e) => {
+      try {
+        if (!e.target.files.length) return;
+        if (!oid) throw new Error("no order yet");
+        const name = e.target.files[0].name;
+        addMsg("sys", "Attaching " + name + "…");
+        const fd = new FormData();
+        fd.append("file", e.target.files[0]);
+        const r = await api.send("POST", "api/orders/" + oid + "/upload", null, fd);
+        addMsg("sys", "Attached " + name + ": parsed " + r.pages +
+          " pages, " + r.chars + " chars, " + r.images + " images.");
+        document.getElementById("o-pdfname").textContent = name + " (attached in chat)";
+        msg.textContent = "PDF attached through chat: " + name + ".";
+        serverPdf = true;
+        checkReady();
+      } catch (err) {
+        addMsg("sys", "Attach failed: " + err.message);
+      } finally {
+        e.target.value = "";
+      }
+    };
+    document.getElementById("start").onclick = async () => {
+      const btn = document.getElementById("start");
+      try {
+        if (!oid) throw new Error("no order yet");
+        btn.disabled = true;
+        const answers = readAnswers();
+        if (!answers.audience || !answers.length || !answers.depth || !answers.theme) {
+          btn.disabled = false;
+          msg.textContent = "Fill all 4 answers first.";
+          return;
+        }
+        msg.textContent = "Saving answers…";
+        await api.send("PUT", "api/orders/" + oid + "/intake", { answers: answers });
+        const inp = document.getElementById("o-pdf");
+        if (inp.files.length) {
+          msg.textContent = "Parsing PDF…";
+          const fd = new FormData();
+          fd.append("file", inp.files[0]);
+          await api.send("POST", "api/orders/" + oid + "/upload", null, fd);
+          serverPdf = true;
+        }
+        msg.textContent = "Sales is writing the production request… (may take a minute)";
+        const r = await api.send("POST", "api/orders/" + oid + "/start", {});
+        btn.disabled = false;
+        msg.textContent = "Order " + oid + " in production: " + r.files.join(", ");
+        const pre = document.getElementById("o-result");
+        pre.style.display = "block";
+        pre.textContent = "=== intake.json ===\n" + JSON.stringify(r.intake, null, 2) +
+          "\n\n=== request.md ===\n" + r.request_md;
+        statusEl.textContent = "Order " + oid + " — in production.";
+        document.getElementById("queued").textContent = "Production started.";
+        sessionStorage.removeItem("shoestring_order");
+      } catch (e) {
+        btn.disabled = false;
+        fail(e);
+      }
+    };
+    newOrder().catch(fail);
+  })();
+
+  /* PC fleet registry. */
+  (function pcs() {
+    const rows = document.getElementById("pc-rows");
+    const errline = document.getElementById("pcerr");
+    if (!rows) return;
+    function fail(e) { errline.textContent = "Error: " + e.message; }
+    async function load() {
+      try {
+        errline.textContent = "";
+        const r = await api.get("api/pcs");
+        rows.innerHTML = "";
+        (r.pcs || []).forEach((p) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = "<td>" + esc(p.name) + "</td><td>" + esc((p.materials || []).join(", ") || "—") +
+            "</td><td>" + esc(p.owner || "—") + "</td><td>" + esc(p.capability || "—") +
+            "</td><td>" + esc(p.tool || "—") + "</td><td>" + esc(p.state || "—") + "</td>";
+          const td = document.createElement("td");
+          const b = document.createElement("button");
+          b.textContent = "delete";
+          b.setAttribute("data-del", p.id);
+          b.onclick = async () => {
+            try {
+              if (!confirm("Remove PC " + p.id + " from the registry?")) return;
+              await api.send("DELETE", "api/pcs/" + encodeURIComponent(p.id));
+              load().catch(fail);
+            } catch (e) { fail(e); }
+          };
+          td.appendChild(b);
+          tr.appendChild(td);
+          rows.appendChild(tr);
+        });
+        if (!(r.pcs || []).length) rows.innerHTML = '<tr><td colspan="7">No PCs registered.</td></tr>';
+      } catch (e) {
+        rows.innerHTML = '<tr><td colspan="7">Registry unavailable — is the server running?</td></tr>';
+      }
+    }
+    document.getElementById("p-add").onclick = async () => {
+      try {
+        errline.textContent = "";
+        const mats = document.getElementById("p-materials").value.split(",")
+          .map((s) => s.trim()).filter((s) => s);
+        const r = await api.send("POST", "api/pcs", {
+          name: document.getElementById("p-name").value.trim(),
+          materials: mats,
+          owner: document.getElementById("p-owner").value.trim(),
+          capability: document.getElementById("p-cap").value.trim(),
+          tool: document.getElementById("p-tool").value.trim(),
+        });
+        errline.textContent = "Added " + r.id + ".";
+        document.getElementById("p-name").value = "";
+        document.getElementById("p-materials").value = "";
+        load().catch(fail);
+      } catch (e) { fail(e); }
+    };
+    load().catch(fail);
+  })();
 </script>
 <script type="module">
 // Crew 3D viewer (D45): employee detail shows the Mini character from
@@ -677,15 +1520,18 @@ const VARIANTS = [
   "character-male-f.glb", "character-female-f.glb",
 ];
 const CHAR_DIR = "vendor/kenney/mini-characters/Models/GLB format/";
-let live = null;
+const FURN_DIR = "vendor/kenney/furniture-kit/Models/GLTF format/";
+// Two independent viewer slots: the Crew detail viewer (main) and the
+// Order reception corner (recep) can live side by side.
+const slots = { main: { cur: null }, recep: { cur: null } };
 
-window.CrewViewer3D = {
-  show(box, appearance) {
-    if (live) {
-      cancelAnimationFrame(live.raf);
-      live.ro.disconnect();
-      try { live.renderer.dispose(); } catch (e) { /* already gone */ }
-      live = null;
+function mountViewer(which, box, appearance) {
+    const vs = slots[which];
+    if (vs.cur) {
+      cancelAnimationFrame(vs.cur.raf);
+      vs.cur.ro.disconnect();
+      try { vs.cur.renderer.dispose(); } catch (e) { /* already gone */ }
+      vs.cur = null;
     }
     const fail = (reason) => {
       if (!box.isConnected) return;
@@ -790,11 +1636,342 @@ window.CrewViewer3D = {
       if (slot.mixer) slot.mixer.update(dt);
       controls.update();
       renderer.render(scene, camera);
-      live.raf = requestAnimationFrame(tick);
+      vs.cur.raf = requestAnimationFrame(tick);
     };
-    live = { raf: requestAnimationFrame(tick), renderer, ro };
-  },
+    vs.cur = { raf: requestAnimationFrame(tick), renderer, ro };
+}
+
+window.CrewViewer3D = {
+  show(box, appearance) { mountViewer("main", box, appearance); },
+  showReception(box, appearance, bub) { mountReception(box, appearance, bub); },
 };
+
+// Reception corner for Order free-chat: sofa, coffee table, rug, lamp,
+// plants, a visitor chair, and the rep standing by. The rep's latest
+// reply floats as a speech bubble projected from the head.
+const RECEP_FURN = [
+  { f: "rugRound.glb", x: 2.6, y: 0.02, z: 2.15, skip: true },
+  { f: "tableCoffee.glb", x: 2.6, z: 2.15 },
+  { f: "loungeSofa.glb", x: 2.6, z: 1.0 },
+  { f: "loungeChair.glb", x: 1.2, z: 2.4, ry: 1.6 },
+  { f: "laptop.glb", onTop: "tableCoffee.glb", dx: -0.25, dz: 0.05, ry: 0.3 },
+  { f: "sideTable.glb", x: 4.4, z: 1.15 },
+  { f: "plantSmall1.glb", onTop: "sideTable.glb" },
+  { f: "pottedPlant.glb", x: 0.5, z: 0.3 },
+  { f: "pottedPlant.glb", x: 4.7, z: 0.35 },
+  { f: "lampRoundFloor.glb", x: 0.6, z: 3.42 },
+  { f: "bookcaseOpenLow.glb", x: 0.25, z: 1.3, ry: Math.PI / 2 },
+  { f: "books.glb", onTop: "bookcaseOpenLow.glb" },
+];
+const RECEP_SAM = { x: 1.2, z: 2.4, ry: 1.6, sitY: 0.15 };
+const RECEP_HEAD_Y = 1.0;
+const RECEP_SCALE = 1.9;
+
+function mountReception(box, appearance, bub) {
+  const vs = slots.recep;
+  if (vs.cur) {
+    cancelAnimationFrame(vs.cur.raf);
+    vs.cur.ro.disconnect();
+    if (vs.cur.camClear) vs.cur.camClear();
+    try { vs.cur.renderer.dispose(); } catch (e) { /* already gone */ }
+    vs.cur = null;
+  }
+  box.querySelectorAll("canvas").forEach((e) => e.remove());
+  box.parentElement.querySelectorAll(":scope > .vhint-below").forEach((e) => e.remove());
+  const vload = box.querySelector(".vload");
+  if (vload) { vload.style.display = "flex"; vload.textContent = "LOADING 3D…"; }
+  const fail = (reason) => {
+    if (vload) vload.textContent = "3D FAILED TO LOAD" + (reason ? ": " + reason : "");
+  };
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+  } catch (e) { fail("webgl"); return; }
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(box.clientWidth, box.clientHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x8fc3ec);
+  const camera = new THREE.PerspectiveCamera(
+    38, box.clientWidth / box.clientHeight, 0.1, 50);
+  // Home view: computed from Sam's seat + facing so layout edits flow through.
+  const samFwd = new THREE.Vector3(
+    Math.sin(RECEP_SAM.ry || 0), 0, Math.cos(RECEP_SAM.ry || 0));
+  const samSide = new THREE.Vector3(-samFwd.z, 0, samFwd.x);
+  const homeTgt = new THREE.Vector3(RECEP_SAM.x, 0.7, RECEP_SAM.z);
+  const homePos = new THREE.Vector3(RECEP_SAM.x, 0, RECEP_SAM.z)
+    .addScaledVector(samFwd, 2.9).addScaledVector(samSide, 0.55);
+  homePos.y = 1.7;
+  camera.position.copy(homePos);
+  scene.add(new THREE.HemisphereLight("#fff4e0", "#3a3040", 1.6));
+  const key = new THREE.DirectionalLight("#ffe2b8", 2.2);
+  key.position.set(2.6, 2.7, 0.5);
+  key.target.position.set(2.6, 0, 3.2);
+  scene.add(key.target);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.left = -5;
+  key.shadow.camera.right = 5;
+  key.shadow.camera.top = 5;
+  key.shadow.camera.bottom = -5;
+  key.shadow.camera.near = 0.5;
+  key.shadow.camera.far = 14;
+  key.shadow.bias = -0.0005;
+  scene.add(key);
+  const putBox = (w, h, d, mat, x, y, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    scene.add(m);
+    return m;
+  };
+  // Room shell: 5m (x) x 4m (z); back wall z=0, left wall x=0.
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(5, 4),
+    new THREE.MeshStandardMaterial({ color: 0xc9a06b, roughness: 0.85 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(2.5, 0, 2);
+  floor.receiveShadow = true;
+  scene.add(floor);
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xe9e2d4, roughness: 0.95 });
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(5, 2.4), wallMat);
+  backWall.position.set(2.5, 1.2, 0);
+  backWall.receiveShadow = true;
+  scene.add(backWall);
+  const sideWall = new THREE.Mesh(new THREE.PlaneGeometry(4, 2.4), wallMat);
+  sideWall.rotation.y = Math.PI / 2;
+  sideWall.position.set(0, 1.2, 2);
+  sideWall.receiveShadow = true;
+  scene.add(sideWall);
+  const skirtMat = new THREE.MeshStandardMaterial({ color: 0x6b5b45, roughness: 0.9 });
+  putBox(5, 0.12, 0.04, skirtMat, 2.5, 0.06, 0.02);
+  putBox(0.04, 0.12, 4, skirtMat, 0.02, 0.06, 2);
+  // Window on the back wall (procedural): frame, emissive glass, bars, curtains.
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0xf5f2ea, roughness: 0.7 });
+  putBox(1.7, 1.3, 0.08, frameMat, 2.6, 1.55, 0.04);
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.1),
+    new THREE.MeshStandardMaterial({ color: 0xbfe3ff, emissive: 0x9fd0ff,
+      emissiveIntensity: 0.7, roughness: 0.4 }));
+  glass.position.set(2.6, 1.55, 0.09);
+  scene.add(glass);
+  putBox(0.05, 1.1, 0.02, frameMat, 2.6, 1.55, 0.10);
+  putBox(1.5, 0.05, 0.02, frameMat, 2.6, 1.55, 0.10);
+  putBox(1.8, 0.06, 0.12, frameMat, 2.6, 0.97, 0.05);
+  const curtainMat = new THREE.MeshStandardMaterial({ color: 0xd9b48f, roughness: 0.95 });
+  putBox(0.28, 1.7, 0.08, curtainMat, 1.61, 1.55, 0.07);
+  putBox(0.28, 1.7, 0.08, curtainMat, 3.59, 1.55, 0.07);
+  // Shoestring Studios sign on the back wall (canvas texture, office style).
+  const signC = document.createElement("canvas");
+  signC.width = 512;
+  signC.height = 224;
+  const sg = signC.getContext("2d");
+  sg.fillStyle = "#f3ead6";
+  sg.fillRect(0, 0, 512, 224);
+  sg.strokeStyle = "#4a3b2a";
+  sg.lineWidth = 10;
+  sg.strokeRect(12, 12, 488, 200);
+  sg.fillStyle = "#3a3128";
+  sg.textAlign = "center";
+  sg.font = "700 62px Georgia, serif";
+  sg.fillText("SHOESTRING", 256, 100);
+  sg.font = "700 42px Georgia, serif";
+  sg.fillText("STUDIOS", 256, 168);
+  const signTex = new THREE.CanvasTexture(signC);
+  signTex.colorSpace = THREE.SRGBColorSpace;
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.37),
+    new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.9 }));
+  sign.position.set(4.2, 1.7, 0.03);
+  scene.add(sign);
+  const signFrameMat = new THREE.MeshStandardMaterial({ color: 0x4a3b2a, roughness: 0.8 });
+  putBox(0.95, 0.05, 0.04, signFrameMat, 4.2, 1.91, 0.03);
+  putBox(0.95, 0.05, 0.04, signFrameMat, 4.2, 1.49, 0.03);
+  putBox(0.05, 0.47, 0.04, signFrameMat, 3.75, 1.7, 0.03);
+  putBox(0.05, 0.47, 0.04, signFrameMat, 4.65, 1.7, 0.03);
+  // Warm glow for the floor lamp by the armchair (soft, small radius).
+  const lampGlow = new THREE.PointLight(0xffc98a, 2, 3, 2);
+  lampGlow.position.set(0.6, 1.45, 3.42);
+  scene.add(lampGlow);
+  const loader = new GLTFLoader();
+  const recepLoaded = {};
+  const recepWaiting = [];
+  const recepPlaceOnTop = (it, g) => {
+    const base = recepLoaded[it.onTop];
+    if (!base || !box.isConnected) return false;
+    const bb = new THREE.Box3().setFromObject(base);
+    g.position.set(base.position.x + (it.dx || 0), bb.max.y + 0.005,
+      base.position.z + (it.dz || 0));
+    return true;
+  };
+  const recepTableProps = (cx, topY, cz) => {
+    // Two cups + a small paper stack on the coffee table.
+    const cupMatA = new THREE.MeshStandardMaterial({ color: 0xf2ede2, roughness: 0.6 });
+    const cupMatB = new THREE.MeshStandardMaterial({ color: 0xb65f2e, roughness: 0.6 });
+    [[cupMatA, 0.16, -0.09], [cupMatB, 0.03, 0.13]].forEach(([mat, dx, dz]) => {
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.09, 20), mat);
+      cup.position.set(cx + dx, topY + 0.045, cz + dz);
+      cup.castShadow = true;
+      cup.receiveShadow = true;
+      scene.add(cup);
+    });
+    const paperMat = new THREE.MeshStandardMaterial({ color: 0xfbfaf5, roughness: 0.9 });
+    const papers = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.012, 0.28), paperMat);
+    papers.position.set(cx + 0.19, topY + 0.006, cz + 0.06);
+    papers.rotation.y = 0.25;
+    papers.castShadow = true;
+    papers.receiveShadow = true;
+    scene.add(papers);
+  };
+  for (const it of RECEP_FURN) {
+    loader.load(encodeURI(FURN_DIR + it.f), (gltf) => {
+      if (!box.isConnected) return;
+      const m = gltf.scene;
+      // Same recenter rule as the office: corner origin to center/base.
+      const fbox = new THREE.Box3().setFromObject(m);
+      const ctr = fbox.getCenter(new THREE.Vector3());
+      m.position.set(-ctr.x, -fbox.min.y, -ctr.z);
+      const g = new THREE.Group();
+      g.add(m);
+      g.scale.setScalar(RECEP_SCALE);
+      if (it.ry) g.rotation.y = it.ry;
+      if (it.onTop) {
+        g.visible = false;
+        if (recepPlaceOnTop(it, g)) g.visible = true;
+        else recepWaiting.push([it, g]);
+      } else {
+        g.position.set(it.x, it.y || 0, it.z);
+        recepLoaded[it.f] = g;
+        for (let i = recepWaiting.length - 1; i >= 0; i--) {
+          if (recepPlaceOnTop(recepWaiting[i][0], recepWaiting[i][1])) {
+            recepWaiting[i][1].visible = true;
+            recepWaiting.splice(i, 1);
+          }
+        }
+        if (it.f === "tableCoffee.glb") {
+          const bb = new THREE.Box3().setFromObject(g);
+          recepTableProps(g.position.x, bb.max.y, g.position.z);
+        }
+      }
+      g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      scene.add(g);
+    }, undefined, () => { /* one missing prop skips, room goes on */ });
+  }
+  const ap = appearance || {};
+  const variant = VARIANTS.includes(ap.variant) ? ap.variant : VARIANTS[0];
+  const tint = /^#[0-9a-f]{6}$/i.test(ap.tint || "") ? ap.tint.toLowerCase() : "#ffffff";
+  const slot = { mixer: null };
+  loader.load(encodeURI(CHAR_DIR + variant), (gltf) => {
+    if (!box.isConnected) return;
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      o.castShadow = true;
+      if (tint !== "#ffffff") { o.material = o.material.clone(); o.material.color.set(tint); }
+    });
+    const cbox = new THREE.Box3().setFromObject(gltf.scene);
+    const h = cbox.max.y - cbox.min.y;
+    gltf.scene.scale.setScalar(1.15 / h);
+    gltf.scene.position.set(RECEP_SAM.x, RECEP_SAM.sitY || 0, RECEP_SAM.z);
+    gltf.scene.rotation.y = RECEP_SAM.ry || 0;
+    scene.add(gltf.scene);
+    const mixer = new THREE.AnimationMixer(gltf.scene);
+    const find = (n) => THREE.AnimationClip.findByName(gltf.animations, n);
+    const seatClip = find("sit") || find("idle") || gltf.animations[0];
+    if (seatClip) {
+      const a = mixer.clipAction(seatClip);
+      a.reset();
+      a.setEffectiveWeight(1);
+      a.play();
+    }
+    slot.mixer = mixer;
+  }, undefined, () => { if (box.isConnected) fail("model"); });
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.copy(homeTgt);
+  controls.enableDamping = true;
+  controls.enablePan = false;
+  controls.minDistance = 2.5;
+  controls.maxDistance = 8;
+  controls.minPolarAngle = 0.7;
+  controls.maxPolarAngle = 1.5;
+  controls.minAzimuthAngle = 0.15;
+  controls.maxAzimuthAngle = 1.55;
+  controls.autoRotate = false;
+  controls.update();
+  // Auto return: 1.5s after the user lets go, ease back home over ~1s.
+  // Any new input cancels immediately.
+  const camState = { idle: 0, back: null };
+  let camWheelT = 0;
+  const camCancel = () => {
+    if (camState.idle) { clearTimeout(camState.idle); camState.idle = 0; }
+    camState.back = null;
+  };
+  const camSchedule = () => {
+    camCancel();
+    camState.idle = setTimeout(() => {
+      camState.idle = 0;
+      if (!box.isConnected) return;
+      camState.back = { t: 0, p0: camera.position.clone(),
+        t0: controls.target.clone() };
+    }, 1500);
+  };
+  const camClear = () => {
+    camCancel();
+    if (camWheelT) { clearTimeout(camWheelT); camWheelT = 0; }
+  };
+  controls.addEventListener("start", camCancel);
+  controls.addEventListener("end", camSchedule);
+  renderer.domElement.addEventListener("wheel", () => {
+    camCancel();
+    if (camWheelT) clearTimeout(camWheelT);
+    camWheelT = setTimeout(() => { camWheelT = 0; camSchedule(); }, 150);
+  }, { passive: true });
+  renderer.domElement.addEventListener("pointerdown", camCancel);
+  box.appendChild(renderer.domElement);
+  const hint = document.createElement("div");
+  hint.className = "vhint-below";
+  hint.textContent = "Drag to spin";
+  box.parentElement.insertBefore(hint, box.nextSibling);
+  if (vload) vload.style.display = "none";
+  const timer = new THREE.Timer();
+  timer.connect(document);
+  const ro = new ResizeObserver(() => {
+    camera.aspect = box.clientWidth / box.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(box.clientWidth, box.clientHeight);
+  });
+  ro.observe(box);
+  const hv = new THREE.Vector3();
+  const tick = () => {
+    if (!box.isConnected) return;
+    timer.update();
+    const dt = Math.min(timer.getDelta(), 0.05);
+    if (slot.mixer) slot.mixer.update(dt);
+    if (camState.back && !camState.idle) {
+      const b = camState.back;
+      b.t += dt;
+      const k = Math.min(1, b.t / 1.0);
+      const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      camera.position.lerpVectors(b.p0, homePos, e);
+      controls.target.lerpVectors(b.t0, homeTgt, e);
+      if (k >= 1) camState.back = null;
+    }
+    controls.update();
+    renderer.render(scene, camera);
+    if (bub && bub.isConnected) {
+      hv.set(RECEP_SAM.x, RECEP_HEAD_Y, RECEP_SAM.z).project(camera);
+      const w = box.clientWidth, h = box.clientHeight;
+      if (hv.z < 1 && bub.textContent) {
+        bub.style.visibility = "visible";
+        bub.style.left = Math.min(Math.max((hv.x * 0.5 + 0.5) * w, 90), w - 90) + "px";
+        bub.style.top = Math.max((-hv.y * 0.5 + 0.5) * h, 90) + "px";
+      } else {
+        bub.style.visibility = "hidden";
+      }
+    }
+    vs.cur.raf = requestAnimationFrame(tick);
+  };
+  vs.cur = { raf: requestAnimationFrame(tick), renderer, ro, camClear };
+}
 </script>
 </body>
 </html>

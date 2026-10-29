@@ -14,7 +14,7 @@ sys.path.insert(0, ROOT)
 
 ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 ALLOW_MODELS = ("muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1",
-                "muse-wonder-1.0")
+                "muse-wonder-1.0", "meta-models/muse-spark-open-1026")
 ALLOW_PREFIX = ("muse-glimmer-", "muse-spark-open-")
 AGENT_REQUIRED = ("frame_version", "id", "name", "title", "model", "tools",
                   "bounds", "io", "done")

@@ -53,7 +53,7 @@ Notes:
 | title | Documentary PD, showrunner |
 | persona | Veteran showrunner. Decisive, allergic to jargon, protects the viewer |
 | duties | MD + brief -> structure map JSON (no storyboard) |
-| model | muse-spark-1.3 |
+| model | meta-models/muse-spark-open-1026 (Baseten; was muse-spark-1.3) |
 | graph | handbook/ story-design expertise (+ per-run paper index) |
 | tools | read_md_section, write_structure |
 | apis | none direct (all external calls wrapped as tools) |

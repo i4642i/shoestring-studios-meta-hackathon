@@ -10,6 +10,8 @@ import importlib.util
 import json
 import os
 import re
+import time
+import xml.etree.ElementTree as ET
 
 STATUS_NOT_INDEXED = "not_indexed"
 STATUS_INDEXED = "indexed"
@@ -91,6 +93,133 @@ def summarize(agent_dir):
                 "note": "lightrag backend: answers via query only"}
     return {"entities": [], "relations": [], "communities": [],
             "note": "no index yet"}
+
+
+def _trim(s, n=600):
+    s = (s or "").strip().replace("\n", " ")
+    return s if len(s) <= n else s[:n] + "…"
+
+
+def map_lightrag(agent_dir):
+    """Full LightRAG knowledge map for the Crew tab. Stdlib only.
+
+    Reads experiments/lightrag/storage/<eid>/ directly (no lightrag
+    import, so the main server can serve it). Returns None when no
+    LightRAG storage exists for this employee.
+    """
+    eid = os.path.basename(os.path.normpath(agent_dir))
+    here = os.path.dirname(os.path.abspath(__file__))
+    store = os.path.normpath(os.path.join(
+        here, "..", "..", "experiments", "lightrag", "storage", eid))
+    gml = os.path.join(store, "graph_chunk_entity_relation.graphml")
+    if not os.path.isfile(gml):
+        return None
+    ns = "{http://graphml.graphdrawing.org/xmlns}"
+    try:
+        root = ET.parse(gml).getroot()
+    except ET.ParseError:
+        return None
+    key_of = {}
+    for k in root.findall(ns + "key"):
+        key_of.setdefault(k.get("attr.name"), k.get("id"))
+    g = root.find(ns + "graph")
+    if g is None:
+        return None
+
+    def data(el):
+        out = {}
+        for d in el.findall(ns + "data"):
+            out[d.get("key")] = (d.text or "").strip()
+        return out
+
+    entities = []
+    for n in g.findall(ns + "node"):
+        dd = data(n)
+        name = dd.get(key_of.get("entity_id", ""), "") or n.get("id", "")
+        entities.append({
+            "name": name,
+            "type": dd.get(key_of.get("entity_type", ""), ""),
+            "description": _trim(dd.get(key_of.get("description", ""), "")),
+            "source": dd.get(key_of.get("source_id", ""), ""),
+        })
+    relations = []
+    for e in g.findall(ns + "edge"):
+        dd = data(e)
+        try:
+            weight = float(dd.get(key_of.get("weight", ""), "1") or 1)
+        except ValueError:
+            weight = 1.0
+        relations.append({
+            "source": e.get("source", ""),
+            "target": e.get("target", ""),
+            "weight": weight,
+            "description": _trim(dd.get(key_of.get("description", ""), "")),
+            "keywords": dd.get(key_of.get("keywords", ""), ""),
+            "source_chunk": dd.get(key_of.get("source_id", ""), ""),
+        })
+    names = {e["name"] for e in entities}
+    relations = [r for r in relations
+                 if r["source"] in names and r["target"] in names]
+    degree = {e["name"]: 0 for e in entities}
+    for r in relations:
+        degree[r["source"]] += 1
+        degree[r["target"]] += 1
+    for e in entities:
+        e["degree"] = degree[e["name"]]
+    entities.sort(key=lambda d: (-d["degree"], d["name"]))
+    relations.sort(key=lambda d: (-d["weight"], d["source"], d["target"]))
+
+    built = {"files": [], "index_seconds": 0.0}
+    marker = os.path.join(agent_dir, "graph_index", "lightrag.json")
+    marked_llm = {}
+    if os.path.isfile(marker):
+        try:
+            with open(marker, encoding="utf-8") as f:
+                m = json.load(f)
+            built["files"] = m.get("files", [])
+            built["index_seconds"] = m.get("seconds", 0.0)
+            marked_llm = {k: m[k] for k in ("llm_model", "llm_base_url")
+                          if m.get(k)}
+        except ValueError:
+            pass
+    cfg_path = os.path.normpath(os.path.join(
+        here, "..", "..", "experiments", "lightrag", "config.json"))
+    if os.path.isfile(cfg_path):
+        try:
+            with open(cfg_path, encoding="utf-8") as f:
+                cfg = json.load(f)
+            # Marker wins for the LLM: it records what actually built
+            # this index, while the config may have moved on.
+            built["llm_model"] = marked_llm.get("llm_model",
+                                                cfg.get("llm_model", ""))
+            built["llm_base_url"] = marked_llm.get("llm_base_url",
+                                                  cfg.get("llm_base_url", ""))
+            built["embedding_model"] = cfg.get("embedding_model", "")
+            built["embedding_dim"] = cfg.get("embedding_dim", 0)
+            built["mode"] = cfg.get("mode", "")
+        except ValueError:
+            pass
+    calls, prompt_chars, reply_chars, llm_seconds = 0, 0, 0, 0.0
+    log_path = os.path.join(store, "llm_log.jsonl")
+    if os.path.isfile(log_path):
+        with open(log_path, encoding="utf-8") as f:
+            for ln in f.read().splitlines():
+                try:
+                    rec = json.loads(ln)
+                except ValueError:
+                    continue
+                calls += 1
+                prompt_chars += rec.get("prompt_chars", 0) or 0
+                reply_chars += rec.get("reply_chars", 0) or 0
+                llm_seconds += rec.get("seconds", 0.0) or 0.0
+    built["llm_calls"] = calls
+    built["prompt_chars"] = prompt_chars
+    built["reply_chars"] = reply_chars
+    built["llm_seconds"] = round(llm_seconds, 1)
+    built["indexed_at"] = time.strftime(
+        "%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(gml)))
+    return {"available": True, "built": built, "entities": entities,
+            "relations": relations}
 
 
 def _chunks_of(text, fname):

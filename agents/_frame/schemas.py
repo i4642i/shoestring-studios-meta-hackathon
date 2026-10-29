@@ -4,6 +4,7 @@ import re
 
 DRAFT_SCHEMA_V1 = "storyboard-draft/1"
 STRUCTURE_SCHEMA_V1 = "structure-map/1"
+REQUEST_SCHEMA_V1 = "production-request/1"
 
 # A "numbered section" head: digits.digits, exactly one dot ("1.1", "10.3").
 # "1.2.1" must NOT match: the char after the second number may not be . or digit.
@@ -220,6 +221,74 @@ def validate_structure(obj, input_md_path):
     elif "intent" in obj:
         errors.append("intent must be an object")
     return errors
+
+
+REQUIRED_REQUEST_TOP = ("order_id", "client_answers", "source_summary",
+                          "production_notes", "open_questions")
+REQUIRED_ANSWERS = ("audience", "length", "depth", "theme", "source")
+
+
+def validate_request(obj):
+    """Return a list of error strings (empty == valid)."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["request must be an object"]
+    for k in REQUIRED_REQUEST_TOP:
+        if k not in obj:
+            errors.append("missing: %s" % k)
+    if "order_id" in obj and (
+            not isinstance(obj["order_id"], str)
+            or not obj["order_id"].strip()):
+        errors.append("order_id must be a non-empty string")
+    ans = obj.get("client_answers")
+    if isinstance(ans, dict):
+        for k in REQUIRED_ANSWERS:
+            if not isinstance(ans.get(k), str) or not ans[k].strip():
+                errors.append("client_answers.%s must be a non-empty string" % k)
+    elif "client_answers" in obj:
+        errors.append("client_answers must be an object")
+    if "source_summary" in obj and (
+            not isinstance(obj["source_summary"], str)
+            or not obj["source_summary"].strip()):
+        errors.append("source_summary must be a non-empty string")
+    notes = obj.get("production_notes")
+    if isinstance(notes, list):
+        if not notes or any(not isinstance(n, str) or not n.strip()
+                             for n in notes):
+            errors.append("production_notes must be a non-empty string list")
+    elif "production_notes" in obj:
+        errors.append("production_notes must be a list")
+    qs = obj.get("open_questions")
+    if isinstance(qs, list):
+        if any(not isinstance(q, str) or not q.strip() for q in qs):
+            errors.append("open_questions must be a string list")
+    elif "open_questions" in obj:
+        errors.append("open_questions must be a list")
+    return errors
+
+
+def render_request_md(obj):
+    """Human-readable production request (request.md) from a valid object."""
+    ans = obj["client_answers"]
+    lines = ["# Video production request — %s" % obj["order_id"], "",
+             "Written by sales for PD/production from the order consultation.",
+             "", "## Client answers (intake)",
+             "",
+             "- Audience: %s" % ans["audience"],
+             "- Target length: %s" % ans["length"],
+             "- Depth: %s" % ans["depth"],
+             "- Theme direction: %s" % ans["theme"],
+             "- Source material: %s" % ans["source"],
+             "", "## Source summary", "",
+             obj["source_summary"], "", "## Production notes", ""]
+    lines += ["- %s" % n for n in obj["production_notes"]]
+    lines += ["", "## Open questions", ""]
+    if obj["open_questions"]:
+        lines += ["- %s" % q for q in obj["open_questions"]]
+    else:
+        lines += ["- None."]
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _parent_part(number, parts):

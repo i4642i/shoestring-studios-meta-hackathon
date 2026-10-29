@@ -28,7 +28,7 @@ def load_config():
         return json.load(f)
 
 
-def load_key():
+def load_key(key_env=None):
     vals = {}
     with open(os.path.join(ROOT, ".env"), encoding="utf-8") as f:
         for line in f:
@@ -36,6 +36,11 @@ def load_key():
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
                 vals[k.strip()] = v.strip().strip("'\"")
+    if key_env:
+        key = vals.get(key_env) or os.environ.get(key_env) or ""
+        if not key:
+            raise RuntimeError("no %s in repo .env" % key_env)
+        return key
     key = vals.get("MODEL_API_KEY") or vals.get("META_API_KEY") or ""
     if not key:
         raise RuntimeError("no key in repo .env")
@@ -56,7 +61,7 @@ def get_rag(eid):
     from lightrag.llm.openai import openai_complete_if_cache
     from lightrag.utils import EmbeddingFunc
     cfg = load_config()
-    key = load_key()
+    key = load_key(cfg.get("llm_key_env"))
     wdir = os.path.join(STORAGE, eid)
     os.makedirs(wdir, exist_ok=True)
 
@@ -111,16 +116,25 @@ def index_agent(agent_dir):
     files = sorted(f for f in os.listdir(hb) if f.endswith(".md"))
     if not files:
         raise RuntimeError("nothing to index: no .md in handbook/")
-    t0 = time.time()
+    # One ainsert for the whole handbook: LightRAG's worker queue binds to
+    # the first event loop, so a second _run(ainsert) dies with
+    # "PriorityQueue is bound to a different event loop".
+    parts = []
     for fn in files:
         with open(os.path.join(hb, fn), encoding="utf-8") as f:
-            _run(rag.ainsert(f.read()))
+            parts.append("# FILE: %s\n\n%s" % (fn, f.read()))
+    t0 = time.time()
+    _run(rag.ainsert("\n\n---\n\n".join(parts)))
     secs = time.time() - t0
     idx = os.path.join(agent_dir, "graph_index")
     os.makedirs(idx, exist_ok=True)
+    cfg = load_config()
     with open(os.path.join(idx, "lightrag.json"), "w", encoding="utf-8") as f:
         json.dump({"backend": "lightrag", "files": files,
-                   "seconds": round(secs, 1)}, f, ensure_ascii=False, indent=1)
+                   "seconds": round(secs, 1),
+                   "llm_model": cfg.get("llm_model", ""),
+                   "llm_base_url": cfg.get("llm_base_url", "")},
+                  f, ensure_ascii=False, indent=1)
     calls = _count_log(eid)
     return {"ok": True, "backend": "lightrag", "files": len(files),
             "seconds": round(secs, 1), "llm_calls": calls}

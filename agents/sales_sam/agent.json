@@ -1,0 +1,27 @@
+{
+  "bounds": {
+    "max_steps": 8
+  },
+  "done": [
+    "all 5 intake answers recorded",
+    "source material summarized from the parsed file",
+    "request.md written for PD"
+  ],
+  "frame_version": 1,
+  "id": "sales_sam",
+  "io": {
+    "inputs": [
+      "brief.json",
+      "input.md"
+    ],
+    "output": "request.md"
+  },
+  "model": "meta-models/muse-spark-open-1026",
+  "name": "Sam",
+  "title": "Sales representative, frontline",
+  "tools": [
+    "query_graph",
+    "read_md_section",
+    "write_request"
+  ]
+}

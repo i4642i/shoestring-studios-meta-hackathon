@@ -19,4 +19,4 @@ Prereqs: Python 3.10+, Git, a Meta Model API key.
 - `agents/` — one folder per AI employee (`_frame/` is the shared runtime).
 - `scripts/server.py` — stdlib backend + crew API; `run_agent.py` — run one employee; `validate_agent.py` — validate one employee folder.
 - `docs/` — planning docs and meeting minutes (English).
-- `requirements.txt` — install list (`pypdf` only; everything else is Python stdlib).
+- `requirements.txt` — install list (`pdfplumber` only; everything else is Python stdlib).
