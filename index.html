@@ -1542,7 +1542,7 @@
         errline.textContent = "";
         const checked = document.querySelector('input[name="se-prof"]:checked');
         await api.send("POST", "api/settings", {
-          embed_profile: checked ? checked.value : "local",
+          embed_profile: checked ? checked.value : "jetson",
           jetson_url: document.getElementById("se-url").value.trim(),
           llm_model: document.getElementById("se-llm").value,
           query_mode: document.getElementById("se-mode").value,

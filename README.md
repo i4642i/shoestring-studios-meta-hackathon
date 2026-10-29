@@ -13,6 +13,8 @@ Prereqs: Python 3.10+, Git, a Meta Model API key.
 3. Double-click `start_server.bat` (or run `python scripts/server.py`).
 4. Open the printed URL (usually http://localhost:8000) → Crew tab → click Marty.
 
+No Jetson LAN server? Set `EMBED_PROFILE=local` in `.env` (or pick Local in the Settings tab) to embed on your own PC instead.
+
 ## Layout
 
 - `index.html` — homepage (Order / Crew / Studio / Gallery / PC / Settings / About).

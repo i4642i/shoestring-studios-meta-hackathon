@@ -6,7 +6,7 @@ Config: experiments/lightrag/config.json (LLM + per-profile embeddings).
 Storage (gitignored): experiments/lightrag/storage/<eid>/<profile>/.
 LLM calls are logged with chars/seconds to llm_log.jsonl next to the storage.
 
-Embedding profiles ("local" default, "jetson"): one index per profile,
+Embedding profiles ("jetson" default, "local"): one index per profile,
 never mixed. Active profile: data/settings.json wins, .env EMBED_PROFILE
 is the default. The Jetson server only computes embeddings (read-only
 API use); the token lives in .env EMBED_REMOTE_TOKEN and is never
@@ -143,7 +143,7 @@ def embed_settings():
             pass
     env = _read_dotenv()
     prof = (prof or env.get("EMBED_PROFILE")
-            or os.environ.get("EMBED_PROFILE") or "local")
+            or os.environ.get("EMBED_PROFILE") or "jetson")
     prof = prof.strip().lower()
     if prof not in PROFILES:
         raise RuntimeError(
@@ -212,7 +212,7 @@ def resolved_settings():
     try:
         st = embed_settings()
     except RuntimeError as e:
-        st = {"profile": "local", "jetson_url": DEFAULT_JETSON_URL}
+        st = {"profile": "jetson", "jetson_url": DEFAULT_JETSON_URL}
         probs.append(str(e))
     try:
         lm = llm_settings()["model"]

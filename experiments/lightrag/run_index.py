@@ -2,7 +2,7 @@
 
 Usage (from repo root): .venv\\Scripts\\python experiments/lightrag/run_index.py agents/pd_marty [profile]
 Profile defaults to the active one (data/settings.json, else .env
-EMBED_PROFILE, else "local"). Logs every LLM call to
+EMBED_PROFILE, else "jetson"). Logs every LLM call to
 storage/<eid>/<profile>/llm_log.jsonl. Refuses to start when
 --stop-tokens would already be exceeded (spend guard; Meta publishes no
 per-token price, so the guard counts estimated tokens: chars/4).

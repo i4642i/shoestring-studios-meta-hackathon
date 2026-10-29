@@ -18,12 +18,13 @@ project `.venv` (frozen pins: `lightrag-hku==1.5.7`,
 
 Two profiles, one index each (`storage/<eid>/<profile>/`, never mixed):
 
-- `local` (default): `sentence-transformers/all-MiniLM-L6-v2`, 384 dims,
-  chunk 256 tokens, embedded on this PC. Models download into `models/`
+- `jetson` (default): `BAAI/bge-m3`, 1024 dims, chunk 512 tokens,
+  embedded by the LAN server (read-only API use: `GET /health`,
+  `POST /embed`; token from `.env` `EMBED_REMOTE_TOKEN`, never logged
+  or sent to browsers).
+- `local`: `sentence-transformers/all-MiniLM-L6-v2`, 384 dims, chunk
+  256 tokens, embedded on this PC. Models download into `models/`
   (gitignored) on first run.
-- `jetson`: `BAAI/bge-m3`, 1024 dims, chunk 512 tokens, embedded by the
-  LAN server (read-only API use: `GET /health`, `POST /embed`; token
-  from `.env` `EMBED_REMOTE_TOKEN`, never logged or sent to browsers).
 
 Active profile: `data/settings.json` wins (Settings tab), `.env`
 `EMBED_PROFILE` is the default. Querying an index built with another

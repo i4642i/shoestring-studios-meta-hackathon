@@ -661,7 +661,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(stored, dict):
             stored = {}
         stored.update(cleaned)
-        stored.setdefault("embed_profile", "local")
+        stored.setdefault("embed_profile", "jetson")
         stored.setdefault("jetson_url", mod.DEFAULT_JETSON_URL)
         os.makedirs(os.path.join(ROOT, "data"), exist_ok=True)
         with open(spath, "w", encoding="utf-8") as f:
