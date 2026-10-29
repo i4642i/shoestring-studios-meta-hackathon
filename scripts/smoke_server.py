@@ -194,7 +194,7 @@ def main():
         s, b = req("GET", "/api/crew/zz_temp")
         d3 = json.loads(b.decode()) if s == 200 else {}
         check("detail has io", s == 200
-              and d3.get("io", {}).get("output") == "structure.json"
+              and d3.get("io", {}).get("output") == "result.json"
               and d3.get("appearance", {}).get("variant", "").endswith(".glb"), s)
         check("create defaults to baseten",
               d3.get("model") == "meta-models/muse-spark-open-1026",

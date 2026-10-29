@@ -14,7 +14,7 @@
       "brief.json",
       "input.md"
     ],
-    "output": "structure.json"
+    "output": "result.json"
   },
   "model": "meta-models/muse-spark-open-1026",
   "name": "Marty",

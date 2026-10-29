@@ -10,6 +10,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from agents._frame import results
+from agents._frame.tools import write_request, write_structure
 
 fails = 0
 
@@ -104,6 +105,44 @@ ok(os.path.basename(p) == "result.json"
    and results.load_result(p)["status"] == "verified", "save/load roundtrip")
 raises(lambda: results.save_result(tmp, dict(r, status="checked")),
        "overwrite verified refuses")
+
+wdir = tempfile.mkdtemp(prefix="writecheck_")
+ctx = {"run_dir": wdir, "agent_dir": os.path.join(ROOT, "agents",
+                                                  "sales_sam"),
+       "producer": "sales_sam", "order_id": "o1", "run_id": "r9"}
+out = write_request(ctx, {"request": dict(REQ)})
+ok(out.get("ok") and out.get("output") == "result.json"
+   and os.path.isfile(os.path.join(wdir, "result.json")),
+   "write_request emits result.json")
+saved = results.load_result(os.path.join(wdir, "result.json"))
+ok(saved["producer"] == "sales_sam" and saved["run_id"] == "r9"
+   and saved["status"] == "unverified"
+   and saved["categories"]["request"]["data"]["order_id"] == "o1",
+   "request envelope header + data")
+bad = dict(REQ)
+del bad["order_id"]
+ok(write_request(ctx, {"request": bad}).get("ok") is False,
+   "write_request invalid refuses")
+
+mdp = os.path.join(wdir, "input.md")
+with open(mdp, "w", encoding="utf-8") as f:
+    f.write("# T\n\n## 1.1 Alpha\n\ntext\n\n## 1.2 Beta\n\ntext\n")
+struct = {"source": {"book": "b", "chapter": "c"},
+          "common_theme": "t",
+          "parts": [{"id": "p1", "heading": "1.1 Alpha", "covers": "x",
+                     "keywords": ["k"]},
+                    {"id": "p2", "heading": "1.2 Beta", "covers": "y",
+                     "keywords": ["k"]}],
+          "intent": {"overall": "o",
+                     "links": [{"from": "p1", "to": "p2", "why": "w"}]}}
+ctx2 = dict(ctx, input_md=mdp, producer="pd_marty", run_id="r10")
+out2 = write_structure(ctx2, {"structure": struct})
+ok(out2.get("ok") and out2.get("output") == "result.json",
+   "write_structure emits result.json")
+saved2 = results.load_result(os.path.join(wdir, "result.json"))
+ok("structure" in saved2["categories"]
+   and results.check_result(saved2) == [],
+   "structure envelope validates")
 
 if fails:
     print("%d FAILURES" % fails)

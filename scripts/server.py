@@ -382,7 +382,7 @@ class Handler(BaseHTTPRequestHandler):
         agent = {"frame_version": 1, "id": eid, "name": name, "title": title,
                  "model": model, "tools": ["read_md_section", "write_structure"],
                  "bounds": {"max_steps": 6},
-                 "io": {"inputs": ["brief.json", "input.md"], "output": "structure.json"},
+                 "io": {"inputs": ["brief.json", "input.md"], "output": "result.json"},
                  "done": ["every section mapped", "links connect all neighbours",
                           "headings match the source"]}
         with open(os.path.join(path, "agent.json"), "w", encoding="utf-8") as f:

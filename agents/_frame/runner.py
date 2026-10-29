@@ -176,7 +176,12 @@ def run(agent_dir, run_dir, brief, input_md):
     writer = writers[0]
     writer_arg = (play[writer][2].get("required") or ["draft"])[0]
     want_output = agent["io"]["output"]
-    ctx = {"run_dir": run_dir, "agent_dir": agent_dir, "input_md": input_md}
+    brief_obj = brief if isinstance(brief, dict) else {}
+    order_id = brief_obj.get("order_id", "adhoc")
+    run_id = (brief_obj.get("flow_run_id") or brief_obj.get("run_id")
+              or "%s-%s" % (order_id, agent["id"]))
+    ctx = {"run_dir": run_dir, "agent_dir": agent_dir, "input_md": input_md,
+           "producer": agent["id"], "order_id": order_id, "run_id": run_id}
     messages = [
         {"role": "system", "content": persona},
         {"role": "user", "content":

@@ -8,8 +8,9 @@ import json
 import os
 
 from . import graph
-from .schemas import (list_headings, render_request_md, validate_draft,
-                      validate_request, validate_structure)
+from . import results
+from .schemas import (list_headings, validate_draft, validate_request,
+                      validate_structure)
 
 
 def read_md_section(ctx, args):
@@ -43,15 +44,29 @@ def write_draft(ctx, args):
     return {"ok": True, "path": out, "output": "draft.json"}
 
 
+def _save_category(ctx, category, obj):
+    """Wrap one validated payload as the run's result.json (Q6 cutover)."""
+    try:
+        res = results.make_result(ctx["producer"], ctx["order_id"],
+                                  ctx["run_id"], {category: obj})
+    except (KeyError, RuntimeError) as exc:
+        return {"ok": False, "errors": ["bad result context: %s" % exc]}
+    problems = results.check_result(res)
+    if problems:
+        return {"ok": False, "errors": problems}
+    try:
+        out = results.save_result(ctx["run_dir"], res)
+    except RuntimeError as exc:
+        return {"ok": False, "errors": [str(exc)]}
+    return {"ok": True, "path": out, "output": "result.json"}
+
+
 def write_structure(ctx, args):
     obj = args.get("structure")
     errors = validate_structure(obj, ctx.get("input_md"))
     if errors:
         return {"ok": False, "errors": errors}
-    out = os.path.join(ctx["run_dir"], "structure.json")
-    with open(out, "w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False, indent=2)
-    return {"ok": True, "path": out, "output": "structure.json"}
+    return _save_category(ctx, "structure", obj)
 
 
 def write_request(ctx, args):
@@ -59,13 +74,7 @@ def write_request(ctx, args):
     errors = validate_request(obj)
     if errors:
         return {"ok": False, "errors": errors}
-    out_json = os.path.join(ctx["run_dir"], "request.json")
-    with open(out_json, "w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False, indent=2)
-    out_md = os.path.join(ctx["run_dir"], "request.md")
-    with open(out_md, "w", encoding="utf-8") as f:
-        f.write(render_request_md(obj))
-    return {"ok": True, "path": out_md, "output": "request.md"}
+    return _save_category(ctx, "request", obj)
 
 
 def query_graph(ctx, args):
@@ -83,11 +92,12 @@ def query_graph(ctx, args):
 
 
 # Writer tool -> run output file. The server keeps agent.json io.output
-# in sync with the employee's single write_* tool.
+# in sync with the employee's single write_* tool. Since the Q6 cutover
+# every run writes result.json (one envelope, categories inside).
 OUTPUTS = {
     "write_draft": "draft.json",
-    "write_structure": "structure.json",
-    "write_request": "request.md",
+    "write_structure": "result.json",
+    "write_request": "result.json",
 }
 
 TOOLS = {
@@ -109,17 +119,18 @@ TOOLS = {
     ),
     "write_structure": (
         write_structure,
-        "Save the input structure map. Fails unless every section is "
-        "mapped in source order with neighbour links.",
+        "Save the input structure map as this run's result.json "
+        "(structure category). Fails unless every section is mapped in "
+        "source order with neighbour links.",
         {"type": "object",
          "properties": {"structure": {"type": "object"}},
          "required": ["structure"], "additionalProperties": False},
     ),
     "write_request": (
         write_request,
-        "Save the video production request for an order. Writes request.md "
-        "(human-readable, for PD/production) plus request.json beside it. "
-        "Fails unless all 5 intake answers and production notes validate.",
+        "Save the video production request for an order as this run's "
+        "result.json (request category). Fails unless all 5 intake "
+        "answers and production notes validate.",
         {"type": "object",
          "properties": {"request": {"type": "object"}},
          "required": ["request"], "additionalProperties": False},

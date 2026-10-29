@@ -5,7 +5,7 @@
   "done": [
     "all 5 intake answers recorded",
     "source material summarized from the parsed file",
-    "request.md written for PD"
+    "request category written (result.json)"
   ],
   "frame_version": 1,
   "id": "sales_sam",
@@ -14,7 +14,7 @@
       "brief.json",
       "input.md"
     ],
-    "output": "request.md"
+    "output": "result.json"
   },
   "model": "meta-models/muse-spark-open-1026",
   "name": "Sam",
