@@ -1664,7 +1664,7 @@ const RECEP_FURN = [
   { f: "bookcaseOpenLow.glb", x: 0.25, z: 1.3, ry: Math.PI / 2 },
   { f: "books.glb", onTop: "bookcaseOpenLow.glb" },
 ];
-const RECEP_SAM = { x: 1.2, z: 2.4, ry: 1.6 };
+const RECEP_SAM = { x: 2.13, z: 1.19, ry: 0 };
 let RECEP_HEAD_Y = 1.0;
 const RECEP_SCALE = 1.9;
 
@@ -1829,15 +1829,15 @@ function mountReception(box, appearance, bub) {
     papers.receiveShadow = true;
     scene.add(papers);
   };
-  // Sam sits when BOTH the armchair and her model have loaded, on the
-  // measured seat point (never the chair center or a tuned height).
-  let recepChair = null, recepSam = null;
-  let recepChairFailed = false, recepSeated = false;
+  // Sam sits when BOTH the sofa and her model have loaded, on the
+  // measured seat point (never the furniture center or a tuned height).
+  let recepSeat = null, recepSam = null;
+  let recepSeatFailed = false, recepSeated = false;
   function recepTrySeat() {
-    if (recepSeated || !recepSam || (!recepChair && !recepChairFailed)) return;
+    if (recepSeated || !recepSam || (!recepSeat && !recepSeatFailed)) return;
     if (!box.isConnected) return;
     recepSeated = true;
-    const pose = recepChair && seatPose(recepChair, "loungeChair.glb", 0, 1.15);
+    const pose = recepSeat && seatPose(recepSeat, "loungeSofa.glb", 0, 1.15);
     if (pose) {
       RECEP_SAM.x = pose.x; RECEP_SAM.z = pose.z; RECEP_SAM.ry = pose.yaw;
       RECEP_HEAD_Y = pose.sitY + 0.68;
@@ -1846,7 +1846,7 @@ function mountReception(box, appearance, bub) {
     } else {
       recepSam.position.set(RECEP_SAM.x, FALLBACK_SIT_Y, RECEP_SAM.z);
       recepSam.rotation.y = RECEP_SAM.ry || 0;
-      console.warn("[seating] Sam/loungeChair: no measured seat, using fallback");
+      console.warn("[seating] Sam/loungeSofa: no measured seat, using fallback");
     }
     scene.add(recepSam);
     recepHome();
@@ -1857,8 +1857,8 @@ function mountReception(box, appearance, bub) {
     if (pose) {
       recepSam.updateWorldMatrix(true, false);
       const w = checkSeated(new THREE.Box3().setFromObject(recepSam),
-        new THREE.Box3().setFromObject(recepChair),
-        pose.seatY, "Sam/loungeChair", pose.yaw);
+        new THREE.Box3().setFromObject(recepSeat),
+        pose.seatY, "Sam/loungeSofa", pose.yaw);
       if (w) console.warn(w);
     }
   }
@@ -1891,12 +1891,12 @@ function mountReception(box, appearance, bub) {
           const bb = new THREE.Box3().setFromObject(g);
           recepTableProps(g.position.x, bb.max.y, g.position.z);
         }
-        if (it.f === "loungeChair.glb") { recepChair = g; recepTrySeat(); }
+        if (it.f === "loungeSofa.glb") { recepSeat = g; recepTrySeat(); }
       }
       g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       scene.add(g);
     }, undefined, () => {
-      if (it.f === "loungeChair.glb") { recepChairFailed = true; recepTrySeat(); }
+      if (it.f === "loungeSofa.glb") { recepSeatFailed = true; recepTrySeat(); }
     });
   }
   const ap = appearance || {};
