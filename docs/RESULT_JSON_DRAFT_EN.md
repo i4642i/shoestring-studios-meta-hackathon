@@ -456,7 +456,7 @@ and Article PCs in a research corner. Each with a monitor glow
 tinted per PC. No behavior change: set dressing until the flow UI
 needs live PC status.
 
-### 8.8 Stage-2 web search (Q7 decided, Q8 open)
+### 8.8 Stage-2 web search (Q7/Q8 decided)
 
 Stage 2 uses web search, only through the PC tools:
 
@@ -483,14 +483,40 @@ confirmed):
 | Backend | Free tier | Paid (reported) | Rate limits | Storing excerpts |
 |---|---|---|---|---|
 | Brave Search API | No free tier since Feb 2026; $5/mo credit ≈ 1,000 searches; card + attribution required | $5/1k searches | 50 req/s (reported, UNVERIFIED) | UNVERIFIED (ToS not checked) |
-| Tavily | Researcher plan: 1,000 credits/mo (basic 1, advanced 2) | ~$8 basic / $16 advanced per 1k | UNVERIFIED | UNVERIFIED (ToS not checked) |
-| Serper | 2,500 one-time queries (reported; one source said 100/mo — conflicting) | ~$0.30–$1/1k by pack | ~300/s (reported, UNVERIFIED) | UNVERIFIED (Google SERP reseller; ToS risk not checked) |
+| Tavily | Researcher plan: 1,000 credits/mo (basic 1, advanced 2) | ~$8 basic / $16 advanced per 1k | UNVERIFIED | Checked 2026-10-30: no ban found (see terms note) |
+| Serper | 2,500 one-time queries (reported; one source said 100/mo — conflicting) | ~$0.30–$1/1k by pack | ~300/s (reported, UNVERIFIED) | Checked 2026-10-30: allowed w/ attribution (see terms note) |
 | Wikipedia API | Free, no key; descriptive User-Agent required | — | Varies by endpoint (exact figure UNVERIFIED) | Allowed: CC BY-SA (+GFDL), attribution + share-alike |
 | arXiv API | Free, no key | — | ≤1 req/3s, single connection (ToU) | Metadata storable/sharable; content for personal/research use (ToU) |
 | Semantic Scholar API | Free; 100 req/5min keyless (reported 2026); free key raises limits | — | Keyless 100/5min (reported); keyed figures UNVERIFIED | UNVERIFIED |
 
 Note (reported, Feb 2026): Nebius announced acquiring Tavily —
 watch pricing/roadmap stability before committing to it.
+
+Q8 decided: Tavily is the primary backend for both
+`pc_search_theory` and `pc_search_articles`; Serper is the backup.
+
+- Tavily free tier: 1,000 credits/month, no card (per Tavily docs).
+  Basic search only (1 credit). Never the Research endpoint.
+- Keys in `.env` (`TAVILY_API_KEY`, `SERPER_API_KEY`); never printed
+  or committed.
+- Log credits used per run and per day; stop searching and report at
+  80% of the monthly free credits.
+
+Excerpt-storage terms (checked 2026-10-30, for Q9):
+
+- Tavily Platform Terms (May 4, 2026, read in full): the usage
+  restrictions target the Services, and "Services" explicitly
+  excludes Output — no clause found that forbids storing or caching
+  result excerpts. The customer must respect third-party IP rights
+  in excerpts and vet Output before use. The old tavily.com/policy
+  "no store/cache" quote (2024, secondhand) no longer resolves
+  (404). UNVERIFIED: Acceptable Use Policy (referenced, not read)
+  and any plan-specific limits.
+- Serper ToS (May 29, 2024, read in full): storing is allowed "for
+  as long as your use case requires"; keep attribution and
+  copyright notices, never misrepresent the source, no as-is
+  mirroring without added value. Third-party IP in snippets still
+  applies.
 
 ## 9. Stable reference addresses
 
@@ -664,9 +690,10 @@ Code places that read the old files (Sam/Marty switch list):
   (Cleo: `pc_search_theory` with the "easy" test; Rex:
   `pc_search_articles`). Every used hit is added to its PC first;
   model-knowledge-only citations are not allowed. See §8.8.
-- Q8 Which web search API backs `pc_search_theory` /
-  `pc_search_articles`? Comparison table in §8.8 (Brave, Tavily,
-  Serper + free sources); ToS/excerpt terms still UNVERIFIED.
+- Q8 DECIDED: Tavily primary (basic search only, 1 credit, never
+  Research), Serper backup. Keys in `.env`; credit log per run/day
+  with an 80% stop rule. Excerpt terms checked 2026-10-30 for both
+  (see §8.8); Tavily AUP still UNVERIFIED.
 - Q9 Article PC: store full article text or excerpts only? Full text
   is easier to cite; excerpts are safer for copyright — and the repo
   will be public.
