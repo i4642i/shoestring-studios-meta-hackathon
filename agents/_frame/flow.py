@@ -477,10 +477,11 @@ def _collect_final(run_dir, incoming, emit):
     return {"ok": True, "received": [r["category"] for r in received]}
 
 
-def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc"):
+def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
+           runs_root=None):
     """Run a validated flow. run_agent_fn(agent_dir, run_dir, brief,
     input_md) follows the runner.run contract ({"ok": bool, ...});
-    tests inject a stub.
+    tests inject a stub. runs_root overrides RUNS_DIR (tests only).
 
     Layout: runs/<run_id>/{flow.json, events.jsonl, STATUS.json,
     order/{brief.json, source.md, result.json, report.md},
@@ -492,7 +493,7 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc"):
     if problems:
         return {"ok": False, "error": problems[0]["message"]}
     run_id = run_id or new_run_id()
-    run_dir = os.path.join(RUNS_DIR, run_id)
+    run_dir = os.path.join(runs_root or RUNS_DIR, run_id)
     os.makedirs(run_dir, exist_ok=True)
     _write_json(os.path.join(run_dir, "flow.json"), flow)
     events_path = os.path.join(run_dir, "events.jsonl")
