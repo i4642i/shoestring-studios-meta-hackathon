@@ -2,7 +2,7 @@
 
 - Status: STANDARD (binding for every employee added from now on)
 - Date: 2026-10-28
-- Updated: 2026-10-28 (D45/D46: 2D portraits retired, appearance.json required; D55-D63: write_request/request.md for sales orders)
+- Updated: 2026-10-30 (flow I/O contracts + category registry; see section 9)
 - Implements: D14 (employee frame), D28 (folder layout), D45/D46 (3D appearance)
 - Companion: AGENT_PLAN_EN.md
 
@@ -53,7 +53,8 @@ No other top-level files are allowed without updating this standard.
 
 Rules:
 
-- All fields above are REQUIRED. Unknown fields are rejected.
+- All fields above are REQUIRED. One OPTIONAL field exists: `flow`
+  (section 9). Anything else unknown is rejected.
 - `frame_version`: integer; the runner refuses versions it does not support.
 - `id` MUST equal the parent folder name.
 - `model` MUST be on the allowlist (D15): `meta-models/muse-spark-open-1026`
@@ -118,3 +119,67 @@ This file doubles as the system prompt: the runner sends it verbatim.
 5. Pick a Mini variant + tint, save as `appearance.json` (D46; each
    employee gets a unique variant combo per D44).
 6. Run `scripts/validate_agent.py agents/<new_id>` — must pass before use.
+
+## 9. Flow participation (OPTIONAL)
+
+Why: the Flow tab wires crew into pipelines (Order → Sam → Marty →
+Final video). Connections live ONLY in the flow file
+(`data/flows/<id>.json`): an agent declares what it consumes and
+produces, never where results go. This section is the contract that
+makes lines checkable and handoffs safe.
+
+`agent.json` gains one optional key:
+
+```json
+"flow": {
+  "inputs": [
+    {"category": "brief", "required": true,
+     "description": "Order answers (audience, length, depth, theme)."}
+  ],
+  "outputs": [
+    {"category": "request", "file": "request.json",
+     "description": "Video production request for PD/production."}
+  ]
+}
+```
+
+Rules:
+
+- `inputs[]`: `category` (registry name, snake), `required` (bool),
+  `description` (non-empty). A flow must deliver every required input.
+- `outputs[]`: `category`, `file` (machine-readable run output the
+  payload is read from; plain filename, no directories), `description`.
+- Every named category MUST exist in `agents/_frame/categories.json`.
+  Agents without `flow` cannot join a flow.
+- The runner is unchanged: a flow run composes one `input.md` (sections
+  labeled by sender/category) plus an `INPUTS.json` manifest and calls
+  the normal bounded loop.
+
+Category registry (`agents/_frame/categories.json`): one entry per
+result category: `version` (integer, starts at 1), `description`, and a
+JSON `schema` for the payload. Bump the version on any breaking payload
+change; the flow refuses to query an envelope whose version differs.
+
+Result envelope (every handoff, stored at
+`runs/<run_id>/<producer>/<category>.json`):
+
+```json
+{"category": "request", "version": 1, "producer": "sales_sam",
+ "order_id": "...", "run_id": "...", "created_at": "2026-10-30T03:00:00",
+ "status": "unverified|checked|verified",
+ "payload": {}}
+```
+
+Only `payload` differs by category. `status`: `unverified` at wrap
+time, `checked` after a handoff validation passes, `verified` reserved
+for future human/QA acceptance.
+
+Handoff check (flow engine, before the consumer runs): envelope shape,
+registry version match, then payload against the registry schema with
+the stdlib subset: `type` (object, array, string, integer, number,
+boolean), `properties`, `required`, `items` (one schema),
+`additionalProperties` (bool), `enum`. Anything outside this subset in
+a registry schema is ignored. On failure the flow stops and the run log
+records why. Deeper input-relative rules (e.g. Marty's heading
+coverage) stay enforced by the writer tools at creation time; the
+handoff re-checks the static shape.
