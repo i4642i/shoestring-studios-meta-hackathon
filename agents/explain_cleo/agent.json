@@ -1,0 +1,26 @@
+{
+  "bounds": {
+    "max_steps": 8
+  },
+  "done": [
+    "every part has what/origin/simple_take",
+    "every claim cites a real outside source",
+    "concepts category complete per RESULT_JSON_DRAFT_EN.md"
+  ],
+  "frame_version": 1,
+  "id": "explain_cleo",
+  "io": {
+    "inputs": [
+      "structure.json",
+      "source.md"
+    ],
+    "output": "concepts.json"
+  },
+  "model": "meta-models/muse-spark-open-1026",
+  "name": "Cleo",
+  "title": "Concept explainer",
+  "tools": [
+    "query_graph",
+    "read_md_section"
+  ]
+}
