@@ -251,15 +251,17 @@ Notes on the stage table:
 
 ## 8. Company computers (shared stores, not agents)
 
-Two shared stores. They are not agents: they hold no opinions, run no
-steps, and write no result JSON. Agents reach them only through tools
-listed in their own `agent.json` — tools are the only permission
-mechanism.
+Three shared stores. They are not agents: they hold no opinions, run
+no steps, and write no result JSON. Agents reach them only through
+tools listed in their own `agent.json` — tools are the only permission
+mechanism. External materials are split by purpose: Theory (explain)
+vs Article (cases).
 
 ### 8.1 Source PC
 
 Parsed results of the client's documents: markdown, images, section
-list. Read: all crew. Write: intake only (Sam's parser step).
+list. Section list: all crew. Full text: Marty, Cleo, Rex (see §8.6).
+Write: intake only (Sam's parser step).
 
 Entry format:
 
@@ -283,42 +285,49 @@ Entry format:
   `pc://source/<doc_id>#s<section>/p<paragraph>` (§9).
 - Provenance on every entry: origin file, order, parse time, adder.
 
-### 8.2 Article PC
+### 8.2 Theory PC
 
-External articles and materials found on the web. Read: external
-researchers (Cleo, Rex) plus granted agents (Ash, Vera, Iris — they
-must verify citations and facts). Write (add articles): external
-researchers only.
+Concept explanations, lectures, papers, technical articles. Search +
+add: Cleo (concept explainer) only. Full address:
+`pc://theory/<id>#p<paragraph>`.
 
-Entry format:
+Entry format (shared with the Article PC):
 
 ```json
 {
-  "article_id": "7b2e…",
+  "theory_id": "7b2e…",
   "url": "https://…",
   "title": "…",
   "publisher": "…",
   "date": "2026-01-15",
   "fetched_at": "2026-10-30T03:00:00",
-  "added_by": "case_rex",
+  "added_by": "explain_cleo",
   "text": "full text or excerpt (see Q9)",
   "paragraphs": [{"addr": "p12", "text": "..."}]
 }
 ```
 
-- `article_id`: content hash (§9). Full address:
-  `pc://article/<article_id>#p<paragraph>`.
+- `theory_id`: content hash (§9).
 - Provenance on every entry: url, title, publisher, date, fetch time,
   adder. The model never copies these by hand (§9).
 
-### 8.3 Indexing
+### 8.3 Article PC
+
+Real events, companies, people, films used as cases. Search + add:
+Rex (case researcher) only. Full address:
+`pc://article/<id>#p<paragraph>`. Same entry format, duplicate
+rules, indexing, and ref rules as the Theory PC (§§8.4–8.6, §9);
+only the contents differ.
+
+### 8.4 Indexing
 
 LightRAG, one index per PC per embedding profile, reusing the agent
-profile scheme (`local`, `jetson`): `storage/_pc/source/<profile>/`
-and `storage/_pc/article/<profile>/`. Same rules as agent indexes: one
-model+dim per index, cross-model queries refused, per-profile markers.
+profile scheme (`local`, `jetson`): `storage/_pc/source/<profile>/`,
+`storage/_pc/theory/<profile>/`, `storage/_pc/article/<profile>/`.
+Same rules as agent indexes: one model+dim per index, cross-model
+queries refused, per-profile markers.
 
-### 8.4 Duplicates
+### 8.5 Duplicates
 
 - Same content added twice → same id → add is a no-op returning the
   existing address. No duplicate entry is ever stored.
@@ -326,26 +335,45 @@ model+dim per index, cross-model queries refused, per-profile markers.
   old entry is kept, so existing refs never rot. The entry notes
   `supersedes: <old_id>` (informational only).
 
-### 8.5 Tools and grants
+### 8.6 Tools and grants
 
 | Tool | PC | Effect | Granted to |
 |---|---|---|---|
-| `pc_read_source` | Source | read entry/section/paragraph | all crew |
+| `pc_list_source` | Source | section lists | all crew |
+| `pc_read_source` | Source | full entry/section/paragraph text | Marty, Cleo, Rex |
 | `pc_add_source` | Source | store a parsed document | `sales_sam` only |
-| `pc_search_articles` | Article | web search (see Q8) | Cleo, Rex |
-| `pc_read_article` | Article | read entry/paragraph | Cleo, Rex, Ash, Vera, Iris |
-| `pc_add_article` | Article | store a fetched article | Cleo, Rex |
-| `open_ref` | either | verbatim passage + provenance (§9) | whoever holds that PC's read grant |
+| `pc_search_theory` | Theory | web search (see Q8) | Cleo |
+| `pc_read_theory` | Theory | read entry/paragraph | Cleo, Ash, Vera, Iris |
+| `pc_add_theory` | Theory | store a fetched item | Cleo |
+| `pc_search_articles` | Article | web search (see Q8) | Rex |
+| `pc_read_article` | Article | read entry/paragraph | Rex, Ash, Vera, Iris |
+| `pc_add_article` | Article | store a fetched article | Rex |
+| `open_ref` | any | verbatim passage + provenance (§9) | whoever holds that PC's read grant |
 
-- No web access except through `pc_search_articles`. All other agents
-  are read-only on granted PCs.
-- Writers (Penn, Wren) get no Article PC grant for now: they build
-  from plan/storyboard, and reviewers re-verify against the PCs.
+- No web access except through the `pc_search_*` tools. All other
+  agents are read-only on granted PCs.
+- Penn and Wren hold no PC read tools: citation refs ride their
+  inputs, and they carry the refs forward without the text.
 
-### 8.6 In the 3D office (idea only, no code)
+Task input loaded by the runner (preloaded text, on top of tools):
 
-Two computer desks against a wall: the Source PC near intake (Sam's
-side), the Article PC in a research corner. Each with a monitor glow
+- Marty: full source text.
+- Cleo: source sections of each structure part; search/read/add
+  Theory.
+- Rex: source sections of each structure part; search/read/add
+  Article.
+- Ash: passages cited in concepts (Theory) and cases (Article).
+- Penn, Wren: no PC text; they carry citation refs from their inputs.
+- Vera, Iris: every cited passage in the result under review, from
+  any of the three PCs, shown next to each claim.
+- Everyone gets the source section list. Writer tools verify every
+  `{ref, quote}` verbatim using system access to all three PCs.
+
+### 8.7 In the 3D office (idea only, no code)
+
+Three computer desks against a wall, labeled "SOURCE PC", "THEORY
+PC", "ARTICLE PC": the Source PC near intake (Sam's side), Theory
+and Article PCs in a research corner. Each with a monitor glow
 tinted per PC. No behavior change: set dressing until the flow UI
 needs live PC status.
 
@@ -355,10 +383,11 @@ Every stored passage gets a stable address:
 
 ```text
 pc://source/<doc_id>#s<section>/p<paragraph>
-pc://article/<article_id>#p<paragraph>
+pc://theory/<id>#p<paragraph>
+pc://article/<id>#p<paragraph>
 ```
 
-- `<doc_id>` / `<article_id>`: first 12 hex chars of SHA-256 over the
+- `<doc_id>` / `<id>`: first 12 hex chars of SHA-256 over the
   normalized content (whitespace-normalized, lowercased). Short to
   write, collision-safe at our scale; re-adding the same document
   gives the same address.
@@ -391,8 +420,10 @@ pc://article/<article_id>#p<paragraph>
   confirm action in the UI (any category, with or without a
   reviewer). Four states: `unverified` → `checked` → `reviewed` →
   `verified`; see the header fields above.
-- Q3 `source` payload: sidecar pointer (this draft) or full text
-  inline? Sidecar keeps envelopes small; inline keeps one file.
+- Q3 DECIDED: sidecar pointer. Envelopes carry PC addresses, never
+  full text; the runner loads the actual text into each agent's task
+  input per the §8.6 grants (Marty: full source; Cleo/Rex: part
+  sections; Ash/reviewers: cited passages).
 - Q4 Same category from two senders into one agent: allowed with
   sender labels, or must it always go through a relay agent (D5)?
 - Q5 Does the Final video node also write a result JSON, or is the
