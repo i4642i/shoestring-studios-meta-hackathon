@@ -1,0 +1,28 @@
+{
+  "bounds": {
+    "max_steps": 10
+  },
+  "done": [
+    "audience/message/angle/fun set from the request",
+    "intro-body-conclusion flow covers all parts",
+    "plan category complete per RESULT_JSON_DRAFT_EN.md"
+  ],
+  "frame_version": 1,
+  "id": "plan_ash",
+  "io": {
+    "inputs": [
+      "request.json",
+      "structure.json",
+      "concepts.json",
+      "cases.json"
+    ],
+    "output": "plan.json"
+  },
+  "model": "meta-models/muse-spark-open-1026",
+  "name": "Ash",
+  "title": "Planning PD",
+  "tools": [
+    "query_graph",
+    "read_md_section"
+  ]
+}
