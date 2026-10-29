@@ -238,7 +238,76 @@ Notes on the stage table:
 - Reviewers also receive source/materials pointers via `source`; full
   material text stays in sidecars (cf. Q3).
 - `narration_checked` is the last agent result; scene/video assembly
-  from it is the post-processing page (D6, cf. Q5).
+  from it is the post-processing page (D6). The page also writes a
+  result JSON in the same format (Q5, schema below), so every video
+  is found and traced like any other result.
+
+`video` category `data` schema (producer `postprocess`, a code step,
+not an agent; consumes `narration_checked`):
+
+```json
+{
+  "type": "object",
+  "required": ["file", "duration_s", "built_from", "scenes"],
+  "properties": {
+    "file": {
+      "type": "object",
+      "required": ["path", "size_bytes", "format", "resolution"],
+      "properties": {
+        "path": {"type": "string"},
+        "size_bytes": {"type": "integer"},
+        "format": {"type": "string"},
+        "resolution": {"type": "string"}
+      }
+    },
+    "duration_s": {"type": "number"},
+    "built_from": {"type": "string"},
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["n", "start_s", "end_s", "lines"],
+        "properties": {
+          "n": {"type": "integer"},
+          "start_s": {"type": "number"},
+          "end_s": {"type": "number"},
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["text", "start_s", "end_s", "citations"],
+              "properties": {
+                "text": {"type": "string"},
+                "start_s": {"type": "number"},
+                "end_s": {"type": "number"},
+                "citations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["ref", "quote"],
+                    "properties": {
+                      "ref": {"type": "string"},
+                      "quote": {"type": "string"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+- `file.path` follows `output/<order_id>/<run_id>/video.mp4`;
+  `built_from` is the run_id of the `narration_checked` result the
+  video was built from.
+- Every spoken line links to its sources via `citations`, carried
+  over from the narration — this feeds the claim-to-source report.
+- Status starts `checked` when the file exists and every line has
+  its citations carried over; `verified` only by the developer.
 
 ## 6. Rules this draft follows (from D1–D9)
 
@@ -250,6 +319,7 @@ Notes on the stage table:
   category keeps its sender label (Q4).
 - Merging is a relay agent's instructions, never a code block (D5).
 - Scene/video assembly is a post-processing page, not an agent (D6).
+  It still writes a result JSON as producer `postprocess` (Q5).
 - Every needed input must arrive by design; no run-time requests (D7).
 
 ## 8. Company computers (shared stores, not agents)
@@ -503,8 +573,10 @@ Per entry: map/index time, LLM calls, tokens.
 - Q4 DECIDED: no fixed rule. Direct receive vs relay-agent merge
   is decided per flow when designing it (same principle as D7). The
   format only keeps the sender label on every received category.
-- Q5 Does the Final video node also write a result JSON, or is the
-  post-processing page output (D6) outside this format?
+- Q5 DECIDED: the post-processing page writes a result JSON in the
+  same format (producer `postprocess`, category `video`), so every
+  video is found and traced like any other result. See the `video`
+  schema in §5.
 - Q6 Transition: keep writing legacy sidecars (`request.md`,
   standalone `structure.json`) alongside the new JSON, or cut over?
 - Q7 Stage 2 outside sources: which search tool, if any, do the
