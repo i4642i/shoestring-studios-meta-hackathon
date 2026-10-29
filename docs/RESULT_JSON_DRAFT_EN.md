@@ -16,6 +16,10 @@
   "run_id": "...",
   "created_at": "2026-10-30T03:00:00",
   "status": "unverified",
+  "reviewed_by": null,
+  "reviewed_at": null,
+  "verified_by": null,
+  "verified_at": null,
   "categories": {
     "request": {}
   }
@@ -28,8 +32,18 @@
   breaking change to the header or to a category payload below.
 - `order_id`, `run_id`: the order and the run that produced this.
 - `created_at`: local time `YYYY-MM-DDTHH:MM:SS`.
-- `status`: `unverified` (just written) → `checked` (payload passed its
-  category schema) → `verified` (human/QA acceptance, see Q2).
+- `status`: `unverified` (just written) → `checked` (payload passed
+  its category schema, code check) → `reviewed` (a reviewer agent —
+  Vera for storyboard, Iris for narration — compared it with the
+  sources via `open_ref` and passed it: every citation passes the
+  verbatim check and no open fix remains; otherwise it stays
+  `checked` and lists the problems) → `verified` (the developer
+  confirmed it in the UI; any category, with or without a reviewer).
+- `reviewed_by` / `reviewed_at`: reviewer agent id + time, set when
+  the status becomes `reviewed`. `verified_by` / `verified_at`:
+  developer id + time, set on confirm.
+- A `verified` result is read-only; any change creates a new run
+  (new `run_id`), never an edit in place.
 - `categories`: `{<name>: <payload>}`. Only the payload differs per
   category. An agent with one result has one key.
 
@@ -360,14 +374,17 @@ pc://article/<article_id>#p<paragraph>
   in the passage at `ref` (normalize whitespace only). Writer tools
   run this check at write time (same pattern as the existing
   writer-validated outputs); reviewers re-verify through `open_ref`
-  and log failures as fixes.
+  and list any failures as problems (the result stays `checked`
+  until clean).
 
 ## 10. Open questions
 
 - Q1 `version`: single format version (this draft) or one version per
   category so `request` can evolve without touching `structure`?
-- Q2 `verified`: who sets it — a human QA click in a later UI, or the
-  producer attesting its own writer validation?
+- Q2 DECIDED: `verified` is set only by the developer, via a
+  confirm action in the UI (any category, with or without a
+  reviewer). Four states: `unverified` → `checked` → `reviewed` →
+  `verified`; see the header fields above.
 - Q3 `source` payload: sidecar pointer (this draft) or full text
   inline? Sidecar keeps envelopes small; inline keeps one file.
 - Q4 Same category from two senders into one agent: allowed with
