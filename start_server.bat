@@ -58,8 +58,8 @@ if "%NEWHASH%"=="" (
 if "%NEWHASH%"=="%OLDHASH%" (
   echo [INFO] Dependencies unchanged, skipping install.
 ) else (
-  echo [INFO] Installing requirements into .venv - LightRAG stays in .venv-lightrag...
-  "%VENVPY%" -m pip install --disable-pip-version-check -r requirements.txt
+  echo [INFO] Installing requirements into .venv - includes LightRAG, first run is slow...
+  "%VENVPY%" scripts\pip_install.py
   if errorlevel 1 (
     echo [ERROR] Install failed - no internet? Checking what is already there...
     "%VENVPY%" scripts\check_deps.py
@@ -93,6 +93,8 @@ if "%BROWSER%"=="1" (
   timeout /t 3 /nobreak >nul
   start "" "http://localhost:8000"
   echo [OK] Server starting in a new window, browser opening...
+  echo      This window stays open so you can review the log. Press any key to close it.
+  pause >nul
 ) else (
   echo [OK] Server starting in a new window.
   pause
