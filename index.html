@@ -1600,6 +1600,8 @@
           const reqs = (((a && a.flow) || {}).inputs || [])
             .map(i => esc(i.category) + (i.required ? "*" : "")).join(", ");
           inner += '<div class="req">needs: ' + (reqs || "—") + "</div>";
+          if (a && a.draft)
+            inner += '<div class="req">DRAFT — cannot run yet</div>';
         }
         if (n.id !== "order")
           inner += '<div class="fl-port in" data-in="' + esc(n.id) + '"></div>';
@@ -1678,11 +1680,12 @@
       (S.catalog.agents || []).forEach(a => {
         const b = document.createElement("button");
         const onCanvas = S.flow.nodes.some(n => n.id === a.id);
-        const usable = !!a.flow;
+        const usable = !!a.flow && !a.draft;
         b.textContent = "+ " + a.name;
         b.disabled = onCanvas || !usable;
-        b.title = !usable ? "Agent declares no flow I/O"
-          : (onCanvas ? "On canvas" : "Add " + a.name);
+        b.title = a.draft ? "Draft — cannot run yet"
+          : (!usable ? "Agent declares no flow I/O"
+          : (onCanvas ? "On canvas" : "Add " + a.name));
         b.onclick = () => {
           const k = S.flow.nodes.length;
           S.flow.nodes.push({ id: a.id });
@@ -1722,11 +1725,14 @@
       let h = "<b>" + esc(ln.from) + " → " + esc(ln.to) + "</b><br>";
       h += '<label><input type="checkbox" data-all' +
         (ln.categories === "*" ? " checked" : "") + "> ALL</label><br>";
+      const vers = {};
+      (S.catalog.categories || []).forEach(c => { vers[c.name] = c.version; });
       outs.forEach(o => {
         const on = ln.categories === "*" ||
           (ln.categories || []).indexOf(o.category) >= 0;
         h += '<label><input type="checkbox" data-cat="' + esc(o.category) +
           '"' + (on ? " checked" : "") + "> " + esc(o.category) +
+          " v" + (vers[o.category] == null ? "?" : vers[o.category]) +
           "</label><br>";
       });
       h += "<button data-popdel>DELETE LINE</button> " +
