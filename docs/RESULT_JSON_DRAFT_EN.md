@@ -11,7 +11,7 @@
 ```json
 {
   "producer": "sales_sam",
-  "version": 1,
+  "format_version": 1,
   "order_id": "...",
   "run_id": "...",
   "created_at": "2026-10-30T03:00:00",
@@ -21,15 +21,15 @@
   "verified_by": null,
   "verified_at": null,
   "categories": {
-    "request": {}
+    "request": {"version": 1, "data": {}}
   }
 }
 ```
 
 - `producer`: agent id that made this result. No destinations anywhere
   in the file (D1): the agent does not know where results go.
-- `version`: result-format version, integer, starts at 1. Bump on any
-  breaking change to the header or to a category payload below.
+- `format_version`: envelope version, integer, starts at 1. Bump
+  only when the header itself changes (producer, ids, status fields).
 - `order_id`, `run_id`: the order and the run that produced this.
 - `created_at`: local time `YYYY-MM-DDTHH:MM:SS`.
 - `status`: `unverified` (just written) → `checked` (payload passed
@@ -44,8 +44,12 @@
   developer id + time, set on confirm.
 - A `verified` result is read-only; any change creates a new run
   (new `run_id`), never an edit in place.
-- `categories`: `{<name>: <payload>}`. Only the payload differs per
-  category. An agent with one result has one key.
+- `categories`: `{<name>: {"version": <int>, "data": {...}}}`. Each
+  category carries its own version; bump only that category's number
+  when its schema changes. The schemas in §§2–4 below describe each
+  category's `data`. An agent with one result has one key.
+- A receiving agent's check names the category versions it accepts
+  (e.g. `request` v1); anything else is refused at the line.
 
 ## 2. Sam (`sales_sam`)
 
@@ -379,8 +383,10 @@ pc://article/<article_id>#p<paragraph>
 
 ## 10. Open questions
 
-- Q1 `version`: single format version (this draft) or one version per
-  category so `request` can evolve without touching `structure`?
+- Q1 DECIDED: version per category. The header keeps
+  `format_version` for the envelope; every category is wrapped as
+  `{"version", "data"}` with its own number; receivers name the
+  versions they accept.
 - Q2 DECIDED: `verified` is set only by the developer, via a
   confirm action in the UI (any category, with or without a
   reviewer). Four states: `unverified` → `checked` → `reviewed` →
