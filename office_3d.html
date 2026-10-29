@@ -68,7 +68,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as skeletonClone } from "three/addons/utils/SkeletonUtils.js";
-import { SEAT_DEFS, seatPose, checkSeated, FALLBACK_SIT_Y } from "./vendor/seating.js";
+import { SEAT_DEFS, seatPose, checkSeated, hipDropOf, posedBox, seatDebug,
+  sitYForSeat, FALLBACK_SIT_Y, FALLBACK_HIP_DROP } from "./vendor/seating.js";
 
 /* ================= CONFIG ================= */
 // Room shell (dollhouse: floor + back wall + left wall, open front/right).
@@ -97,6 +98,8 @@ const VARIANTS = [
 // for +-90 degree rotations. Rugs/on-top items: no block.
 const FURN_SCALE = 1.9;
 const CHAR_H = 1.15; // crew height in meters (per-model Box3 scale)
+const SEAT_CLIP = "drive"; // legs-together sit (probed narrower than "sit")
+const SEAT_DEBUG = new URLSearchParams(location.search).has("seatdebug");
 const FURNITURE = [
   // -- left wall (facing +x) --
   { f: "pottedPlant.glb", x: -4.6, z: -3.25, block: [0.3, 0.3] },
@@ -682,8 +685,21 @@ async function spawnCrew() {
     const mixer = new THREE.AnimationMixer(model);
     const actions = {};
     for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
+    // Sit-pose hip height, measured once per member from a pure seat pose
+    // (stopped right away; walk/idle overwrite the bones on the next update).
+    let hipDrop = null;
+    {
+      const seat = actions[SEAT_CLIP] || actions.sit;
+      if (seat) {
+        seat.play();
+        mixer.update((seat.getClip().duration || 0.2) / 2);
+        hipDrop = hipDropOf(model);
+        seat.stop();
+        seat.reset();
+      }
+    }
     const mug = { // member record
-      emp, group: model, mixer, actions, variant: key, charS,
+      emp, group: model, mixer, actions, variant: key, charS, hipDrop,
       target: null, route: null, state: "walk", idleUntil: 0, emoteUntil: 0,
       seat: DESKS[crew.length % DESKS.length], seatTrip: false, chatAt: 0,
       lines: linesFor(emp.title), li: Math.floor(rand(0, 99)), bubbleAt: performance.now() + i * 1300,
@@ -728,18 +744,26 @@ function updateCrew(dt, now) {
           g.position.x = m.seat.x;
           g.position.z = m.seat.z;
           g.rotation.y = m.seat.yaw;
-          g.position.y = m.seat.sitY;
+          g.position.y = (m.seat.seatY != null)
+            ? sitYForSeat(m.seat.seatY, m.hipDrop ?? FALLBACK_HIP_DROP)
+            : m.seat.sitY;
           m.state = "sit";
           m.chatAt = now;
-          fadeTo(m, "sit");
+          fadeTo(m, SEAT_CLIP);
           setBubble(m, "CHATTING");
-          if (m.seat.furn) {
-            g.updateWorldMatrix(true, false);
-            const w = checkSeated(new THREE.Box3().setFromObject(g),
+          // Check the full seat pose after the walk->sit fade lands (0.25s).
+          const tok = (m.sitToken = (m.sitToken || 0) + 1);
+          setTimeout(() => {
+            if (m.sitToken !== tok || m.state !== "sit" || !m.seat.furn) return;
+            const w = checkSeated(posedBox(g),
               new THREE.Box3().setFromObject(m.seat.furn),
               m.seat.seatY, m.emp.id + "/" + m.seat.fname, m.seat.yaw);
             if (w) console.warn(w);
-          }
+            if (SEAT_DEBUG) {
+              if (m.dbg) scene.remove(m.dbg);
+              m.dbg = seatDebug(scene, m.seat, g);
+            }
+          }, 400);
         } else {
           m.state = "idle";
           m.idleUntil = now + rand(1500, 5000);

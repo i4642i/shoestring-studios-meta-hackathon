@@ -19,10 +19,14 @@ export const SEAT_DEFS = {
   },
 };
 
-// Character rig (measured Kenney mini rig at 1.15m: hip joint 0.28m).
+// Character rig (Kenney mini rig at 1.15m). The sit clip drops the hips far
+// below the bind pose, so the lift uses the SIT-pose hip joint (torso bone
+// height above the origin, ~0.042m), measured per character after the seat
+// clip is applied. HIP_FRAC is bind-pose fallback only.
 export const HIP_FRAC = 0.2435;
 export const BUTT_BELOW_HIP = 0.05;
-export const FALLBACK_SIT_Y = 0.2;
+export const FALLBACK_HIP_DROP = 0.042;
+export const FALLBACK_SIT_Y = 0.45;
 
 const seatCache = {}; // filename -> seat local Y
 
@@ -48,9 +52,56 @@ export function sitYFor(seatY, charH) {
   return seatY - (HIP_FRAC * charH - BUTT_BELOW_HIP);
 }
 
+// Lift from a sit-pose hip measurement: rest the buttocks (a little below
+// the hip joint) on the seat surface.
+export function sitYForSeat(seatY, hipDrop) {
+  return seatY - hipDrop + BUTT_BELOW_HIP;
+}
+
+// Hip joint height above the character origin in the CURRENT pose.
+// Call after the seat clip is applied (mixer updated). Null if no hip bone.
+export function hipDropOf(charRoot) {
+  charRoot.updateWorldMatrix(true, true);
+  let hip = null;
+  charRoot.traverse((o) => {
+    if (!hip && o.isBone &&
+        ["torso", "hips", "Hips", "mixamorigHips"].includes(o.name)) hip = o;
+  });
+  if (!hip) return null;
+  const hy = new THREE.Vector3(), ry = new THREE.Vector3();
+  hip.getWorldPosition(hy);
+  charRoot.getWorldPosition(ry);
+  return hy.y - ry.y;
+}
+
+// Skinning-aware bounds of the CURRENT pose (r186 precise path applies
+// bone transforms; skeleton.update() refreshes them after mixer.update).
+export function posedBox(charRoot) {
+  charRoot.updateWorldMatrix(true, true);
+  charRoot.traverse((o) => { if (o.isSkinnedMesh) o.skeleton.update(); });
+  return new THREE.Box3().setFromObject(charRoot, true);
+}
+
+// Temporary debug view (pages gate this behind ?seatdebug=1): sphere on the
+// seat point, arrow along the seat facing, box around the posed character.
+export function seatDebug(scene, pose, charRoot) {
+  const g = new THREE.Group();
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff2222 }));
+  dot.position.set(pose.x, pose.seatY, pose.z);
+  g.add(dot);
+  g.add(new THREE.ArrowHelper(
+    new THREE.Vector3(Math.sin(pose.yaw), 0, Math.cos(pose.yaw)),
+    new THREE.Vector3(pose.x, pose.seatY, pose.z), 0.5, 0x22cc44, 0.12, 0.07));
+  g.add(new THREE.Box3Helper(posedBox(charRoot), 0xffdd00));
+  scene.add(g);
+  return g;
+}
+
 // World-space seat pose for sitting: hip XZ on the cushion front,
 // chair yaw, measured seat height and matching character lift.
-export function seatPose(group, filename, seatIndex, charH) {
+// hipDrop (sit-pose, from hipDropOf) wins; without it falls back to charH.
+export function seatPose(group, filename, seatIndex, charH, hipDrop = null) {
   const def = SEAT_DEFS[filename];
   if (!def) return null;
   const off = def.seats
@@ -61,7 +112,8 @@ export function seatPose(group, filename, seatIndex, charH) {
   const seatY = measureSeat(group, filename);
   if (seatY === null) return null;
   return { x: wp.x, z: wp.z, yaw: group.rotation.y, seatY,
-           sitY: sitYFor(seatY, charH || 1.15) };
+           sitY: hipDrop == null ? sitYFor(seatY, charH || 1.15)
+                                 : sitYForSeat(seatY, hipDrop) };
 }
 
 // Load-time penetration check. charBox is the bind-pose box; the rules are
@@ -77,8 +129,8 @@ export function checkSeated(charBox, furnBox, seatY, label, yaw) {
   if (charBox.min.y > seatY + 0.10)
     return `[seating] ${label}: floats above seat`;
   const colA = (ix1 - ix0) * (iz1 - iz0);
-  const underH = Math.min(charBox.max.y, seatY - 0.15) - charBox.min.y;
-  if (underH > 0 && underH * colA > 0.02) {
+  const underH = Math.min(charBox.max.y, seatY - 0.12) - charBox.min.y;
+  if (underH > 0 && underH * colA > 0.008) {
     return `[seating] ${label}: sinks through cushion ` +
       `(${(underH * colA).toFixed(3)}m3 below seat)`;
   }
