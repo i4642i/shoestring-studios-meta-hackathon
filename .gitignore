@@ -52,6 +52,7 @@ shk/
 # Command-line byproducts (pip caches, temp dirs)
 /pip-*/
 /tmp*/
+scripts/_tmpclip/t/
 /edge-cdp-*/
 *.pem
 *.log

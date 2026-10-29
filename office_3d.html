@@ -68,6 +68,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as skeletonClone } from "three/addons/utils/SkeletonUtils.js";
+import { SEAT_DEFS, seatPose, checkSeated, FALLBACK_SIT_Y } from "./vendor/seating.js";
 
 /* ================= CONFIG ================= */
 // Room shell (dollhouse: floor + back wall + left wall, open front/right).
@@ -96,7 +97,6 @@ const VARIANTS = [
 // for +-90 degree rotations. Rugs/on-top items: no block.
 const FURN_SCALE = 1.9;
 const CHAR_H = 1.15; // crew height in meters (per-model Box3 scale)
-const SIT_Y = 0.2; // seat lift while sitting (tuned by screenshot)
 const FURNITURE = [
   // -- left wall (facing +x) --
   { f: "pottedPlant.glb", x: -4.6, z: -3.25, block: [0.3, 0.3] },
@@ -422,6 +422,7 @@ function pickVariant(emp, i) {
   return VARIANTS.includes(v) ? v : VARIANTS[i % VARIANTS.length];
 }
 const blocks = []; // furniture footprints {x0,z0,x1,z1} (raw, no margin)
+const seatSpots = []; // placed seat furniture {f, g} in FURNITURE order
 async function buildFurniture() {
   for (const it of FURNITURE) {
     const gltf = await cachedGLB(FURN_DIR + it.f);
@@ -439,6 +440,7 @@ async function buildFurniture() {
     if (it.ry) g.rotation.y = it.ry;
     shadowify(g);
     scene.add(g);
+    if (SEAT_DEFS[it.f]) seatSpots.push({ f: it.f, g });
     if (it.block) {
       let [w, d] = [it.block[0] * FURN_SCALE, it.block[1] * FURN_SCALE];
       const q = Math.round(((it.ry || 0) % Math.PI) / (Math.PI / 2));
@@ -446,6 +448,19 @@ async function buildFurniture() {
       blocks.push({ x0: it.x - w / 2, z0: it.z - d / 2, x1: it.x + w / 2, z1: it.z + d / 2 });
     }
   }
+  // Replace DESKS chair-center spots with measured seat points (same order).
+  const deskChairs = seatSpots.filter((s) => s.f === "chairDesk.glb");
+  DESKS.forEach((d, i) => {
+    const s = deskChairs[i];
+    const pose = s && seatPose(s.g, s.f, 0, CHAR_H);
+    if (pose) {
+      d.x = pose.x; d.z = pose.z; d.yaw = pose.yaw;
+      d.sitY = pose.sitY; d.seatY = pose.seatY; d.furn = s.g; d.fname = s.f;
+    } else {
+      d.sitY = FALLBACK_SIT_Y;
+      console.warn("[seating] desk chair " + i + " not measured, using fallback");
+    }
+  });
 }
 
 /* ================= pathfinding (spec section 5: 10cm grid + A*) ================= */
@@ -713,11 +728,18 @@ function updateCrew(dt, now) {
           g.position.x = m.seat.x;
           g.position.z = m.seat.z;
           g.rotation.y = m.seat.yaw;
-          g.position.y = SIT_Y;
+          g.position.y = m.seat.sitY;
           m.state = "sit";
           m.chatAt = now;
           fadeTo(m, "sit");
           setBubble(m, "CHATTING");
+          if (m.seat.furn) {
+            g.updateWorldMatrix(true, false);
+            const w = checkSeated(new THREE.Box3().setFromObject(g),
+              new THREE.Box3().setFromObject(m.seat.furn),
+              m.seat.seatY, m.emp.id + "/" + m.seat.fname, m.seat.yaw);
+            if (w) console.warn(w);
+          }
         } else {
           m.state = "idle";
           m.idleUntil = now + rand(1500, 5000);
