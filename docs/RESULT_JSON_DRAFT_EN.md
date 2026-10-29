@@ -357,7 +357,7 @@ queries refused, per-profile markers.
 
 Task input loaded by the runner (preloaded text, on top of tools):
 
-- Marty: full source text.
+- Marty: the map; full source text only for short sources.
 - Cleo: source sections of each structure part; search/read/add
   Theory.
 - Rex: source sections of each structure part; search/read/add
@@ -368,6 +368,11 @@ Task input loaded by the runner (preloaded text, on top of tools):
   any of the three PCs, shown next to each claim.
 - Everyone gets the source section list. Writer tools verify every
   `{ref, quote}` verbatim using system access to all three PCs.
+- Self-service goal: agents fetch more material themselves instead
+  of receiving dumps — a PC guide/map per store, a need-list
+  checklist per task, "no evidence, no save" (refusals suggest a
+  matching ref from the map's omitted list), short search hits, a
+  status line, and per-entry logs.
 
 ### 8.7 In the 3D office (idea only, no code)
 
@@ -476,10 +481,22 @@ Per entry: map/index time, LLM calls, tokens.
   confirm action in the UI (any category, with or without a
   reviewer). Four states: `unverified` → `checked` → `reviewed` →
   `verified`; see the header fields above.
-- Q3 DECIDED: sidecar pointer. Envelopes carry PC addresses, never
-  full text; the runner loads the actual text into each agent's task
-  input per the §8.6 grants (Marty: full source; Cleo/Rex: part
-  sections; Ash/reviewers: cited passages).
+- Q3 DECIDED (materials summary):
+  1. Storage: "source" is a pointer (ref, title, chars, sections).
+     Full texts live only in the PCs (Source, Theory, Article).
+  2. No full dumps: agents get the map (summary + see refs + omitted
+     list), not full text. Exception: Marty may also get the full
+     text for short sources.
+  3. The runner preloads the minimum per role (Cleo/Rex: their
+     sections; Ash: cited theory/article passages; Vera/Iris: all
+     cited passages; Penn/Wren: none).
+  4. Core goal: agents fetch more material themselves — PC guide/map,
+     need-list checklist, "no evidence, no save" with a suggested ref
+     from the map's omitted list, short search hits, status line, logs.
+  5. Maps are built by each PC's ingest pipeline (hash → addresses →
+     build_map → LightRAG), not by agents.
+  6. Summaries are navigation only; evidence is always {ref, quote}
+     matching the original passage verbatim.
 - Q4 Same category from two senders into one agent: allowed with
   sender labels, or must it always go through a relay agent (D5)?
 - Q5 Does the Final video node also write a result JSON, or is the
