@@ -1,6 +1,7 @@
 """JSON contracts between crew (v1). Stdlib only."""
 
 import re
+from urllib.parse import quote as _urlquote
 
 DRAFT_SCHEMA_V1 = "storyboard-draft/1"
 STRUCTURE_SCHEMA_V1 = "structure-map/1"
@@ -268,7 +269,7 @@ def validate_request(obj):
 
 
 def render_request_md(obj):
-    """Human-readable production request (request.md) from a valid object."""
+    """Production request (request v1 report template) from a valid object."""
     ans = obj["client_answers"]
     lines = ["# Video production request — %s" % obj["order_id"], "",
              "Written by sales for PD/production from the order consultation.",
@@ -288,6 +289,70 @@ def render_request_md(obj):
     else:
         lines += ["- None."]
     lines.append("")
+    return "\n".join(lines)
+
+
+def render_cite_md(ref, quote):
+    """One citation as a link that opens the passage via open_ref."""
+    return "[%s](api/ref?ref=%s)" % (quote, _urlquote(ref, safe=""))
+
+
+def render_brief_md(obj):
+    """Order intake (brief v1) as markdown."""
+    ans = obj["answers"]
+    return "\n".join(
+        ["# Order brief — %s" % obj["order_id"], "",
+         "- Audience: %s" % ans["audience"],
+         "- Target length: %s" % ans["length"],
+         "- Depth: %s" % ans["depth"],
+         "- Theme direction: %s" % ans["theme"],
+         "- Source file: %s" % obj["source_file"], ""])
+
+
+def render_source_md(obj):
+    """Source pointer (source v1) as markdown."""
+    lines = ["# Source — %s" % obj["file"], "",
+             "- Characters: %d" % obj["chars"], ""]
+    if obj.get("head"):
+        lines += ["## Opening excerpt", "", obj["head"], ""]
+    return "\n".join(lines)
+
+
+def render_structure_md(obj):
+    """Structure map (structure v1) as markdown."""
+    src = obj["source"]
+    lines = ["# Structure map — %s / %s" % (src["book"], src["chapter"]),
+             "", "Theme: %s" % obj["common_theme"], "", "## Parts", ""]
+    for p in obj["parts"]:
+        lines.append("- %s `%s`: %s (keywords: %s)"
+                     % (p["id"], p["heading"], p["covers"],
+                        ", ".join(p["keywords"])))
+    lines += ["", "## Author intent", "", obj["intent"]["overall"], ""]
+    for link in obj["intent"]["links"]:
+        lines.append("- %s -> %s: %s"
+                     % (link["from"], link["to"], link["why"]))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_video_md(obj):
+    """Video assembly record (video v1) as markdown."""
+    f = obj["file"]
+    lines = ["# Video — %s" % f["path"], "",
+             "- Size: %d bytes, %s, %s" % (f["size_bytes"], f["format"],
+                                           f["resolution"]),
+             "- Duration: %s s" % obj["duration_s"],
+             "- Built from run: %s" % obj["built_from"], ""]
+    for sc in obj["scenes"]:
+        lines.append("## Scene %d (%s–%s s)"
+                     % (sc["n"], sc["start_s"], sc["end_s"]))
+        lines.append("")
+        for ln in sc["lines"]:
+            cites = " ".join(render_cite_md(c["ref"], c["quote"])
+                             for c in ln["citations"])
+            lines.append('- "%s" (%s–%s s) %s'
+                         % (ln["text"], ln["start_s"], ln["end_s"], cites))
+        lines.append("")
     return "\n".join(lines)
 
 

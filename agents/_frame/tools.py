@@ -58,7 +58,11 @@ def _save_category(ctx, category, obj):
         out = results.save_result(ctx["run_dir"], res)
     except RuntimeError as exc:
         return {"ok": False, "errors": [str(exc)]}
-    return {"ok": True, "path": out, "output": "result.json"}
+    report_path = os.path.join(ctx["run_dir"], "report.md")
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write(results.render_report(res))
+    return {"ok": True, "path": out, "output": "result.json",
+            "report": report_path}
 
 
 def write_structure(ctx, args):

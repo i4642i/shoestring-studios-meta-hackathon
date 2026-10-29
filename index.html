@@ -476,7 +476,7 @@
       <li><b>Verification.</b> <span class="when">2026-10-28</span> Handler-level HTTP pass plus a self-driving headless-Edge pass (every control operated, graph panel screenshotted) — all green.</li>
       <li><b><a href="docs/MEETING_04_CHARACTER_DESIGN_EN.md" target="_blank" rel="noopener">Meeting 04</a> — Character design.</b> <span class="when">2026-10-28</span> Kenney Mini Characters (CC0 3D, animated) chosen for the office crew; Furniture Kit for the space. Full-3D office (Three.js) locked; 2D portraits retired.</li>
       <li><b><a href="docs/MEETING_05_STUDIO_PLATFORM_EN.md" target="_blank" rel="noopener">Meeting 05</a> — Studio &amp; platform.</b> <span class="when">2026-10-28</span> Office scene rules, real-world scale, seating and warm lighting; Studio chat with seat-trip; Marty repurposed to structure mapping; full Crew management (view, edit, add, delete); GraphRAG options researched, decision pending.</li>
-      <li><b><a href="docs/MEETING_06_SALES_EN.md" target="_blank" rel="noopener">Meeting 06</a> — Sales &amp; orders.</b> <span class="when">2026-10-28</span> Sam the frontline sales rep; Order-page consultation (5 questions, chat PDF intake, auto-parse to md+images); per-order intake.json + production request.md; PC fleet registry tab.</li>
+      <li><b><a href="docs/MEETING_06_SALES_EN.md" target="_blank" rel="noopener">Meeting 06</a> — Sales &amp; orders.</b> <span class="when">2026-10-28</span> Sam the frontline sales rep; Order-page consultation (5 questions, chat PDF intake, auto-parse to md+images); per-order intake.json + generated report.md; PC fleet registry tab.</li>
       <li><b><a href="docs/MEETING_07_BASETEN_PARSER_EN.md" target="_blank" rel="noopener">Meeting 07</a> — Cost &amp; parser.</b> <span class="when">2026-10-29</span> Baseten added as second provider and made the default (agents + LightRAG LLM); PDF parser verified; dead attach buttons fixed (label activation).</li>
       <li><b><a href="docs/MEETING_08_SALES_OFFICE_EN.md" target="_blank" rel="noopener">Meeting 08</a> — Sales office space.</b> <span class="when">2026-10-29</span> Warm consultation room for Sam (now 5x4m): sunlit window, rug + lounge set, seated Sam, plants, lamp, bookcase, studio sign; office-grade lighting. Round-2 layout applied, screenshot review pending.</li>
     </ul>
@@ -1457,8 +1457,8 @@
         msg.textContent = "Order " + oid + " in production: " + r.files.join(", ");
         const pre = document.getElementById("o-result");
         pre.style.display = "block";
-        pre.textContent = "=== intake.json ===\n" + JSON.stringify(r.intake, null, 2) +
-          "\n\n=== request.md ===\n" + r.request_md;
+        pre.innerHTML = esc("=== intake.json ===\n" + JSON.stringify(r.intake, null, 2) +
+          "\n\n=== report.md (generated, do not edit) ===\n" + r.report_md).replace(/\[([^\]]+)\]\(api\/ref\?ref=([^)]+)\)/g, '<a href="api/ref?ref=$2" target="_blank" rel="noopener">$1</a>');
         statusEl.textContent = "Order " + oid + " — in production.";
         document.getElementById("queued").textContent = "Production started.";
         sessionStorage.removeItem("shoestring_order");

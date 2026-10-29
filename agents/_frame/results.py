@@ -9,6 +9,8 @@ import json
 import os
 import time
 
+from . import schemas
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 CATEGORIES = os.path.join(HERE, "categories.json")
 FORMAT_VERSION = 1
@@ -211,3 +213,36 @@ def save_result(run_dir, res):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(res, f, ensure_ascii=False, indent=1)
     return path
+
+
+TEMPLATES = {
+    ("brief", 1): schemas.render_brief_md,
+    ("source", 1): schemas.render_source_md,
+    ("request", 1): schemas.render_request_md,
+    ("structure", 1): schemas.render_structure_md,
+    ("video", 1): schemas.render_video_md,
+}
+
+
+def render_report(res):
+    """Human-readable report from any result JSON (Q6). One template per
+    category+version; unknown pairs render as fenced JSON. Reports show
+    nothing that is not in the JSON and are never read by agents."""
+    lines = ["# Run report — %s" % res["producer"], "",
+             "generated from %s, do not edit" % res["run_id"],
+             "order %s · run %s · status %s · %s"
+             % (res["order_id"], res["run_id"], res["status"],
+                res["created_at"]), ""]
+    for name, wrapped in res["categories"].items():
+        fn = TEMPLATES.get((name, wrapped.get("version")))
+        lines.append("## %s (v%s)" % (name, wrapped.get("version")))
+        lines.append("")
+        if fn is None:
+            lines.append("```json")
+            lines.append(json.dumps(wrapped.get("data"), ensure_ascii=False,
+                                    indent=1))
+            lines.append("```")
+        else:
+            lines.append(fn(wrapped["data"]))
+        lines.append("")
+    return "\n".join(lines)

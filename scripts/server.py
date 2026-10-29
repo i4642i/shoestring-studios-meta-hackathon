@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote
+from urllib.parse import parse_qsl, unquote
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -180,6 +180,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_map(parts[2])
         if parts[:2] == ["api", "orders"] and len(parts) == 3:
             return self._api_order_get(parts[2])
+        if parts[:2] == ["api", "ref"] and len(parts) == 2:
+            return self._api_ref()
         if parts[:2] == ["api", "pcs"] and len(parts) == 2:
             return self._api_pcs_list()
         if parts[:2] == ["api", "settings"] and len(parts) == 2:
@@ -820,6 +822,15 @@ class Handler(BaseHTTPRequestHandler):
                               if turns[i]["role"] == "user"]
         return self._json(200, meta)
 
+    def _api_ref(self):
+        """open_ref stub: citation links point here until the PCs exist."""
+        qs = unquote(self.path).split("?", 1)
+        ref = ""
+        if len(qs) > 1:
+            ref = dict(parse_qsl(qs[1])).get("ref", "")
+        return self._json(501, {"error": "PCs not built yet; cannot open %r"
+                                         % (ref or "this ref",)})
+
     def _api_order_upload(self, oid):
         d = self._order_dir(oid)
         if not d:
@@ -987,14 +998,14 @@ class Handler(BaseHTTPRequestHandler):
     def _do_complete(self, oid, d, meta, body, final_status):
         """Shared consultation pipeline. Returns (code, obj)."""
         if meta.get("status") in ("complete", "in_production"):
-            with open(os.path.join(d, "request.md"), encoding="utf-8") as f:
+            with open(os.path.join(d, "report.md"), encoding="utf-8") as f:
                 md = f.read()
             with open(os.path.join(d, "intake.json"), encoding="utf-8") as f:
                 intake = json.load(f)
             return (200, {"ok": True, "repeated": True, "intake": intake,
-                          "request_md": md,
-                          "files": ["intake.json", "request.md",
-                                    "request.json"]})
+                          "report_md": md,
+                          "files": ["intake.json", "result.json",
+                                    "report.md"]})
         if isinstance(body, dict) and body.get("extract"):
             problem = self._extract_intake(d, meta)
             if problem:
@@ -1022,7 +1033,7 @@ class Handler(BaseHTTPRequestHandler):
                     break
             return (502, {"error": "sales run failed: " + reason,
                           "usage": result.get("usage")})
-        for fn in ("request.md", "request.json"):
+        for fn in ("result.json", "report.md"):
             shutil.copyfile(os.path.join(run_dir, fn), os.path.join(d, fn))
         intake = {"order_id": oid,
                   "answers": dict(meta["answers"],
@@ -1035,13 +1046,13 @@ class Handler(BaseHTTPRequestHandler):
             json.dump(intake, f, ensure_ascii=False, indent=2)
         meta["status"] = final_status
         self._order_save_meta(d, meta)
-        with open(os.path.join(d, "request.md"), encoding="utf-8") as f:
+        with open(os.path.join(d, "report.md"), encoding="utf-8") as f:
             md = f.read()
         print("order %s %s (%s)"
               % ("start" if final_status == "in_production" else "complete",
                  oid, result.get("usage")), flush=True)
-        return (200, {"ok": True, "intake": intake, "request_md": md,
-                      "files": ["intake.json", "request.md", "request.json"],
+        return (200, {"ok": True, "intake": intake, "report_md": md,
+                      "files": ["intake.json", "result.json", "report.md"],
                       "usage": result.get("usage")})
 
     def _extract_intake(self, d, meta):

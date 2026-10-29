@@ -10,6 +10,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from agents._frame import results
+from agents._frame.schemas import render_cite_md
 from agents._frame.tools import write_request, write_structure
 
 fails = 0
@@ -143,6 +144,33 @@ saved2 = results.load_result(os.path.join(wdir, "result.json"))
 ok("structure" in saved2["categories"]
    and results.check_result(saved2) == [],
    "structure envelope validates")
+ok(os.path.isfile(os.path.join(wdir, "report.md")),
+   "writers also write report.md")
+
+rep = results.render_report(saved)
+ok("generated from r9, do not edit" in rep
+   and "## request (v1)" in rep and "Client answers" in rep,
+   "request report renders with stamp")
+rep2 = results.render_report(saved2)
+ok("## structure (v1)" in rep2 and "1.1 Alpha" in rep2
+   and "p1 -> p2" in rep2, "structure report renders")
+ok(render_cite_md("pc://article/ab12#p3", "quoted")
+   == "[quoted](api/ref?ref=pc%3A%2F%2Farticle%2Fab12%23p3)",
+   "citation link format")
+VID = {"file": {"path": "output/o1/r1/video.mp4", "size_bytes": 10,
+                "format": "mp4", "resolution": "1920x1080"},
+       "duration_s": 12.5, "built_from": "r0",
+       "scenes": [{"n": 1, "start_s": 0.0, "end_s": 12.5,
+                   "lines": [{"text": "hi", "start_s": 0.0, "end_s": 4.2,
+                              "citations": [{"ref": "pc://a/b#p1",
+                                             "quote": "q"}]}]}]}
+rv = results.make_result("postprocess", "o1", "r1", {"video": VID})
+ok(results.check_result(rv) == [], "video envelope validates")
+ok("api/ref?ref=pc%3A%2F%2Fa%2Fb%23p1" in results.render_report(rv),
+   "video report links citations")
+rvx = results.make_result("postprocess", "o1", "r1", {"video": VID})
+rvx["categories"]["video"]["version"] = 99
+ok("```json" in results.render_report(rvx), "unknown version falls back")
 
 if fails:
     print("%d FAILURES" % fails)
