@@ -410,7 +410,63 @@ pc://article/<id>#p<paragraph>
   and list any failures as problems (the result stays `checked`
   until clean).
 
-## 10. Open questions
+## 10. Map builder (per PC, automatic)
+
+The map builder is attached to the PCs, not to agents. Each PC
+(Source, Theory, Article) has one ingest pipeline that runs
+automatically on every add (`pc_add_source` / `pc_add_theory` /
+`pc_add_article`):
+
+1. Content hash → id; if it exists, return the existing ref and stop.
+2. Assign paragraph/figure/table/formula addresses (§9).
+3. `build_map(entry)` (steps below).
+4. LightRAG indexing for the active embedding profile.
+
+Agents only call add and get the ref back; they never build maps or
+indexes. The add returns the ref immediately; steps 3–4 run in the
+background and the entry shows "map: pending" until done. Paragraphs
+are readable via `open_ref` right away.
+
+### 10.1 build_map(entry)
+
+1. Code: split sections/subsections (Source: numbered headings;
+   Theory/Article: paragraph groups).
+2. Code: addresses for every paragraph (`s1.2/p3`) and for figures,
+   tables, formulas (`fig1.1`, `tab1.2`, `eq1.3`).
+3. Code: detect "omitted" candidates per section — numbers, formulas,
+   figure/table mentions, lists, example sentences ("for example",
+   "e.g.", "consider") — each with its exact ref.
+4. Code: extract key terms (capitalized, quoted, bold), original
+   wording.
+5. LLM, one call per section: given the section text with paragraph
+   numbers, return only JSON `{summary: [{text, see: "p1-p3"}]}`.
+6. Code check: every "see" range exists; every omitted candidate not
+   covered by the summary goes into "omitted" as `{what, see}`. On
+   failure retry that section once, then mark "summary_missing"
+   (never invent).
+7. LLM, one call: entry summary (3–5 sentences) from section
+   summaries.
+
+### 10.2 Map shape (per section)
+
+```json
+{"ref": "…", "heading": "…",
+ "summary": [{"text": "…", "see": "p1-p3"}],
+ "omitted": [{"what": "…", "see": "p4"}],
+ "key_terms": ["…"], "has": ["fig1.1", "tab1.2"],
+ "chars": 1234, "subsections": ["…"]}
+```
+
+- Summaries are navigation only, never evidence: the writer tool
+  rejects quotes taken from a summary.
+- When the writer tool rejects a claim without evidence, it suggests
+  a matching "omitted" ref from the map.
+
+### 10.3 Logging
+
+Per entry: map/index time, LLM calls, tokens.
+
+## 11. Open questions
 
 - Q1 DECIDED: version per category. The header keeps
   `format_version` for the envelope; every category is wrapped as
