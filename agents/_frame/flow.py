@@ -20,6 +20,7 @@ AGENTS = os.path.dirname(HERE)
 ROOT = os.path.dirname(AGENTS)
 FLOWS_DIR = os.path.join(ROOT, "data", "flows")
 RUNS_DIR = os.path.join(ROOT, "runs")
+ORDERS_DIR = os.path.join(ROOT, "orders")
 ORDER_NODE = "order"
 FINAL_NODE = "final"
 ORDER_OUTPUTS = [
@@ -349,20 +350,29 @@ def _render_inputs_md(order_brief, received, run_dir, dest_id):
     return "\n".join(chunks)
 
 
-def _materialize_order(run_dir, flow, order_id, emit):
-    """Write order artefacts: brief.json + source.md sidecars and the
-    order result.json (pseudo-producer, checked)."""
-    node = next(n for n in flow["nodes"] if n.get("id") == ORDER_NODE)
-    cfg = node.get("order", {}) if isinstance(node, dict) else {}
-    answers = cfg.get("answers", {})
+def _materialize_order(run_dir, order_id, emit):
+    """Write order artefacts from a real order: brief.json + source.md
+    sidecars and the order result.json (pseudo-producer, checked)."""
+    meta_p = os.path.join(ORDERS_DIR, order_id, "meta.json")
+    parsed_p = os.path.join(ORDERS_DIR, order_id, "parsed.md")
+    if not os.path.isfile(meta_p):
+        return {"ok": False, "error": "no such order: %r" % order_id}
+    if not os.path.isfile(parsed_p):
+        return {"ok": False,
+                "error": "order %r has no parsed PDF yet" % order_id}
+    with open(meta_p, encoding="utf-8") as f:
+        meta = json.load(f)
+    with open(parsed_p, encoding="utf-8") as f:
+        text = f.read()
+    answers = meta.get("answers", {})
     brief = {"order_id": order_id, "answers": answers,
-             "source_file": cfg.get("source_file", "source.pdf")}
+             "source_file": meta.get("files", {}).get("source",
+                                                      "source.pdf")}
     missing = [k for k in ("audience", "length", "depth", "theme")
                if not answers.get(k)]
     if missing:
         return {"ok": False,
                 "error": "order misses answers: %s" % ", ".join(missing)}
-    text = cfg.get("source_text", "")
     odir = os.path.join(run_dir, ORDER_NODE)
     _write_json(os.path.join(odir, "brief.json"), brief)
     with open(os.path.join(odir, "source.md"), "w", encoding="utf-8") as f:
@@ -505,7 +515,7 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc"):
                 {"run_id": run_id, "flow_id": flow_id,
                  "order_id": order_id, "state": "running"})
     emit({"ev": "flow_start", "flow": flow_id, "order": order_id})
-    order = _materialize_order(run_dir, flow, order_id, emit)
+    order = _materialize_order(run_dir, order_id, emit)
     if not order["ok"]:
         return fail(order["error"])
     incoming = {}

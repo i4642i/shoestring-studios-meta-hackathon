@@ -151,11 +151,16 @@ def _validate_flow(flow):
             if side == "inputs":
                 if not isinstance(item.get("required"), bool):
                     errs.append("%s.required must be a bool" % where)
-            else:
-                fn = item.get("file", "")
-                if not isinstance(fn, str) or not fn \
-                        or "/" in fn or "\\" in fn or fn.startswith("."):
-                    errs.append("%s.file must be a plain filename" % where)
+                if "accept" in item:
+                    acc = item["accept"]
+                    if not isinstance(acc, list) or not acc or any(
+                            not isinstance(v, int) or isinstance(v, bool)
+                            or v < 1 for v in acc):
+                        errs.append("%s.accept must be a non-empty int "
+                                    "list" % where)
+            elif "file" in item:
+                errs.append("%s.file is retired (Q6: runs write "
+                            "result.json)" % where)
     return errs
 
 

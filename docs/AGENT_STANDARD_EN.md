@@ -66,8 +66,10 @@ Rules:
 - `io.output`: single filename; the runner validates it against
   `agents/_frame/schemas.py` when a schema exists.
 - Builtin writers (`OUTPUTS` in `agents/_frame/tools.py`): `write_draft`
-  → `draft.json`, `write_structure` → `structure.json`, `write_request` →
-  `request.md` (plus machine-readable `request.json` beside it).
+  → `draft.json`; `write_structure` and `write_request` → `result.json`
+  (Q6 cutover: one result JSON per run, categories inside; the
+  standalone `structure.json` / `request.json` / `request.md` are
+  retired). Every writer also emits `report.md` via `render_report`.
 - `done`: human-readable completion checklist, >=1 item.
 
 ## 4. persona.md structure
@@ -134,10 +136,11 @@ makes lines checkable and handoffs safe.
 "flow": {
   "inputs": [
     {"category": "brief", "required": true,
-     "description": "Order answers (audience, length, depth, theme)."}
+     "description": "Order answers (audience, length, depth, theme).",
+     "accept": [1]}
   ],
   "outputs": [
-    {"category": "request", "file": "request.json",
+    {"category": "request",
      "description": "Video production request for PD/production."}
   ]
 }
@@ -146,37 +149,43 @@ makes lines checkable and handoffs safe.
 Rules:
 
 - `inputs[]`: `category` (registry name, snake), `required` (bool),
-  `description` (non-empty). A flow must deliver every required input.
-- `outputs[]`: `category`, `file` (machine-readable run output the
-  payload is read from; plain filename, no directories), `description`.
+  `description` (non-empty), optional `accept` (non-empty int list:
+  category versions this agent takes; default is the registry
+  version). A flow must deliver every required input.
+- `outputs[]`: `category`, `description`. No destinations, no
+  filenames: every run writes `result.json`.
 - Every named category MUST exist in `agents/_frame/categories.json`.
-  Agents without `flow` cannot join a flow.
+  Agents without `flow` cannot join a flow; agents without a writer
+  tool are drafts (display only, never run).
 - The runner is unchanged: a flow run composes one `input.md` (sections
   labeled by sender/category) plus an `INPUTS.json` manifest and calls
   the normal bounded loop.
 
 Category registry (`agents/_frame/categories.json`): one entry per
 result category: `version` (integer, starts at 1), `description`, and a
-JSON `schema` for the payload. Bump the version on any breaking payload
-change; the flow refuses to query an envelope whose version differs.
+JSON `schema` for the `data`. Bump the version on any breaking change;
+a handoff refuses a version the receiver does not accept.
 
-Result envelope (every handoff, stored at
-`runs/<run_id>/<producer>/<category>.json`):
+Result JSON (one per agent run, stored at
+`runs/<run_id>/<producer>/result.json`):
 
 ```json
-{"category": "request", "version": 1, "producer": "sales_sam",
+{"producer": "sales_sam", "format_version": 1,
  "order_id": "...", "run_id": "...", "created_at": "2026-10-30T03:00:00",
- "status": "unverified|checked|verified",
- "payload": {}}
+ "status": "unverified|checked|reviewed|verified",
+ "reviewed_by": null, "reviewed_at": null,
+ "verified_by": null, "verified_at": null,
+ "categories": {"request": {"version": 1, "data": {}}}}
 ```
 
-Only `payload` differs by category. `status`: `unverified` at wrap
-time, `checked` after a handoff validation passes, `verified` reserved
-for future human/QA acceptance.
+`status`: `unverified` at write time, `checked` after a code check
+passes, `reviewed` by a reviewer agent, `verified` by the developer
+only (UI confirm). A verified result is read-only; any change starts
+a new run.
 
-Handoff check (flow engine, before the consumer runs): envelope shape,
-registry version match, then payload against the registry schema with
-the stdlib subset: `type` (object, array, string, integer, number,
+Handoff check (flow engine, before the consumer runs): header shape,
+accepted category versions, then `data` against the registry schema
+with the stdlib subset: `type` (object, array, string, integer, number,
 boolean), `properties`, `required`, `items` (one schema),
 `additionalProperties` (bool), `enum`. Anything outside this subset in
 a registry schema is ignored. On failure the flow stops and the run log
