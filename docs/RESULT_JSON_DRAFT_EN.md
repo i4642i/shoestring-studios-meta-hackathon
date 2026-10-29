@@ -245,6 +245,9 @@ Notes on the stage table:
 - No destinations in any JSON (D1). No per-category files (D2): one
   JSON per run, categories inside.
 - Lines filter categories; several senders may feed one agent (D3–D4).
+  Same category from two senders has no fixed rule: direct receive or
+  relay-agent merge is decided per flow (D7 principle). Every received
+  category keeps its sender label (Q4).
 - Merging is a relay agent's instructions, never a code block (D5).
 - Scene/video assembly is a post-processing page, not an agent (D6).
 - Every needed input must arrive by design; no run-time requests (D7).
@@ -497,8 +500,9 @@ Per entry: map/index time, LLM calls, tokens.
      build_map → LightRAG), not by agents.
   6. Summaries are navigation only; evidence is always {ref, quote}
      matching the original passage verbatim.
-- Q4 Same category from two senders into one agent: allowed with
-  sender labels, or must it always go through a relay agent (D5)?
+- Q4 DECIDED: no fixed rule. Direct receive vs relay-agent merge
+  is decided per flow when designing it (same principle as D7). The
+  format only keeps the sender label on every received category.
 - Q5 Does the Final video node also write a result JSON, or is the
   post-processing page output (D6) outside this format?
 - Q6 Transition: keep writing legacy sidecars (`request.md`,
