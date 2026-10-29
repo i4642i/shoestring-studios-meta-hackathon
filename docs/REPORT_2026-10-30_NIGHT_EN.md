@@ -139,7 +139,7 @@ current task, the 7 agent folders, and the result-JSON draft remain.
 2. Desks: 9 crew share 6 chat seats by modulo — roster positions 7–9
    (Sam, Iris, Wren) sit at desks 0–2 when chatting. Say the word and
    I will add a third desk row (needs your screenshots to verify).
-3. Push: branch `night-2026-10-30` holds 24 commits, never pushed.
+3. Push: branch `night-2026-10-30` holds 26 commits (incl. this fix), never pushed.
 4. PC: `start_server.bat` reinstall (~1GB) + `smoke_server.py` rerun.
 5. Jetson: test connection, build Marty's jetson index, same 3
    questions on both profiles.
