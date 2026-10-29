@@ -18,10 +18,16 @@ from . import results
 HERE = os.path.dirname(os.path.abspath(__file__))
 AGENTS = os.path.dirname(HERE)
 ROOT = os.path.dirname(AGENTS)
-FLOWS = os.path.join(ROOT, "data", "flows")
+FLOWS_DIR = os.path.join(ROOT, "data", "flows")
+RUNS_DIR = os.path.join(ROOT, "runs")
 ORDER_NODE = "order"
 FINAL_NODE = "final"
-ORDER_OUTPUTS = ["brief", "source"]
+ORDER_OUTPUTS = [
+    {"category": "brief",
+     "description": "Order answers (audience, length, depth, theme)."},
+    {"category": "source",
+     "description": "Parsed source document pointer."},
+]
 
 
 def _write_json(path, obj):
@@ -35,7 +41,7 @@ def load_flow(flow_id):
     if not flow_id or "/" in flow_id or "\\" in flow_id \
             or flow_id.startswith("."):
         raise ValueError("bad flow id: %r" % (flow_id,))
-    path = os.path.join(FLOWS, flow_id + ".json")
+    path = os.path.join(FLOWS_DIR, flow_id + ".json")
     with open(path, encoding="utf-8") as f:
         flow = json.load(f)
     if not isinstance(flow, dict):
@@ -49,10 +55,6 @@ def _load_agent(agent_id):
         return json.load(f)
 
 
-def _producers(flow):
-    return [n["id"] for n in flow.get("nodes", []) if "id" in n]
-
-
 def _is_draft(agent_id):
     """A draft agent has no writer tool, so it cannot run yet."""
     try:
@@ -63,103 +65,114 @@ def _is_draft(agent_id):
                    for t in agent.get("tools", []))
 
 
-def catalog():
-    """Nodes and categories for the editor: id, kind, title, outputs."""
-    reg = results.registry()
-    nodes = [{"id": ORDER_NODE, "kind": "order",
-              "title": "Order (brief + source)", "outputs": list(ORDER_OUTPUTS),
-              "draft": False}]
+def load_catalog():
+    """Nodes and categories for the editor."""
+    agents = []
     for eid in sorted(os.listdir(AGENTS)):
-        if eid.startswith("_") or eid == "flow":
+        if eid.startswith("_"):
             continue
         try:
             agent = _load_agent(eid)
         except (OSError, ValueError):
             continue
-        flow = agent.get("flow", {}) if isinstance(agent, dict) else {}
-        outputs = [o.get("category") for o in flow.get("outputs", [])
-                   if isinstance(o, dict) and o.get("category")]
-        nodes.append({"id": eid, "kind": "agent",
-                      "title": agent.get("title", eid), "outputs": outputs,
-                      "draft": _is_draft(eid)})
-    nodes.append({"id": FINAL_NODE, "kind": "final",
-                  "title": "Final video (post-processing)", "outputs": [],
-                  "draft": False})
+        if not isinstance(agent, dict):
+            continue
+        entry = {"id": eid, "name": agent.get("name", eid),
+                 "title": agent.get("title", ""), "draft": _is_draft(eid)}
+        if isinstance(agent.get("flow"), dict):
+            entry["flow"] = {"inputs": agent["flow"].get("inputs", []),
+                             "outputs": agent["flow"].get("outputs", [])}
+        agents.append(entry)
+    reg = results.registry()
     categories = [{"name": n, "version": v["version"],
                    "description": v["description"]}
                   for n, v in sorted(reg.items())]
-    return {"nodes": nodes, "categories": categories}
+    return {"agents": agents, "order": {"outputs": ORDER_OUTPUTS},
+            "categories": categories}
 
 
-def validate(flow, agents_root=None):
-    """Static flow check. Returns [errors] (empty means valid).
+def validate_flow(flow, catalog=None):
+    """Static flow check. Returns [errors], each {message, line?, node?}.
 
-    Unknown categories, duplicate same-pair lines, agents without input
-    (draft nodes exempt), missing required inputs, dangling endpoints,
-    lines from final, senders without output contracts, cycles. Connected
-    draft nodes are rejected: drafts display only, they cannot run.
+    Unknown categories, duplicate same-pair lines (one line per pair; it
+    may carry several categories), agents without input (draft nodes
+    exempt), missing required inputs, dangling endpoints, lines from
+    final, cycles. Connected draft nodes are rejected: drafts display
+    only, they cannot run. Same category from different senders is
+    allowed; every received category keeps its sender label (Q4).
     """
+    def err(message, line=None, node=None):
+        out = {"message": message}
+        if line is not None:
+            out["line"] = line
+        if node is not None:
+            out["node"] = node
+        return out
+
     errors = []
     reg = results.registry()
     if not isinstance(flow, dict):
-        return ["flow must be an object"]
+        return [err("flow must be an object")]
     nodes = {n.get("id"): n for n in flow.get("nodes", [])
              if isinstance(n, dict)}
     if ORDER_NODE not in nodes:
-        errors.append("flow needs an %r node" % ORDER_NODE)
+        errors.append(err("flow needs an 'order' node", node=ORDER_NODE))
     if FINAL_NODE not in nodes:
-        errors.append("flow needs a %r node" % FINAL_NODE)
+        errors.append(err("flow needs a 'final' node", node=FINAL_NODE))
     lines = flow.get("lines", [])
     if not isinstance(lines, list):
-        return errors + ["lines must be an array"]
+        return errors + [err("lines must be an array")]
     pairs = set()
-    for i, ln in enumerate(lines):
-        where = "lines[%d]" % i
+    for ln in lines:
         if not isinstance(ln, dict):
-            errors.append("%s: must be an object" % where)
+            errors.append(err("line must be an object"))
             continue
+        lid = ln.get("id")
         src, dst = ln.get("from"), ln.get("to")
         if src not in nodes:
-            errors.append("%s: unknown sender %r" % (where, src))
+            errors.append(err("unknown sender %r" % (src,), line=lid))
         if dst not in nodes:
-            errors.append("%s: unknown receiver %r" % (where, dst))
+            errors.append(err("unknown receiver %r" % (dst,), line=lid))
         if src == FINAL_NODE:
-            errors.append("%s: final never sends" % where)
+            errors.append(err("final never sends", line=lid))
         if (src, dst) in pairs:
-            errors.append("%s: duplicate line %r -> %r (one line per pair;"
-                          " it may carry several categories)"
-                          % (where, src, dst))
+            errors.append(err("duplicate line %r -> %r (one line per pair;"
+                              " it may carry several categories)"
+                              % (src, dst), line=lid))
         pairs.add((src, dst))
         cats = ln.get("categories", "*")
         if cats != "*" and not (
                 isinstance(cats, list) and cats
                 and all(isinstance(c, str) for c in cats)):
-            errors.append("%s: categories must be '*' or a non-empty "
-                          "string list" % where)
+            errors.append(err("categories must be '*' or a non-empty "
+                              "string list", line=lid))
         elif isinstance(cats, list):
             for c in cats:
                 if c not in reg:
-                    errors.append("%s: unknown category %r" % (where, c))
+                    errors.append(err("unknown category %r" % (c,),
+                                      line=lid))
     if errors:
         return errors
     incoming = {}
     for ln in lines:
         incoming.setdefault(ln["to"], []).append(ln)
-    for nid, node in nodes.items():
+    for nid in nodes:
         if nid in (ORDER_NODE, FINAL_NODE):
             continue
         if _is_draft(nid):
             if nid in incoming or any(ln["from"] == nid for ln in lines):
-                errors.append("node %r is a draft (no writer tool) and "
-                              "cannot run; remove its lines" % nid)
+                errors.append(err("node %r is a draft (no writer tool) "
+                                  "and cannot run; remove its lines" % nid,
+                                  node=nid))
             continue
         if nid not in incoming:
-            errors.append("agent %r has no incoming line" % nid)
+            errors.append(err("agent %r has no incoming line" % nid,
+                              node=nid))
             continue
         try:
             agent = _load_agent(nid)
         except (OSError, ValueError):
-            errors.append("agent %r has no agent.json" % nid)
+            errors.append(err("agent %r has no agent.json" % nid, node=nid))
             continue
         flowdecl = agent.get("flow", {}) if isinstance(agent, dict) else {}
         required = [w.get("category") for w in flowdecl.get("inputs", [])
@@ -169,7 +182,7 @@ def validate(flow, agents_root=None):
             cats = ln.get("categories", "*")
             if cats == "*":
                 if ln["from"] == ORDER_NODE:
-                    got.update(ORDER_OUTPUTS)
+                    got.update(o["category"] for o in ORDER_OUTPUTS)
                 else:
                     try:
                         sender = _load_agent(ln["from"])
@@ -183,13 +196,13 @@ def validate(flow, agents_root=None):
                 got.update(cats)
         for need in required:
             if need not in got:
-                errors.append("agent %r misses required input %r"
-                              % (nid, need))
-    order = [ln["from"] for ln in lines]
-    if order and ORDER_NODE not in order:
-        errors.append("order node sends nothing")
+                errors.append(err("agent %r misses required input %r"
+                                  % (nid, need), node=nid))
+    if lines and ORDER_NODE not in [ln["from"] for ln in lines]:
+        errors.append(err("order node sends nothing", node=ORDER_NODE))
     if FINAL_NODE not in incoming:
-        errors.append("final node has no incoming line")
+        errors.append(err("final node has no incoming line",
+                          node=FINAL_NODE))
     if errors:
         return errors
     state = {}
@@ -203,7 +216,7 @@ def validate(flow, agents_root=None):
                 continue
             dst = ln["to"]
             if state.get(dst) == 1:
-                return ["cycle: %s" % " -> ".join(stack + [dst])]
+                return [err("cycle: %s" % " -> ".join(stack + [dst]))]
             if dst not in state:
                 hit = visit(dst)
                 if hit:
@@ -222,7 +235,7 @@ def validate(flow, agents_root=None):
 
 def topo_order(flow):
     """Node ids runnable-first (order first, final last)."""
-    nodes = _producers(flow)
+    nodes = [n["id"] for n in flow.get("nodes", []) if "id" in n]
     lines = [ln for ln in flow.get("lines", []) if isinstance(ln, dict)]
     after = {n: set() for n in nodes}
     for ln in lines:
@@ -240,25 +253,30 @@ def topo_order(flow):
     return out
 
 
+def new_run_id():
+    return "flow-%s-%s" % (time.strftime("%Y%m%d-%H%M%S"),
+                           os.urandom(2).hex())
+
+
 def _sender_result(run_dir, sender_id):
     if sender_id == ORDER_NODE:
         return os.path.join(run_dir, ORDER_NODE, results.RESULT_FILE)
     return os.path.join(run_dir, sender_id, results.RESULT_FILE)
 
 
-def _transfer(run_dir, sender_id, dest_id, categories, dest_inputs, emit):
+def _transfer(run_dir, sender_id, dest_id, categories, dest_inputs):
     """Move validated categories sender -> dest. categories is '*' or a
     list. dest_inputs is the dest agent's flow.inputs (None = final node,
-    takes registry versions). Returns (received, errors); received is
-    [{sender, category, version, file}] with sender labels (Q4)."""
-    received, errors = [], []
+    takes registry versions). Returns (received, bytes, errors); received
+    is [{sender, category, version, file}] with sender labels (Q4)."""
+    received, errors, nbytes = [], [], 0
     try:
         res = results.load_result(_sender_result(run_dir, sender_id))
     except (OSError, ValueError) as exc:
-        return [], ["%s has no result.json (%s)" % (sender_id, exc)]
-    if results.check_result(res, where=sender_id):
-        return [], ["%s result invalid: %s"
-                    % (sender_id, results.check_result(res)[0])]
+        return [], 0, ["%s has no result.json (%s)" % (sender_id, exc)]
+    problems = results.check_result(res, where=sender_id)
+    if problems:
+        return [], 0, ["%s result invalid: %s" % (sender_id, problems[0])]
     reg = results.registry()
     if categories == "*":
         categories = sorted(res["categories"])
@@ -271,24 +289,23 @@ def _transfer(run_dir, sender_id, dest_id, categories, dest_inputs, emit):
         if wrapped is None:
             errors.append("%s has no category %r for %s"
                           % (sender_id, cat, dest_id))
-            return received, errors
-        want = None
-        if dest_inputs is not None:
-            want = wants.get(cat, {}).get("accept")
+            return received, nbytes, errors
+        want = wants.get(cat, {}).get("accept") \
+            if dest_inputs is not None else None
         accepted = want or [reg[cat]["version"]]
         if wrapped.get("version") not in accepted:
             errors.append("%s: version %r not in accepted %r"
                           % (cat, wrapped.get("version"), accepted))
-            return received, errors
+            return received, nbytes, errors
         data = wrapped.get("data")
         if not isinstance(data, dict):
             errors.append("%s: data must be an object" % cat)
-            return received, errors
+            return received, nbytes, errors
         bad = results.validate_schema(data, reg[cat]["schema"],
                                       "%s.%s" % (sender_id, cat))
         if bad:
             errors.append("%s: %s" % (cat, bad[0]))
-            return received, errors
+            return received, nbytes, errors
         dest_file = os.path.join(run_dir, dest_id,
                                  "received.%s.%s.json" % (sender_id, cat))
         _write_json(dest_file, {"sender": sender_id, "category": cat,
@@ -306,9 +323,8 @@ def _transfer(run_dir, sender_id, dest_id, categories, dest_inputs, emit):
         received.append({"sender": sender_id, "category": cat,
                          "version": wrapped["version"],
                          "file": os.path.basename(dest_file)})
-        emit({"t": "line", "from": sender_id, "to": dest_id,
-              "category": cat, "version": wrapped["version"]})
-    return received, []
+        nbytes += len(json.dumps(data, ensure_ascii=False))
+    return received, nbytes, []
 
 
 def _render_inputs_md(order_brief, received, run_dir, dest_id):
@@ -362,12 +378,13 @@ def _materialize_order(run_dir, flow, order_id, emit):
     results.save_result(odir, res)
     with open(os.path.join(odir, "report.md"), "w", encoding="utf-8") as f:
         f.write(results.render_report(res))
-    emit({"t": "node", "node": ORDER_NODE, "status": "checked"})
+    emit({"ev": "order_ready",
+          "files": ["brief.json", "source.md", "result.json", "report.md"]})
     return {"ok": True, "brief": brief}
 
 
-def _run_agent_node(run_dir, agent_id, flow, order_id, order_brief,
-                    incoming, run_agent_fn, emit):
+def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
+                    run_agent_fn, emit):
     """Run one agent: gather transfers, run, expect result.json, check it,
     promote to checked, refresh the report."""
     try:
@@ -375,13 +392,18 @@ def _run_agent_node(run_dir, agent_id, flow, order_id, order_brief,
     except (OSError, ValueError) as exc:
         return {"ok": False, "error": "no agent.json for %r (%s)"
                                       % (agent_id, exc)}
+    emit({"ev": "agent_start", "agent": agent_id})
     flowdecl = agent.get("flow", {}) if isinstance(agent, dict) else {}
     dest_inputs = flowdecl.get("inputs")
     received = []
     for ln in incoming:
-        got, errors = _transfer(run_dir, ln["from"], agent_id,
-                                ln.get("categories", "*"), dest_inputs, emit)
+        got, nbytes, errors = _transfer(run_dir, ln["from"], agent_id,
+                                        ln.get("categories", "*"),
+                                        dest_inputs)
         received.extend(got)
+        emit({"ev": "line", "line": ln.get("id"), "from": ln["from"],
+              "to": agent_id, "categories": [r["category"] for r in got],
+              "bytes": nbytes})
         if errors:
             return {"ok": False, "error": errors[0]}
     adir = os.path.join(run_dir, agent_id)
@@ -412,37 +434,40 @@ def _run_agent_node(run_dir, agent_id, flow, order_id, order_brief,
     results.save_result(adir, res)
     with open(os.path.join(adir, "report.md"), "w", encoding="utf-8") as f:
         f.write(results.render_report(res))
-    emit({"t": "node", "node": agent_id, "status": "checked"})
+    emit({"ev": "agent_done", "agent": agent_id,
+          "outputs": sorted(res["categories"])})
     return {"ok": True}
 
 
-def _collect_final(run_dir, flow, incoming, emit):
+def _collect_final(run_dir, incoming, emit):
     """Gather the final node's inputs and write its result.json as the
     postprocess code step (header + empty categories until the video
     assembly step exists; Q5)."""
     received = []
     for ln in incoming:
-        got, errors = _transfer(run_dir, ln["from"], FINAL_NODE,
-                                ln.get("categories", "*"), None, emit)
+        got, nbytes, errors = _transfer(run_dir, ln["from"], FINAL_NODE,
+                                        ln.get("categories", "*"), None)
         received.extend(got)
+        emit({"ev": "line", "line": ln.get("id"), "from": ln["from"],
+              "to": FINAL_NODE, "categories": [r["category"] for r in got],
+              "bytes": nbytes})
         if errors:
             return {"ok": False, "error": errors[0]}
     fdir = os.path.join(run_dir, FINAL_NODE)
     _write_json(os.path.join(fdir, "INPUTS.json"),
                 {"agent": FINAL_NODE, "received": received})
     order_res = results.load_result(_sender_result(run_dir, ORDER_NODE))
-    res = results.make_result("postprocess",
-                              order_res["order_id"],
+    res = results.make_result("postprocess", order_res["order_id"],
                               os.path.basename(run_dir), {})
     results.promote_checked(res)
     results.save_result(fdir, res)
     with open(os.path.join(fdir, "report.md"), "w", encoding="utf-8") as f:
         f.write(results.render_report(res))
-    emit({"t": "node", "node": FINAL_NODE, "status": "checked"})
+    emit({"ev": "final_ready", "inputs": len(received)})
     return {"ok": True, "received": [r["category"] for r in received]}
 
 
-def run_flow(flow, order_id, run_agent_fn, runs_root=None, run_id=None):
+def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc"):
     """Run a validated flow. run_agent_fn(agent_dir, run_dir, brief,
     input_md) follows the runner.run contract ({"ok": bool, ...});
     tests inject a stub.
@@ -453,21 +478,17 @@ def run_flow(flow, order_id, run_agent_fn, runs_root=None, run_id=None):
     final/{INPUTS.json, result.json, report.md}}.
     Returns {"ok": bool, "run_id", ...}; aborts on the first failure.
     """
-    problems = validate(flow)
+    problems = validate_flow(flow)
     if problems:
-        return {"ok": False, "error": problems[0]}
-    runs_root = runs_root or os.path.join(ROOT, "runs")
-    run_id = run_id or ("flow-%s-%s"
-                        % (time.strftime("%Y%m%d-%H%M%S"),
-                           os.urandom(2).hex()))
-    run_dir = os.path.join(runs_root, run_id)
+        return {"ok": False, "error": problems[0]["message"]}
+    run_id = run_id or new_run_id()
+    run_dir = os.path.join(RUNS_DIR, run_id)
     os.makedirs(run_dir, exist_ok=True)
     _write_json(os.path.join(run_dir, "flow.json"), flow)
     events_path = os.path.join(run_dir, "events.jsonl")
     events = []
 
     def emit(ev):
-        ev.setdefault("t", "event")
         ev["at"] = time.strftime("%H:%M:%S")
         events.append(ev)
         with open(events_path, "a", encoding="utf-8") as f:
@@ -475,13 +496,15 @@ def run_flow(flow, order_id, run_agent_fn, runs_root=None, run_id=None):
 
     def fail(msg):
         _write_json(os.path.join(run_dir, "STATUS.json"),
-                    {"run_id": run_id, "status": "failed", "error": msg})
-        emit({"t": "abort", "error": msg})
+                    {"run_id": run_id, "flow_id": flow_id,
+                     "order_id": order_id, "state": "failed", "error": msg})
+        emit({"ev": "flow_error", "error": msg})
         return {"ok": False, "run_id": run_id, "error": msg}
 
     _write_json(os.path.join(run_dir, "STATUS.json"),
-                {"run_id": run_id, "status": "running"})
-    emit({"t": "start", "flow": flow.get("id"), "order_id": order_id})
+                {"run_id": run_id, "flow_id": flow_id,
+                 "order_id": order_id, "state": "running"})
+    emit({"ev": "flow_start", "flow": flow_id, "order": order_id})
     order = _materialize_order(run_dir, flow, order_id, emit)
     if not order["ok"]:
         return fail(order["error"])
@@ -495,16 +518,16 @@ def run_flow(flow, order_id, run_agent_fn, runs_root=None, run_id=None):
     for nid in sequence:
         if nid in (ORDER_NODE, FINAL_NODE) or _is_draft(nid):
             continue
-        step = _run_agent_node(run_dir, nid, flow, order_id,
-                               order["brief"], incoming.get(nid, []),
-                               run_agent_fn, emit)
+        step = _run_agent_node(run_dir, nid, order_id, order["brief"],
+                               incoming.get(nid, []), run_agent_fn, emit)
         if not step["ok"]:
             return fail(step["error"])
-    final = _collect_final(run_dir, flow, incoming.get(FINAL_NODE, []), emit)
+    final = _collect_final(run_dir, incoming.get(FINAL_NODE, []), emit)
     if not final["ok"]:
         return fail(final["error"])
     _write_json(os.path.join(run_dir, "STATUS.json"),
-                {"run_id": run_id, "status": "done",
+                {"run_id": run_id, "flow_id": flow_id,
+                 "order_id": order_id, "state": "done",
                  "received": final["received"]})
-    emit({"t": "done"})
+    emit({"ev": "flow_done", "run": run_id})
     return {"ok": True, "run_id": run_id, "received": final["received"]}
