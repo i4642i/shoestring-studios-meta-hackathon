@@ -385,7 +385,7 @@ def expand_line(line, catalog):
             if isinstance(o, dict) and o.get("category")]
 
 
-def _new_run_id():
+def new_run_id():
     base = time.strftime("fl-%Y%m%d-%H%M%S")
     rid, n = base, 2
     while os.path.exists(os.path.join(RUNS_DIR, rid)):
@@ -408,7 +408,7 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc"):
         raise RuntimeError("invalid flow: %s"
                            % "; ".join(e["message"] for e in errs))
     catalog = load_catalog()
-    rid = run_id or _new_run_id()
+    rid = run_id or new_run_id()
     rdir = os.path.join(RUNS_DIR, rid)
     os.makedirs(rdir, exist_ok=True)
     with open(os.path.join(rdir, "flow.json"), "w", encoding="utf-8") as f:
@@ -424,8 +424,9 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc"):
         emit({"ev": "flow_error", "error": message})
         with open(os.path.join(rdir, "STATUS.json"), "w",
                   encoding="utf-8") as f:
-            json.dump({"state": "error", "error": message}, f,
-                      ensure_ascii=False, indent=1)
+            json.dump({"state": "error", "error": message,
+                       "flow_id": flow_id, "order_id": order_id,
+                       "run_id": rid}, f, ensure_ascii=False, indent=1)
         raise RuntimeError(message)
 
     emit({"ev": "flow_start", "flow": flow_id, "order": order_id,
@@ -446,7 +447,9 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc"):
     except RuntimeError as exc:
         fail(str(exc))
     with open(os.path.join(rdir, "STATUS.json"), "w", encoding="utf-8") as f:
-        json.dump({"state": "done"}, f, ensure_ascii=False, indent=1)
+        json.dump({"state": "done", "flow_id": flow_id,
+                   "order_id": order_id, "run_id": rid}, f,
+                  ensure_ascii=False, indent=1)
     emit({"ev": "flow_done", "run": rid})
     return rid
 

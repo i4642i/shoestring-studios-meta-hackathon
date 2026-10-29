@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote
@@ -21,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
+from agents._frame import flow as flows  # noqa: E402
 from agents._frame import graph  # noqa: E402
 from agents._frame import runner  # noqa: E402
 from agents._frame import tools as registry  # noqa: E402
@@ -34,6 +36,7 @@ PC_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 MAX_PDF_BYTES = 25 * 1024 * 1024
 
 _INDEX_JOBS = {}  # (eid, profile) -> Popen of a running run_index.py build
+_FLOW_JOBS = {}  # run_id -> live flow run status (threads share memory)
 
 
 def parse_multipart(handler):
@@ -184,6 +187,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_pcs_list()
         if parts[:2] == ["api", "settings"] and len(parts) == 2:
             return self._api_settings_get()
+        if parts[:2] == ["api", "flows"] and len(parts) == 2:
+            return self._api_flows_list()
+        if parts[:2] == ["api", "flows"] and len(parts) == 3:
+            if parts[2] == "catalog":
+                return self._api_flows_catalog()
+            if parts[2] == "runs":
+                return self._api_flow_runs()
+            return self._api_flow_get(parts[2])
+        if parts[:2] == ["api", "flows"] and len(parts) == 4 \
+                and parts[2] == "runs":
+            return self._api_flow_run_get(parts[3])
         return self._static(parts)
 
     def do_PUT(self):
@@ -226,6 +240,13 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "crew"] and len(parts) == 4 \
                 and parts[3] == "index":
             return self._api_index_build(parts[2])
+        if parts[:2] == ["api", "flows"] and len(parts) == 3:
+            if parts[2] == "validate":
+                return self._api_flow_validate()
+            return self._api_flow_save(parts[2])
+        if parts[:2] == ["api", "flows"] and len(parts) == 4 \
+                and parts[3] == "run":
+            return self._api_flow_run(parts[2])
         return self._json(404, {"error": "not found"})
 
     def do_DELETE(self):
@@ -732,6 +753,155 @@ class Handler(BaseHTTPRequestHandler):
         logf.close()
         _INDEX_JOBS[(eid, prof)] = job
         return self._json(200, {"started": True, "profile": prof})
+
+    def _api_flows_list(self):
+        out = []
+        fdir = flows.FLOWS_DIR
+        if os.path.isdir(fdir):
+            for fn in sorted(os.listdir(fdir)):
+                if not fn.endswith(".json"):
+                    continue
+                try:
+                    with open(os.path.join(fdir, fn), encoding="utf-8") as f:
+                        d = json.load(f)
+                    out.append({"id": fn[:-5],
+                                "name": d.get("name", fn[:-5])})
+                except (OSError, ValueError):
+                    continue
+        return self._json(200, {"flows": out})
+
+    def _api_flows_catalog(self):
+        return self._json(200, flows.load_catalog())
+
+    def _api_flow_get(self, fid):
+        try:
+            return self._json(200, flows.load_flow(fid))
+        except (ValueError, OSError):
+            return self._json(404, {"error": "no such flow"})
+
+    def _api_flow_save(self, fid):
+        body = self._read_json()
+        if not isinstance(body, dict):
+            return self._json(400, {"error": "need flow object"})
+        if fid in ("catalog", "validate", "runs") \
+                or not validate_agent.ID_RE.match(fid or "") \
+                or fid.startswith("_"):
+            return self._json(400, {"error": "bad flow id"})
+        flow_obj = {"id": fid, "name": body.get("name", fid),
+                    "nodes": body.get("nodes", []),
+                    "lines": body.get("lines", []),
+                    "positions": body.get("positions", {})}
+        errs = flows.validate_flow(flow_obj)
+        if errs:
+            return self._json(400, {"error": "invalid flow",
+                                    "errors": errs})
+        os.makedirs(flows.FLOWS_DIR, exist_ok=True)
+        with open(os.path.join(flows.FLOWS_DIR, fid + ".json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(flow_obj, f, ensure_ascii=False, indent=1)
+        return self._json(200, {"ok": True, "id": fid})
+
+    def _api_flow_validate(self):
+        body = self._read_json()
+        if not isinstance(body, dict):
+            return self._json(400, {"error": "need flow object"})
+        errs = flows.validate_flow(body)
+        return self._json(200, {"ok": not errs, "errors": errs})
+
+    def _api_flow_run(self, fid):
+        try:
+            flow_obj = flows.load_flow(fid)
+        except (ValueError, OSError):
+            return self._json(404, {"error": "no such flow"})
+        errs = flows.validate_flow(flow_obj)
+        if errs:
+            return self._json(400, {"error": "invalid flow",
+                                    "errors": errs})
+        body = self._read_json()
+        order_id = (body or {}).get("order_id") \
+            if isinstance(body, dict) else None
+        if not order_id or not isinstance(order_id, str):
+            return self._json(400, {"error": "need {order_id}"})
+        if not os.path.isfile(os.path.join(ROOT, "orders", order_id,
+                                            "meta.json")):
+            return self._json(404, {"error": "no such order"})
+        run_id = flows.new_run_id()
+        job = {"run_id": run_id, "flow_id": fid, "order_id": order_id,
+               "state": "running", "error": ""}
+        _FLOW_JOBS[run_id] = job
+
+        def _work():
+            try:
+                flows.run_flow(flow_obj, order_id, runner.run,
+                               run_id=run_id, flow_id=fid)
+                job["state"] = "done"
+            except Exception as exc:  # noqa: BLE001 - status surface
+                job["state"] = "error"
+                job["error"] = str(exc)[:1000]
+
+        threading.Thread(target=_work, daemon=True).start()
+        return self._json(200, {"started": True, "run_id": run_id})
+
+    def _api_flow_runs(self):
+        runs = []
+        rdir = flows.RUNS_DIR
+        if os.path.isdir(rdir):
+            names = sorted(
+                os.listdir(rdir),
+                key=lambda n: os.path.getmtime(os.path.join(rdir, n)),
+                reverse=True)[:20]
+            for n in names:
+                st = {"run_id": n, "state": "unknown"}
+                try:
+                    with open(os.path.join(rdir, n, "STATUS.json"),
+                              encoding="utf-8") as f:
+                        d = json.load(f)
+                    st["state"] = d.get("state", "unknown")
+                    st["flow_id"] = d.get("flow_id", "")
+                    st["order_id"] = d.get("order_id", "")
+                    st["error"] = d.get("error", "")
+                except (OSError, ValueError):
+                    pass
+                if n in _FLOW_JOBS and _FLOW_JOBS[n]["state"] == "running":
+                    st["state"] = "running"
+                runs.append(st)
+        return self._json(200, {"runs": runs})
+
+    def _api_flow_run_get(self, run_id):
+        if not run_id or "/" in run_id or "\\" in run_id \
+                or run_id.startswith("."):
+            return self._json(404, {"error": "no such run"})
+        rdir = os.path.join(flows.RUNS_DIR, run_id)
+        if not os.path.isdir(rdir):
+            return self._json(404, {"error": "no such run"})
+        events = []
+        ep = os.path.join(rdir, "events.jsonl")
+        if os.path.isfile(ep):
+            with open(ep, encoding="utf-8") as f:
+                for ln in f.read().splitlines():
+                    try:
+                        events.append(json.loads(ln))
+                    except ValueError:
+                        continue
+        job = _FLOW_JOBS.get(run_id)
+        if job is not None and job["state"] == "running":
+            state, err = "running", ""
+        else:
+            state, err = "unknown", ""
+            try:
+                with open(os.path.join(rdir, "STATUS.json"),
+                          encoding="utf-8") as f:
+                    d = json.load(f)
+                state, err = d.get("state", "unknown"), d.get("error", "")
+            except (OSError, ValueError):
+                pass
+        out = {"run_id": run_id, "state": state, "events": events}
+        if err:
+            out["error"] = err
+        if job is not None:
+            out["flow_id"] = job.get("flow_id", "")
+            out["order_id"] = job.get("order_id", "")
+        return self._json(200, out)
 
     @staticmethod
     def _handbook_hints(agent_dir, text):
