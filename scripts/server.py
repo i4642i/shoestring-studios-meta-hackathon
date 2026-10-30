@@ -860,15 +860,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api_start_prompt(self, eid):
         """Preview the Source-PC start prompt preloaded for Cleo/Rex."""
-        if eid not in ("explain_cleo", "case_rex"):
+        if eid not in ("explain_cleo", "case_rex", "plan_ash"):
             return self._json(404, {"error": "start prompts exist for "
-                                             "Cleo and Rex only"})
+                                             "Cleo, Rex and Ash only"})
         qs = unquote(self.path).split("?", 1)
         oid = dict(parse_qsl(qs[1])).get("order", "") if len(qs) > 1 else ""
         d = self._order_dir(oid)
         if not d:
             return self._json(404, {"error": "no such order"})
         meta = self._order_meta(d)
+        if eid == "plan_ash":
+            try:
+                text, meta2 = pc.picks_preview_for("Ash", oid,
+                                                   flows.RUNS_DIR)
+            except KeyError as exc:
+                return self._json(409, {"error": str(exc)})
+            return self._json(200, {"prompt": text,
+                                    "picks": meta2["picks"],
+                                    "refs": meta2["refs"]})
         ref = (meta.get("files") or {}).get("pc_ref", "")
         if not ref:
             return self._json(409, {"error": "order has no PC entry: "

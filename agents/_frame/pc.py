@@ -1033,6 +1033,131 @@ def ingest_article(url, title, publisher, date, fetched_at, added_by,
                        fetched_at, added_by, text, root)
 
 
+def order_picks_with_reasons(order_id, runs_root):
+    """This order's Theory/Article picks with Cleo/Rex reasons:
+    [{ref, title, why_important, how_to_use, priority, from}].
+    The reports ARE the pick set (13.2)."""
+    out = []
+    seen = set()
+    if not order_id or not runs_root or not os.path.isdir(runs_root):
+        return out
+    for rid in sorted(os.listdir(runs_root)):
+        rd = os.path.join(runs_root, rid)
+        try:
+            with open(os.path.join(rd, "STATUS.json"),
+                      encoding="utf-8") as f:
+                if json.load(f).get("order_id") != order_id:
+                    continue
+        except (OSError, ValueError):
+            continue
+        for ag, cat in (("explain_cleo", "concepts"),
+                        ("case_rex", "cases")):
+            try:
+                with open(os.path.join(rd, ag, "result.json"),
+                          encoding="utf-8") as f:
+                    res = json.load(f)
+            except (OSError, ValueError):
+                continue
+            data = ((res.get("categories") or {}).get(cat)
+                    or {}).get("data", {})
+            for part in data.get("parts", []) or []:
+                for pk in (part or {}).get("picks", []) or []:
+                    ref = (pk or {}).get("ref", "")
+                    if not ref or ref in seen:
+                        continue
+                    seen.add(ref)
+                    out.append({"ref": ref,
+                                "title": (pk or {}).get("title", ""),
+                                "why_important": (pk or {}).get(
+                                    "why_important", ""),
+                                "how_to_use": (pk or {}).get(
+                                    "how_to_use", ""),
+                                "priority": (pk or {}).get(
+                                    "priority", ""),
+                                "from": ag})
+    return out
+
+
+def picks_preview_for(name, order_id, runs_root):
+    """Start-prompt material for a later agent: ONLY this order's
+    picks — each pick's map + refs + Cleo/Rex reasons. Returns
+    (text, meta). Raises KeyError when the order has no picks yet."""
+    picks = order_picks_with_reasons(order_id, runs_root)
+    if not picks:
+        raise KeyError("order %r has no Theory/Article picks yet"
+                       % (order_id,))
+    lines = ["# Start prompt for %s (order %s)" % (name, order_id), "",
+             "You may read ONLY the %d picked items below, plus the "
+             "Source PC. Open passages with open_ref." % len(picks), ""]
+    for n, pk in enumerate(picks, 1):
+        lines += ["## Pick %d: %s" % (n, pk["title"] or pk["ref"]),
+                  "Ref: %s (picked by %s, %s)"
+                  % (pk["ref"], pk["from"], pk["priority"]),
+                  "Why: %s" % pk["why_important"],
+                  "How to use: %s" % pk["how_to_use"], ""]
+        try:
+            entry = load_entry_by_ref(pk["ref"])
+            mp = load_map_by_ref(pk["ref"])
+        except (OSError, ValueError, KeyError) as exc:
+            lines += ["(map unavailable: %s)" % exc, ""]
+            continue
+        if mp.get("entry_summary"):
+            lines += ["Map: %s" % mp["entry_summary"], ""]
+        for sec in mp.get("sections", []):
+            sref = "%s#%s" % (entry["ref"], sec.get("ref", ""))
+            lines.append("### %s (%s)" % (sec.get("heading", ""), sref))
+            for b in sec.get("summary", []) or []:
+                see = (b or {}).get("see", "")
+                full = "%s/%s" % (sref, see) if see else sref
+                lines.append("- %s [%s]" % ((b or {}).get("text", ""),
+                                            full))
+            lines.append("")
+    meta = {"picks": len(picks), "refs": [p["ref"] for p in picks]}
+    return "\n".join(lines), meta
+
+
+def marty_input_text(ref):
+    """Marty's run input text for a Source entry. Non-content
+    sections excluded; headings exact and each numbered section
+    followed by its (ref: ...) line for verbatim copy. Shared by
+    scripts/marty_input.py and the flow's Marty preload."""
+    entry = load_entry_by_ref(ref)
+    try:
+        mp = load_map_by_ref(ref)
+    except (OSError, ValueError, KeyError):
+        mp = {}
+    by_ref = {s.get("ref", ""): s for s in mp.get("sections", [])}
+    out = ["# %s" % entry.get("title", "source"), "",
+           "(Source PC %s; headings below are exact.)" % entry["ref"],
+           ""]
+    if mp.get("entry_summary"):
+        out += ["# MAP NOTES (navigation only; never map these as parts)",
+                "", mp["entry_summary"], ""]
+        for s in entry.get("sections", []):
+            if s.get("non_content"):
+                continue
+            ms = by_ref.get("s" + s["n"], {})
+            out += ["## MAP s%s: %s" % (s["n"], s.get("heading", "")), ""]
+            for b in ms.get("summary", []):
+                out.append("- %s [%s]" % (b.get("text", ""),
+                                          b.get("see", "")))
+            if ms.get("key_terms"):
+                out.append("Terms: " + ", ".join(ms["key_terms"][:15]))
+            for h in ms.get("has", []):
+                out.append("Has %s: %s" % (h.get("ref", "").split("#")[-1],
+                                           h.get("caption", "")))
+            out.append("")
+    for s in entry.get("sections", []):
+        if s.get("non_content"):
+            continue
+        if s["n"] != "0":
+            out += ["## %s %s" % (s["n"], s.get("heading", "")), "",
+                    "(ref: %s#s%s)" % (entry["ref"], s["n"]), ""]
+        for p in entry["paragraphs"][s["start"]:s["start"] + s["count"]]:
+            out += [p["text"], ""]
+    return "\n".join(out)
+
+
 # ---- order linkage + start prompts (§8.6) ----
 def order_entry_ref(order_id, root=None):
     """The Source PC ref recorded on an order's upload, or None."""

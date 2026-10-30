@@ -42,6 +42,9 @@ ok(sorted(c["name"] for c in cat["categories"])
    "catalog has 8 categories")
 ok(all((a.get("color") or "").startswith("#") for a in cat["agents"]),
    "catalog colors")
+ok(all(isinstance(a.get("tools"), list) and a["tools"]
+       for a in cat["agents"]),
+   "catalog agents carry tools")
 
 # ---- page stamp tracks served code (ancestry, not equality) ----
 import re as _re
@@ -69,8 +72,9 @@ ok([o["category"] for o in cat["order"]["outputs"]] == ["brief", "source"],
 
 dflt = flow.load_flow("default")
 ok([n["id"] for n in dflt["nodes"]]
-   == ["order", "sales_sam", "pd_marty", "final"],
-   "default flow is order->sam->marty->final")
+   == ["order", "sales_sam", "pd_marty", "explain_cleo", "case_rex",
+       "final"],
+   "default flow is order->sam->marty->cleo,rex->final")
 try:
     flow.load_flow("../x")
     ok(False, "bad flow id raises")
@@ -139,7 +143,10 @@ multi = {"nodes": [{"id": "order"}, {"id": "sales_sam"},
 ok(flow.validate_flow(multi) == [], "multi-sender intake validates")
 seq = flow.topo_order(dflt)
 ok(seq.index("order") < seq.index("sales_sam")
-   < seq.index("pd_marty") < seq.index("final") == len(seq) - 1,
+   < seq.index("pd_marty") < seq.index("explain_cleo")
+   < seq.index("final") == len(seq) - 1
+   and seq.index("pd_marty") < seq.index("case_rex")
+   < seq.index("final"),
    "topo order respects lines, final last")
 ok(flow.new_run_id().startswith("flow-"), "run id shape")
 
@@ -174,9 +181,19 @@ STRUCT = {"source_ref": "pc://source/abc123abc123",
                      "ref": "pc://source/abc123abc123#s1",
                      "covers": "x", "keywords": ["k"]}],
           "intent": {"overall": "o", "links": []}}
+CONCEPTS = {"parts": [{"part_id": "p1", "concept_name": "c",
+                       "easy_explanation": "e",
+                       "why_it_came_about": "w",
+                       "analogy_or_example": "a",
+                       "common_misunderstanding": "m",
+                       "claims": [], "picks": [], "gaps": []}]}
+CASES = {"parts": [{"part_id": "p1", "cases": [], "picks": [],
+                    "gaps": []}]}
 PAY = {"sales_sam": ("sales_sam", {"request": REQ}),
        "pd_marty": ("pd_marty", {"concept": CONCEPT,
-                                        "structure": STRUCT})}
+                                        "structure": STRUCT}),
+       "explain_cleo": ("explain_cleo", {"concepts": CONCEPTS}),
+       "case_rex": ("case_rex", {"cases": CASES})}
 
 
 def stub(agent_dir, run_dir, brief, input_md):
@@ -218,6 +235,13 @@ mar = results.load_result(os.path.join(rdir, "pd_marty", "result.json"))
 ok(mar["status"] == "checked"
    and mar["categories"]["concept"]["version"] == 1
    and mar["categories"]["structure"]["version"] == 2, "marty checked")
+cleo = results.load_result(os.path.join(rdir, "explain_cleo",
+                                        "result.json"))
+ok(cleo["status"] == "checked"
+   and cleo["categories"]["concepts"]["version"] == 1, "cleo checked")
+rex = results.load_result(os.path.join(rdir, "case_rex", "result.json"))
+ok(rex["status"] == "checked"
+   and rex["categories"]["cases"]["version"] == 1, "rex checked")
 ores = results.load_result(os.path.join(rdir, "order", "result.json"))
 osrc = ores["categories"]["source"]
 ok(osrc["version"] == 2
@@ -227,6 +251,9 @@ ok(osrc["version"] == 2
 fin = results.load_result(os.path.join(rdir, "final", "result.json"))
 ok(fin["producer"] == "postprocess" and fin["status"] == "checked"
    and fin["categories"] == {}, "final postprocess result")
+ok(os.path.isfile(os.path.join(rdir, "pd_marty", "INPUTS.md"))
+   and os.path.isfile(os.path.join(rdir, "explain_cleo", "INPUTS.md")),
+   "agents get INPUTS.md on disk")
 ok(os.path.isfile(os.path.join(rdir, "sales_sam", "report.md"))
    and os.path.isfile(os.path.join(rdir, "pd_marty", "INPUTS.json")),
    "reports + manifests written")
@@ -234,13 +261,23 @@ mani = json.load(open(os.path.join(rdir, "pd_marty", "INPUTS.json"),
                       encoding="utf-8"))
 ok(mani["received"] == [{"sender": "sales_sam", "category": "request",
                          "version": 1,
-                         "file": "received.sales_sam.request.json"}],
-   "manifest sender labels")
+                         "file": "received.sales_sam.request.json"},
+                        {"sender": "order", "category": "source",
+                         "version": 2,
+                         "file": "received.order.source.json"}],
+   "marty manifest has request + source")
+cmani = json.load(open(os.path.join(rdir, "explain_cleo", "INPUTS.json"),
+                      encoding="utf-8"))
+ok([ (r["sender"], r["category"], r["version"]) for r in
+     cmani["received"]] == [("pd_marty", "concept", 1),
+                            ("pd_marty", "structure", 2),
+                            ("order", "source", 2)],
+   "cleo manifest has concept + structure + source")
 evs = [json.loads(ln) for ln in
        open(os.path.join(rdir, "events.jsonl"), encoding="utf-8")]
 kinds = [e["ev"] for e in evs]
 ok(kinds[0] == "flow_start" and kinds[-1] == "flow_done"
-   and "order_ready" in kinds and kinds.count("line") == 3
+   and "order_ready" in kinds and kinds.count("line") == 9
    and "final_ready" in kinds, "event trail complete")
 line1 = next(e for e in evs if e.get("line") == "l1")
 ok(sorted(line1["categories"]) == ["brief", "source"]
@@ -305,6 +342,48 @@ try:
           "file": "struct.json"}], os.path.join(tmp, "runs", "rid9"),
         "sales_sam")
     ok("Start prompt" not in md3, "preload only for cleo/rex")
+    md4 = flow._render_inputs_md(
+        {"order_id": "o10", "answers": {"audience": "a"}}, [],
+        os.path.join(tmp, "runs", "rid9"), "pd_marty")
+    ok("1.1 Getting started" in md4
+       and "(ref: %s#s1.1)" % rr["ref"] in md4
+       and "Preloaded text here." in md4,
+       "marty input preloads full source with refs")
+    tr = _pc.ingest_theory("https://ex.test/t9", "Picked Theory",
+                           "ex.test", "2024-01-01",
+                           "2026-10-30T00:00:00", "explain_cleo",
+                           "Picked body text here.", root=tmp)
+    with open(os.path.join(_pc.entry_dir("theory", tr["doc_id"],
+                                         root=tmp), "map.json"),
+              "w", encoding="utf-8") as f:
+        json.dump({"entry_summary": "A theory about picks.",
+                   "sections": [{"ref": "g1", "heading": "Picked Theory",
+                                 "summary": [{"text": "Body about picks.",
+                                              "see": "p1"}]}]}, f)
+    rd9 = os.path.join(tmp, "runs", "ridp")
+    os.makedirs(os.path.join(rd9, "explain_cleo"))
+    with open(os.path.join(rd9, "STATUS.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"order_id": "o10"}, f)
+    with open(os.path.join(rd9, "explain_cleo", "result.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"categories": {"concepts": {"data": {"parts": [{
+            "picks": [{"ref": tr["ref"], "title": "Picked Theory",
+                       "why_important": "Core idea.",
+                       "how_to_use": "Cite it.",
+                       "priority": "must"}]}]}}}}, f)
+    pv, pmeta = _pc.picks_preview_for("Ash", "o10",
+                                      os.path.join(tmp, "runs"))
+    ok(pmeta["picks"] == 1 and "Core idea." in pv
+       and "Body about picks." in pv
+       and "%s#g1/p1" % tr["ref"] in pv,
+       "ash picks preview shows maps + reasons")
+    try:
+        _pc.picks_preview_for("Ash", "o-none",
+                              os.path.join(tmp, "runs"))
+        ok(False, "picks preview without picks raises")
+    except KeyError:
+        ok(True, "picks preview without picks raises")
 finally:
     _pc.ROOT_OVERRIDE = None
 

@@ -494,6 +494,8 @@
   white-space: nowrap; color: #1f2937; background: rgba(255,255,255,.92);
   padding: 0 4px; border-radius: 4px; }
 .fl-line { fill: none; stroke: #6b7280; stroke-width: 2; }
+.fl-pcline { fill: none; stroke: #9ca3af; stroke-width: 1.5; stroke-dasharray: 5 4; }
+.fl-pc { position: absolute; z-index: 4; font-size: 10px; font-weight: 800; letter-spacing: 1px; color: #4b5563; background: #fff; border: 1.5px dashed #9ca3af; border-radius: 8px; padding: 4px 8px; }
 .fl-line.bad { stroke: #dc2626; }
 .fl-line.sel { stroke: var(--accent); }
 .fl-hit { fill: none; stroke: rgba(0,0,0,0); stroke-width: 16; cursor: pointer; }
@@ -1727,7 +1729,8 @@
           inner += '<div class="req">needs: ' + (reqs || "—") + "</div>";
           if (a && a.draft)
             inner += '<div class="req"><span class="dtag">DRAFT</span>cannot run yet</div>';
-          if (n.id === "explain_cleo" || n.id === "case_rex")
+          if (n.id === "explain_cleo" || n.id === "case_rex" ||
+              n.id === "plan_ash")
             inner += '<div class="req"><a href="#" data-pre="' + esc(n.id) +
               '">Preview start prompt</a></div>';
         }
@@ -1766,6 +1769,11 @@
       box.textContent = "Loading start prompt…";
       const s = await api.get("api/crew/" + eid +
         "/start-prompt?order=" + encodeURIComponent(oid));
+      if (s.picks !== undefined) {
+        box.textContent = "Start prompt (" + eid + ", " + s.picks +
+          " picks)\n\n" + s.prompt;
+        return;
+      }
       box.textContent = "Start prompt (" + eid + ", run " + s.structure_run +
         ", " + s.parts + " parts" +
         (s.missing.length ? ", missing: " + s.missing.join(",") : "") +
@@ -1788,7 +1796,51 @@
       const s = c === "*" ? "*" : (c || []).join(",");
       return s.length > 20 ? s.slice(0, 19) + "…" : s;
     }
+    const PC_DEFS = [
+      { id: "source", label: "SOURCE PC", tool: "pc_read_source", x: 120 },
+      { id: "theory", label: "THEORY PC", tool: "pc_read_theory", x: 300 },
+      { id: "article", label: "ARTICLE PC", tool: "pc_read_article",
+        x: 480 },
+    ];
+    function nodeCenter(id) {
+      const el = nodesEl.querySelector('[data-n="' + id + '"]');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      const c = canvas.getBoundingClientRect();
+      return { x: r.left - c.left + r.width / 2,
+               y: r.top - c.top + r.height / 2, h: r.height };
+    }
+    function drawPCLinks() {
+      nodesEl.querySelectorAll("[data-pc]").forEach(b => b.remove());
+      const NS = "http://www.w3.org/2000/svg";
+      PC_DEFS.forEach(pc => {
+        const b = document.createElement("div");
+        b.className = "fl-pc";
+        b.dataset.pc = pc.id;
+        b.textContent = pc.label;
+        b.style.left = pc.x + "px";
+        b.style.top = "446px";
+        nodesEl.appendChild(b);
+        const r = b.getBoundingClientRect();
+        const c = canvas.getBoundingClientRect();
+        const bx = r.left - c.left + r.width / 2, by = r.top - c.top;
+        S.flow.nodes.forEach(n => {
+          const a = agentOf(n.id);
+          if (!a || !(a.tools || []).includes(pc.tool)) return;
+          const t = nodeCenter(n.id);
+          if (!t) return;
+          const p = document.createElementNS(NS, "path");
+          p.setAttribute("d", linePath(bx, by, t.x, t.y + t.h / 2));
+          p.setAttribute("class", "fl-pcline");
+          svg.appendChild(p);
+        });
+      });
+    }
     function drawLines() {
+      drawLinesSolid();
+      drawPCLinks();
+    }
+    function drawLinesSolid() {
       while (svg.firstChild) svg.removeChild(svg.firstChild);
       const NS = "http://www.w3.org/2000/svg";
       S.flow.lines.forEach(ln => {

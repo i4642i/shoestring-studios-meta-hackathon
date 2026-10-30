@@ -270,7 +270,9 @@ try:
        "concepts envelope validates")
     repc = results.render_report(savedc)
     ok("## concepts (v1)" in repc and "Alpha in plain words" in repc
-       and "api/ref?ref=" in repc, "concepts report renders")
+       and "api/ref?ref=" in repc
+       and "](api/ref?ref=pc%3A%2F%2Ftheory" in repc,
+       "concepts report renders")
     bad = json.loads(json.dumps(CONCEPTS))
     bad["parts"][0]["claims"][0]["citations"][0]["quote"] = \
         "states myths loudly"

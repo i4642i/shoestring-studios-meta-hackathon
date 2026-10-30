@@ -569,7 +569,8 @@ def _render_claims_md(lines, claims):
 def _render_picks_md(lines, picks):
     for pk in picks:
         lines.append("- [%s] %s (%s)"
-                     % (pk["priority"], pk["title"], pk["ref"]))
+                     % (pk["priority"], pk["title"],
+                        render_cite_md(pk["ref"], pk["ref"])))
         lines.append("  Why: %s Use: %s"
                      % (pk["why_important"], pk["how_to_use"]))
         ev = pk["evidence"]
