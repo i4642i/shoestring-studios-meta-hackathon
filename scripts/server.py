@@ -27,11 +27,12 @@ from agents._frame import graph  # noqa: E402
 from agents._frame import runner  # noqa: E402
 from agents._frame import tools as registry  # noqa: E402
 import validate_agent  # noqa: E402
+import intake  # noqa: E402
 
 ALLOWED_UPLOAD = (".md", ".txt", ".pdf")
 
 ORDER_ID_RE = re.compile(r"^ord-[0-9]{8}-[0-9]{3}$")
-INTAKE_KEYS = ("audience", "length", "depth", "theme")
+INTAKE_KEYS = intake.INTAKE_KEYS
 PC_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 MAX_PDF_BYTES = 25 * 1024 * 1024
 
@@ -264,6 +265,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_order_approve(parts[2])
         if parts[:2] == ["api", "orders"] and len(parts) == 4 and parts[3] == "start":
             return self._api_order_start(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 4 and parts[3] == "confirm":
+            return self._api_order_confirm(parts[2])
         if parts[:2] == ["api", "pcs"] and len(parts) == 2:
             return self._api_pcs_add()
         if parts[:2] == ["api", "settings"] and len(parts) == 2:
@@ -1132,17 +1135,28 @@ class Handler(BaseHTTPRequestHandler):
         if not runner.key_present(agent["model"]):
             return self._json(503, {"error": "%s missing: add it to .env"
                                     % runner.key_var(agent["model"])})
-        missing = [k for k in INTAKE_KEYS if k not in meta.get("answers", {})]
-        if not meta.get("files", {}).get("parsed"):
-            missing.append("source PDF")
+        try:
+            extra = msgs[-1]["content"] if msgs[-1]["role"] == "user" else ""
+            self._try_fill_answers(d, meta, extra)
+        except RuntimeError:
+            pass  # extraction failed: readiness stays false, chat goes on
+        missing = intake.missing_of(meta.get("answers", {}),
+                                    meta.get("files", {}))
+        ready = not missing
         answers = meta.get("answers", {})
         recorded = ("; ".join("%s is %s" % (k, answers[k])
                               for k in INTAKE_KEYS if k in answers)
                     or "none yet")
         context = ["[ORDER CONSULTATION for %s. Recorded answers: %s."
-                   % (oid, recorded),
-                   "Still missing: %s. Steer the chat toward them, one "
-                   "question at a time." % (", ".join(missing) or "nothing")]
+                   % (oid, recorded)]
+        if ready:
+            context.append("You now have everything (all answers + source "
+                           "PDF). Reply with one short acknowledgement "
+                           "sentence only and ask no follow-up question: "
+                           "the system appends the confirmation question.")
+        else:
+            context.append("Still missing: %s. Steer the chat toward them, "
+                           "one question at a time." % ", ".join(missing))
         parsed = os.path.join(d, "parsed.md")
         if os.path.isfile(parsed):
             with open(parsed, encoding="utf-8") as f:
@@ -1159,6 +1173,8 @@ class Handler(BaseHTTPRequestHandler):
         system = (persona + "\n\n" + "\n".join(context)
                   + "\nAlways reply in English only: never Korean or any other "
                   "language, no matter what language the user writes in. "
+                  "Never promise to start production or claim anything "
+                  "has started. "
                   "Keep replies to 1-3 short sentences. "
                   "Reply in plain conversational sentences only: never "
                   "output JSON, code, or tool calls.")
@@ -1174,11 +1190,17 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("empty reply")
         except Exception as exc:  # noqa: BLE001 - surfaced as 502, key never leaks
             return self._json(502, {"error": "model API error: %s" % exc})
+        text = reply.strip()
+        if ready:
+            text = text + " " + intake.READY_QUESTION
+        self._chat_append(d, msgs[-1]["content"], text)
+        return self._json(200, {"reply": text, "ready": ready})
+
+    @staticmethod
+    def _chat_append(d, user, reply):
         with open(os.path.join(d, "chat.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps({"user": msgs[-1]["content"],
-                                "reply": reply.strip()},
+            f.write(json.dumps({"user": user, "reply": reply},
                                ensure_ascii=False) + "\n")
-        return self._json(200, {"reply": reply.strip()})
 
     def _api_order_complete(self, oid):
         d = self._order_dir(oid)
@@ -1212,6 +1234,56 @@ class Handler(BaseHTTPRequestHandler):
         code, obj = self._do_complete(oid, d, meta, self._read_json(),
                                       "in_production")
         return self._json(code, obj)
+
+    def _api_order_confirm(self, oid):
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        body = self._read_json()
+        if not isinstance(body, dict) or not isinstance(body.get("confirm"),
+                                                       bool):
+            return self._json(400, {"error": "need {confirm: true|false}"})
+        meta = self._order_meta(d)
+        if body["confirm"] is False:
+            self._chat_append(d, intake.NO_LINE, intake.DECLINE_ACK)
+            return self._json(200, {"ok": True, "declined": True,
+                                    "reply": intake.DECLINE_ACK})
+        if meta.get("status") in ("complete", "in_production"):
+            return self._json(409, {"error": "already started"})
+        try:
+            self._try_fill_answers(d, meta)
+        except RuntimeError as exc:
+            return self._json(502, {"error": str(exc)})
+        missing = intake.missing_of(meta.get("answers", {}),
+                                    meta.get("files", {}))
+        if missing:
+            return self._json(409, {"error": "intake incomplete",
+                                    "missing": missing})
+        try:
+            with open(os.path.join(d, "parsed.md"),
+                      encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            return self._json(409, {"error": "no parsed PDF yet"})
+        md, heads = intake.build_sections(text)
+        with open(os.path.join(d, "sections.md"), "w",
+                  encoding="utf-8") as f:
+            f.write(md)
+        files = dict(meta.get("files", {}))
+        files["sections"] = "sections.md"
+        files["section_count"] = len(heads)
+        meta["files"] = files
+        meta["approved"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                            "answers": dict(meta.get("answers", {})),
+                            "via": "chat"}
+        self._order_save_meta(d, meta)
+        self._chat_append(d, intake.YES_LINE, intake.START_LINE)
+        print("order confirm %s (%d sections)" % (oid, len(heads)),
+              flush=True)
+        return self._json(200, {"ok": True, "answers": meta["answers"],
+                                "sections": {"file": "sections.md",
+                                             "count": len(heads),
+                                             "headings": heads[:20]}})
 
     def _do_complete(self, oid, d, meta, body, final_status):
         """Shared consultation pipeline. Returns (code, obj)."""
@@ -1259,6 +1331,7 @@ class Handler(BaseHTTPRequestHandler):
                                                            "source.pdf")),
                   "files": {"source": meta["files"].get("source"),
                             "parsed": meta["files"].get("parsed"),
+                            "sections": meta["files"].get("sections"),
                             "images": meta["files"].get("images", [])}}
         with open(os.path.join(d, "intake.json"), "w", encoding="utf-8") as f:
             json.dump(intake, f, ensure_ascii=False, indent=2)
@@ -1273,13 +1346,15 @@ class Handler(BaseHTTPRequestHandler):
                       "files": ["intake.json", "result.json", "report.md"],
                       "usage": result.get("usage")})
 
-    def _extract_intake(self, d, meta):
-        """Free-chat mode: pull the 4 answers from chat.jsonl, one LLM call.
+    def _try_fill_answers(self, d, meta, extra=""):
+        """Best-effort fill of meta["answers"] from the chat, one LLM call.
 
-        Returns None when intake is complete, else (code, obj) to send."""
-        missing = [k for k in INTAKE_KEYS if k not in meta.get("answers", {})]
+        Returns (missing_keys, client_lines). Raises RuntimeError when the
+        extraction call itself fails (missing key, bad reply)."""
+        missing = [k for k in INTAKE_KEYS
+                   if k not in meta.get("answers", {})]
         if not missing:
-            return None
+            return [], 0
         lines = []
         chat = os.path.join(d, "chat.jsonl")
         if os.path.isfile(chat):
@@ -1291,13 +1366,14 @@ class Handler(BaseHTTPRequestHandler):
                         continue
                     if turn.get("user"):
                         lines.append("Client: " + turn["user"])
+        if extra:
+            lines.append("Client: " + extra)
         if not lines:
-            return (409, {"error": "intake incomplete", "missing": missing,
-                          "tip": "chat first: no conversation to extract from"})
+            return missing, 0
         agent = self._load_agent(self._employee(meta["assignee"]))
         if not runner.key_present(agent["model"]):
-            return (503, {"error": "%s missing: add it to .env"
-                          % runner.key_var(agent["model"])})
+            raise RuntimeError("%s missing: add it to .env"
+                               % runner.key_var(agent["model"]))
         prompt = ("Extract the client's video-order answers from this sales "
                   "consultation. Reply with ONLY a JSON object, no other text:\n"
                   '{"audience": "..."|null, "length": "..."|null, '
@@ -1314,7 +1390,7 @@ class Handler(BaseHTTPRequestHandler):
             if status != "ok" or not isinstance(obj, dict):
                 raise ValueError("no JSON in extraction reply")
         except Exception as exc:  # noqa: BLE001 - surfaced, key never leaks
-            return (502, {"error": "answer extraction failed: %s" % exc})
+            raise RuntimeError("answer extraction failed: %s" % exc)
         answers = dict(meta.get("answers", {}))
         for k in INTAKE_KEYS:
             v = obj.get(k)
@@ -1323,9 +1399,23 @@ class Handler(BaseHTTPRequestHandler):
         meta["answers"] = answers
         self._order_save_meta(d, meta)
         missing = [k for k in INTAKE_KEYS if k not in answers]
+        return missing, len(lines)
+
+    def _extract_intake(self, d, meta):
+        """Complete/start path: fill answers, else (code, obj) to send."""
+        try:
+            missing, nlines = self._try_fill_answers(d, meta)
+        except RuntimeError as exc:
+            msg = str(exc)
+            if msg.endswith("add it to .env"):
+                return (503, {"error": msg})
+            return (502, {"error": msg})
         if missing:
+            tip = ("chat first: no conversation to extract from"
+                   if not nlines else
+                   "keep chatting about: " + ", ".join(missing))
             return (409, {"error": "intake incomplete", "missing": missing,
-                          "tip": "keep chatting about: " + ", ".join(missing)})
+                          "tip": tip})
         return None
 
     # ---- PC fleet registry ----
