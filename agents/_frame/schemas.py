@@ -1,5 +1,6 @@
 """JSON contracts between crew (v1). Stdlib only."""
 
+import os
 import re
 from urllib.parse import quote as _urlquote
 
@@ -131,7 +132,9 @@ def validate_concept(obj):
 
 
 def validate_structure(obj, input_md_path):
-    """Return a list of error strings (empty == valid)."""
+    """Return a list of error strings (empty == valid). input_md_path
+    is a markdown file path, or the markdown text itself (the Source
+    entry text when Marty read it through PC tools)."""
     errors = []
     if not isinstance(obj, dict):
         return ["structure must be an object"]
@@ -141,13 +144,18 @@ def validate_structure(obj, input_md_path):
     sref = obj.get("source_ref", "")
     if not isinstance(sref, str) or not sref.startswith("pc://source/"):
         errors.append("source_ref must be a pc://source/<id> ref "
-                      "(copy it from the input head)")
+                      "(copy it from the source pointer)")
         sref = ""
-    try:
-        with open(input_md_path, encoding="utf-8") as f:
-            input_text = f.read()
-    except (OSError, TypeError):
-        return errors + ["cannot read input for heading check: %r" % (input_md_path,)]
+    if isinstance(input_md_path, str) and not os.path.isfile(input_md_path):
+        input_text = input_md_path
+    else:
+        try:
+            with open(input_md_path, encoding="utf-8") as f:
+                input_text = f.read()
+        except (OSError, TypeError):
+            return errors + ["cannot read input for heading check: %r" % (input_md_path,)]
+    if not input_text.strip():
+        return errors + ["no source text to check headings against"]
     _mode, expected = expected_parts(input_text)
     parts = obj.get("parts")
     ids = []
@@ -504,6 +512,19 @@ def render_source_v2_md(obj):
              "- Sections: %d" % obj["sections"], ""]
     if obj.get("head"):
         lines += ["## Opening excerpt", "", obj["head"], ""]
+    return "\n".join(lines)
+
+
+def render_source_v3_md(obj):
+    """Source PC pointer (source v3) as markdown."""
+    lines = ["# Source — %s" % obj["title"], "",
+             "- Ref: [%s](api/ref?ref=%s)" % (obj["ref"], obj["ref"]),
+             "- Characters: %d" % obj["chars"],
+             "- Sections: %d" % obj["sections"],
+             "- Recipients: %s"
+             % (", ".join(r.get("agent", "?")
+                          for r in obj.get("recipients", [])
+                          if isinstance(r, dict)) or "—"), ""]
     return "\n".join(lines)
 
 

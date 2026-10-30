@@ -1,40 +1,45 @@
 {
-  "bounds": {
-    "max_steps": 8
-  },
-  "done": [
-    "all 5 intake answers recorded",
-    "source material summarized from the parsed file",
-    "request category written (result.json)"
-  ],
-  "flow": {
-    "inputs": [
-      {"category": "brief", "required": true,
-       "description": "Order answers (audience, length, depth, theme)."},
-      {"category": "source", "required": true,
-       "description": "Parsed source document to summarize for production."}
-    ],
-    "outputs": [
-      {"category": "request",
-       "description": "Video production request for PD/production."}
-    ]
-  },
-  "frame_version": 1,
-  "id": "sales_sam",
-  "io": {
-    "inputs": [
-      "brief.json",
-      "input.md"
-    ],
-    "output": "result.json"
-  },
-  "model": "meta-models/muse-spark-open-1026",
-  "name": "Sam",
-  "title": "Sales representative, frontline",
-  "stage": 0,
-  "tools": [
-    "query_graph",
-    "read_md_section",
-    "write_request"
+ "bounds": {
+  "max_steps": 10
+ },
+ "done": [
+  "all 5 intake answers recorded",
+  "source PDF sent to the Source PC (pc_send_source)",
+  "recipients set for this order (pc_set_recipients)",
+  "request + source categories written (result.json)"
+ ],
+ "flow": {
+  "inputs": [],
+  "outputs": [
+   {
+    "category": "request",
+    "description": "Video production request for PD/production."
+   },
+   {
+    "category": "source",
+    "description": "Source PC entry pointer + recipient list for this order."
+   }
   ]
+ },
+ "frame_version": 1,
+ "id": "sales_sam",
+ "io": {
+  "inputs": [
+   "INPUTS.md"
+  ],
+  "output": "result.json"
+ },
+ "model": "meta-models/muse-spark-open-1026",
+ "name": "Sam",
+ "title": "Sales representative, frontline",
+ "stage": 0,
+ "tools": [
+  "query_graph",
+  "read_md_section",
+  "pc_send_source",
+  "pc_set_recipients",
+  "pc_list_source",
+  "pc_read_source",
+  "write_request"
+ ]
 }

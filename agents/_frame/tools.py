@@ -81,14 +81,43 @@ def _save_category(ctx, category, obj):
     return _save_categories(ctx, {category: obj})
 
 
+def _received_refs(ctx, category):
+    """Entry refs received for a category in this run (flow lines)."""
+    out = set()
+    d = (ctx or {}).get("run_dir", "")
+    if not d or not os.path.isdir(d):
+        return out
+    for fn in os.listdir(d):
+        if not (fn.startswith("received.") and fn.endswith(
+                ".%s.json" % category)):
+            continue
+        try:
+            with open(os.path.join(d, fn), encoding="utf-8") as f:
+                data = json.load(f).get("data", {})
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict) and data.get("ref"):
+            out.add(data["ref"])
+    return out
+
+
 def write_structure(ctx, args):
     bundle = args.get("result")
     if not isinstance(bundle, dict):
         return {"ok": False, "errors": [
             "call with {result: {concept: {...}, structure: {...}}}"]}
     errors = validate_concept(bundle.get("concept"))
-    errors += validate_structure(bundle.get("structure"),
-                                 ctx.get("input_md"))
+    check = ctx.get("input_md")
+    sref = (bundle.get("structure") or {}).get("source_ref", "")
+    if isinstance(sref, str) and sref.startswith("pc://source/"):
+        try:
+            check = pc.entry_markdown(pc.load_entry_by_ref(sref))
+        except (OSError, ValueError, KeyError):
+            pass
+    pointed = _received_refs(ctx, "source")
+    if pointed and sref not in pointed:
+        errors.append("source_ref %r was not sent to this run" % (sref,))
+    errors += validate_structure(bundle.get("structure"), check)
     if errors:
         return {"ok": False, "errors": errors}
     return _save_categories(ctx, {"concept": bundle["concept"],
@@ -1039,9 +1068,10 @@ TOOLS = {
     ),
     "write_request": (
         write_request,
-        "Save the video production request for an order as this run's "
-        "result.json (request category). Fails unless all 5 intake "
-        "answers and production notes validate.",
+        "Save this run's result.json (request + source categories). "
+        "The source pointer is built from the sent entry. Fails "
+        "unless the request validates, the source was sent here, "
+        "and recipients are set.",
         {"type": "object",
          "properties": {"request": {"type": "object"}},
          "required": ["request"], "additionalProperties": False},

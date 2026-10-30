@@ -1,49 +1,63 @@
 {
-  "bounds": {
-    "max_steps": 8
-  },
-  "done": [
-    "every part explained simply with >=1 cited claim",
-    "every claim cites a verbatim passage",
-    "report picks match this run's picks"
+ "bounds": {
+  "max_steps": 12
+ },
+ "done": [
+  "every part explained simply with >=1 cited claim",
+  "every claim cites a verbatim passage",
+  "report picks match this run's picks"
+ ],
+ "flow": {
+  "inputs": [
+   {
+    "category": "concept",
+    "required": true,
+    "description": "Video concept: theme, question, takeaway, intent."
+   },
+   {
+    "category": "structure",
+    "required": true,
+    "accept": [
+     2
+    ],
+    "description": "Structure map: parts to explain, in order."
+   },
+   {
+    "category": "source",
+    "required": true,
+    "description": "Source PC pointer for the entry to explain."
+   }
   ],
-  "flow": {
-    "inputs": [
-      {"category": "concept", "required": true,
-       "description": "Video concept: theme, question, takeaway, intent."},
-      {"category": "structure", "required": true, "accept": [2],
-       "description": "Structure map: parts to explain, in order."},
-      {"category": "source", "required": true,
-       "description": "Source PC pointer for the entry to explain."}
-    ],
-    "outputs": [
-      {"category": "concepts",
-       "description": "Easy theory report per part."}
-    ]
-  },
-  "frame_version": 1,
-  "id": "explain_cleo",
-  "io": {
-    "inputs": [
-      "brief.json",
-      "INPUTS.md"
-    ],
-    "output": "result.json"
-  },
-  "model": "meta-models/muse-spark-open-1026",
-  "name": "Cleo",
-  "title": "Concept explainer",
-  "stage": 2,
-  "tools": [
-    "query_graph",
-    "read_md_section",
-    "pc_list_source",
-    "pc_read_source",
-    "open_ref",
-    "pc_search_theory",
-    "pc_pick_theory",
-    "pc_read_theory",
-    "write_concepts",
-    "research_status"
+  "outputs": [
+   {
+    "category": "concepts",
+    "description": "Easy theory report per part."
+   }
   ]
+ },
+ "frame_version": 1,
+ "id": "explain_cleo",
+ "io": {
+  "inputs": [
+   "brief.json",
+   "INPUTS.md"
+  ],
+  "output": "result.json"
+ },
+ "model": "meta-models/muse-spark-open-1026",
+ "name": "Cleo",
+ "title": "Concept explainer",
+ "stage": 2,
+ "tools": [
+  "query_graph",
+  "read_md_section",
+  "pc_list_source",
+  "pc_read_source",
+  "open_ref",
+  "pc_search_theory",
+  "pc_pick_theory",
+  "pc_read_theory",
+  "write_concepts",
+  "research_status"
+ ]
 }

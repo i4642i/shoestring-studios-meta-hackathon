@@ -219,6 +219,7 @@ TEMPLATES = {
     ("brief", 1): schemas.render_brief_md,
     ("source", 1): schemas.render_source_md,
     ("source", 2): schemas.render_source_v2_md,
+    ("source", 3): schemas.render_source_v3_md,
     ("request", 1): schemas.render_request_md,
     ("structure", 1): schemas.render_structure_md,
     ("concept", 1): schemas.render_concept_md,

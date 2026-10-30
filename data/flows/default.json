@@ -1,124 +1,105 @@
 {
-  "id": "default",
-  "lines": [
-    {
-      "categories": "*",
-      "from": "order",
-      "id": "l1",
-      "to": "sales_sam"
-    },
-    {
-      "categories": [
-        "request"
-      ],
-      "from": "sales_sam",
-      "id": "l2",
-      "to": "pd_marty"
-    },
-    {
-      "categories": [
-        "concept",
-        "structure"
-      ],
-      "from": "pd_marty",
-      "id": "l3",
-      "to": "explain_cleo"
-    },
-    {
-      "categories": [
-        "concept",
-        "structure"
-      ],
-      "from": "pd_marty",
-      "id": "l4",
-      "to": "case_rex"
-    },
-    {
-      "categories": [
-        "source"
-      ],
-      "from": "order",
-      "id": "l5",
-      "to": "explain_cleo"
-    },
-    {
-      "categories": [
-        "source"
-      ],
-      "from": "order",
-      "id": "l6",
-      "to": "case_rex"
-    },
-    {
-      "categories": [
-        "source"
-      ],
-      "from": "order",
-      "id": "l7",
-      "to": "pd_marty"
-    },
-    {
-      "categories": [
-        "concepts"
-      ],
-      "from": "explain_cleo",
-      "id": "l8",
-      "to": "final"
-    },
-    {
-      "categories": [
-        "cases"
-      ],
-      "from": "case_rex",
-      "id": "l9",
-      "to": "final"
-    }
-  ],
-  "name": "Order to video",
-  "nodes": [
-    {
-      "id": "order"
-    },
-    {
-      "id": "sales_sam"
-    },
-    {
-      "id": "pd_marty"
-    },
-    {
-      "id": "explain_cleo"
-    },
-    {
-      "id": "case_rex"
-    },
-    {
-      "id": "final"
-    }
-  ],
-  "positions": {
-    "case_rex": [
-      780,
-      410
-    ],
-    "explain_cleo": [
-      780,
-      180
-    ],
-    "final": [
-      1020,
-      295
-    ],
-    "order": [
-      60,
-      295
-    ],
-    "pd_marty": [
-      540,
-      295
-    ],
-    "sales_sam": [
-      300,
-      295
-    ]
+ "id": "default",
+ "lines": [
+  {
+   "categories": [
+    "request",
+    "source"
+   ],
+   "from": "sales_sam",
+   "id": "l2",
+   "to": "pd_marty"
+  },
+  {
+   "categories": [
+    "concept",
+    "structure"
+   ],
+   "from": "pd_marty",
+   "id": "l3",
+   "to": "explain_cleo"
+  },
+  {
+   "categories": [
+    "concept",
+    "structure"
+   ],
+   "from": "pd_marty",
+   "id": "l4",
+   "to": "case_rex"
+  },
+  {
+   "categories": [
+    "source"
+   ],
+   "from": "sales_sam",
+   "id": "l5",
+   "to": "explain_cleo"
+  },
+  {
+   "categories": [
+    "source"
+   ],
+   "from": "sales_sam",
+   "id": "l6",
+   "to": "case_rex"
+  },
+  {
+   "categories": [
+    "concepts"
+   ],
+   "from": "explain_cleo",
+   "id": "l8",
+   "to": "final"
+  },
+  {
+   "categories": [
+    "cases"
+   ],
+   "from": "case_rex",
+   "id": "l9",
+   "to": "final"
   }
+ ],
+ "name": "Order to storyboard",
+ "nodes": [
+  {
+   "id": "sales_sam"
+  },
+  {
+   "id": "pd_marty"
+  },
+  {
+   "id": "explain_cleo"
+  },
+  {
+   "id": "case_rex"
+  },
+  {
+   "id": "final",
+   "temp": "Cleo/Rex stand-in until Ash/Penn/Wren are built"
+  }
+ ],
+ "positions": {
+  "case_rex": [
+   780,
+   410
+  ],
+  "explain_cleo": [
+   780,
+   180
+  ],
+  "final": [
+   1020,
+   295
+  ],
+  "pd_marty": [
+   540,
+   295
+  ],
+  "sales_sam": [
+   300,
+   295
+  ]
+ }
 }

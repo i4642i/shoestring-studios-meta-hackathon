@@ -1,649 +1,647 @@
 {
-  "brief": {
-    "description": "Order intake: client answers plus the source file reference. Produced by the Order node.",
-    "schema": {
-      "additionalProperties": true,
-      "properties": {
-        "answers": {
-          "additionalProperties": true,
-          "properties": {
-            "audience": {
-              "type": "string"
-            },
-            "depth": {
-              "type": "string"
-            },
-            "length": {
-              "type": "string"
-            },
-            "theme": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "audience",
-            "length",
-            "depth",
-            "theme"
-          ],
-          "type": "object"
-        },
-        "order_id": {
-          "type": "string"
-        },
-        "source_file": {
-          "type": "string"
-        }
+ "brief": {
+  "description": "Order intake: client answers plus the source file reference. Produced by the Order node.",
+  "schema": {
+   "additionalProperties": true,
+   "properties": {
+    "answers": {
+     "additionalProperties": true,
+     "properties": {
+      "audience": {
+       "type": "string"
       },
-      "required": [
-        "order_id",
-        "answers",
-        "source_file"
-      ],
-      "type": "object"
-    },
-    "version": 1
-  },
-  "cases": {
-    "version": 1,
-    "description": "Case research report Rex writes per structure part, with real cases, Article PC picks, gaps.",
-    "schema": {
-      "type": "object",
-      "required": [
-        "parts"
-      ],
-      "properties": {
-        "parts": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": [
-              "part_id",
-              "cases",
-              "picks",
-              "gaps"
-            ],
-            "properties": {
-              "part_id": {
-                "type": "string"
-              },
-              "cases": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": [
-                    "title",
-                    "kind",
-                    "date",
-                    "summary",
-                    "fit_why",
-                    "viewer_hook",
-                    "claims"
-                  ],
-                  "properties": {
-                    "title": {
-                      "type": "string"
-                    },
-                    "kind": {
-                      "type": "string",
-                      "enum": [
-                        "event",
-                        "company",
-                        "person",
-                        "film",
-                        "other"
-                      ]
-                    },
-                    "date": {
-                      "type": "string"
-                    },
-                    "summary": {
-                      "type": "string"
-                    },
-                    "fit_why": {
-                      "type": "string"
-                    },
-                    "viewer_hook": {
-                      "type": "string"
-                    },
-                    "claims": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": [
-                          "text",
-                          "citations"
-                        ],
-                        "properties": {
-                          "text": {
-                            "type": "string"
-                          },
-                          "citations": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "required": [
-                                "ref",
-                                "quote"
-                              ],
-                              "properties": {
-                                "ref": {
-                                  "type": "string"
-                                },
-                                "quote": {
-                                  "type": "string"
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              },
-              "picks": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": [
-                    "ref",
-                    "title",
-                    "why_important",
-                    "how_to_use",
-                    "evidence",
-                    "priority"
-                  ],
-                  "properties": {
-                    "ref": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "why_important": {
-                      "type": "string"
-                    },
-                    "how_to_use": {
-                      "type": "string"
-                    },
-                    "evidence": {
-                      "type": "object",
-                      "required": [
-                        "ref",
-                        "quote"
-                      ],
-                      "properties": {
-                        "ref": {
-                          "type": "string"
-                        },
-                        "quote": {
-                          "type": "string"
-                        }
-                      }
-                    },
-                    "priority": {
-                      "type": "string",
-                      "enum": [
-                        "must",
-                        "should",
-                        "optional"
-                      ]
-                    }
-                  }
-                }
-              },
-              "gaps": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "concept": {
-    "version": 1,
-    "description": "Video concept Marty writes: the theme, the core question, the viewer takeaway, the author's overall intent.",
-    "schema": {
-      "type": "object",
-      "required": [
-        "common_theme",
-        "core_question",
-        "viewer_takeaway",
-        "intent_overall"
-      ],
-      "properties": {
-        "common_theme": {
-          "type": "string"
-        },
-        "core_question": {
-          "type": "string"
-        },
-        "viewer_takeaway": {
-          "type": "string"
-        },
-        "intent_overall": {
-          "type": "string"
-        }
-      }
-    }
-  },
-  "concepts": {
-    "version": 1,
-    "description": "Easy theory explanation report Cleo writes per structure part, with claims, Theory PC picks, gaps.",
-    "schema": {
-      "type": "object",
-      "required": [
-        "parts"
-      ],
-      "properties": {
-        "parts": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": [
-              "part_id",
-              "concept_name",
-              "easy_explanation",
-              "why_it_came_about",
-              "analogy_or_example",
-              "common_misunderstanding",
-              "claims",
-              "picks",
-              "gaps"
-            ],
-            "properties": {
-              "part_id": {
-                "type": "string"
-              },
-              "concept_name": {
-                "type": "string"
-              },
-              "easy_explanation": {
-                "type": "string"
-              },
-              "why_it_came_about": {
-                "type": "string"
-              },
-              "analogy_or_example": {
-                "type": "string"
-              },
-              "common_misunderstanding": {
-                "type": "string"
-              },
-              "claims": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": [
-                    "text",
-                    "citations"
-                  ],
-                  "properties": {
-                    "text": {
-                      "type": "string"
-                    },
-                    "citations": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": [
-                          "ref",
-                          "quote"
-                        ],
-                        "properties": {
-                          "ref": {
-                            "type": "string"
-                          },
-                          "quote": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              },
-              "picks": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "required": [
-                    "ref",
-                    "title",
-                    "why_important",
-                    "how_to_use",
-                    "evidence",
-                    "priority"
-                  ],
-                  "properties": {
-                    "ref": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "why_important": {
-                      "type": "string"
-                    },
-                    "how_to_use": {
-                      "type": "string"
-                    },
-                    "evidence": {
-                      "type": "object",
-                      "required": [
-                        "ref",
-                        "quote"
-                      ],
-                      "properties": {
-                        "ref": {
-                          "type": "string"
-                        },
-                        "quote": {
-                          "type": "string"
-                        }
-                      }
-                    },
-                    "priority": {
-                      "type": "string",
-                      "enum": [
-                        "must",
-                        "should",
-                        "optional"
-                      ]
-                    }
-                  }
-                }
-              },
-              "gaps": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "request": {
-    "description": "Video production request Sam writes for PD/production from the order consultation.",
-    "schema": {
-      "properties": {
-        "client_answers": {
-          "properties": {
-            "audience": {
-              "type": "string"
-            },
-            "depth": {
-              "type": "string"
-            },
-            "length": {
-              "type": "string"
-            },
-            "source": {
-              "type": "string"
-            },
-            "theme": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "audience",
-            "length",
-            "depth",
-            "theme",
-            "source"
-          ],
-          "type": "object"
-        },
-        "open_questions": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "order_id": {
-          "type": "string"
-        },
-        "production_notes": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "source_summary": {
-          "type": "string"
-        }
+      "depth": {
+       "type": "string"
       },
-      "required": [
-        "order_id",
-        "client_answers",
-        "source_summary",
-        "production_notes",
-        "open_questions"
-      ],
-      "type": "object"
-    },
-    "version": 1
-  },
-  "source": {
-    "description": "Source PC entry pointer: stable ref, title, size, section count. Transitional file/head sidecar fields stay until agents read via PC tools.",
-    "schema": {
-      "additionalProperties": true,
-      "properties": {
-        "ref": {
-          "type": "string"
-        },
-        "title": {
-          "type": "string"
-        },
-        "chars": {
-          "type": "integer"
-        },
-        "sections": {
-          "type": "integer"
-        },
-        "file": {
-          "type": "string"
-        },
-        "head": {
-          "type": "string"
-        }
+      "length": {
+       "type": "string"
       },
-      "required": [
-        "ref",
-        "title",
-        "chars",
-        "sections"
-      ],
-      "type": "object"
+      "theme": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "audience",
+      "length",
+      "depth",
+      "theme"
+     ],
+     "type": "object"
     },
-    "version": 2
+    "order_id": {
+     "type": "string"
+    },
+    "source_file": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "order_id",
+    "answers",
+    "source_file"
+   ],
+   "type": "object"
   },
-  "structure": {
-    "version": 2,
-    "description": "Structure map Marty writes: parts in source order with Source PC refs, plus top-level author-intent links. Static shape only; input-relative rules are enforced by write_structure. (The duration time plan of §3 is designed but not built yet.)",
-    "schema": {
+  "version": 1
+ },
+ "cases": {
+  "version": 1,
+  "description": "Case research report Rex writes per structure part, with real cases, Article PC picks, gaps.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "parts"
+   ],
+   "properties": {
+    "parts": {
+     "type": "array",
+     "items": {
       "type": "object",
       "required": [
-        "source_ref",
-        "parts",
-        "links"
+       "part_id",
+       "cases",
+       "picks",
+       "gaps"
       ],
       "properties": {
-        "source_ref": {
-          "type": "string"
-        },
-        "parts": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": [
-              "id",
-              "heading",
-              "ref",
-              "covers",
-              "keywords"
-            ],
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "heading": {
-                "type": "string"
-              },
-              "ref": {
-                "type": "string"
-              },
-              "covers": {
-                "type": "string"
-              },
-              "keywords": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "links": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": [
-              "from",
-              "to",
-              "why"
-            ],
-            "properties": {
-              "from": {
-                "type": "string"
-              },
-              "to": {
-                "type": "string"
-              },
-              "why": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "video": {
-    "description": "Final video assembly record: file, scenes, per-line citations carried from narration. Produced by the postprocess code step.",
-    "schema": {
-      "properties": {
-        "built_from": {
-          "type": "string"
-        },
-        "duration_s": {
-          "type": "number"
-        },
-        "file": {
-          "properties": {
-            "format": {
-              "type": "string"
-            },
-            "path": {
-              "type": "string"
-            },
-            "resolution": {
-              "type": "string"
-            },
-            "size_bytes": {
-              "type": "integer"
-            }
+       "part_id": {
+        "type": "string"
+       },
+       "cases": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "title",
+          "kind",
+          "date",
+          "summary",
+          "fit_why",
+          "viewer_hook",
+          "claims"
+         ],
+         "properties": {
+          "title": {
+           "type": "string"
           },
-          "required": [
-            "path",
-            "size_bytes",
-            "format",
-            "resolution"
-          ],
-          "type": "object"
-        },
-        "scenes": {
-          "items": {
+          "kind": {
+           "type": "string",
+           "enum": [
+            "event",
+            "company",
+            "person",
+            "film",
+            "other"
+           ]
+          },
+          "date": {
+           "type": "string"
+          },
+          "summary": {
+           "type": "string"
+          },
+          "fit_why": {
+           "type": "string"
+          },
+          "viewer_hook": {
+           "type": "string"
+          },
+          "claims": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "text",
+             "citations"
+            ],
             "properties": {
-              "end_s": {
-                "type": "number"
-              },
-              "lines": {
-                "items": {
-                  "properties": {
-                    "citations": {
-                      "items": {
-                        "properties": {
-                          "quote": {
-                            "type": "string"
-                          },
-                          "ref": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "ref",
-                          "quote"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "end_s": {
-                      "type": "number"
-                    },
-                    "start_s": {
-                      "type": "number"
-                    },
-                    "text": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "text",
-                    "start_s",
-                    "end_s",
-                    "citations"
-                  ],
-                  "type": "object"
+             "text": {
+              "type": "string"
+             },
+             "citations": {
+              "type": "array",
+              "items": {
+               "type": "object",
+               "required": [
+                "ref",
+                "quote"
+               ],
+               "properties": {
+                "ref": {
+                 "type": "string"
                 },
-                "type": "array"
-              },
-              "n": {
-                "type": "integer"
-              },
-              "start_s": {
-                "type": "number"
+                "quote": {
+                 "type": "string"
+                }
+               }
               }
+             }
+            }
+           }
+          }
+         }
+        }
+       },
+       "picks": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "ref",
+          "title",
+          "why_important",
+          "how_to_use",
+          "evidence",
+          "priority"
+         ],
+         "properties": {
+          "ref": {
+           "type": "string"
+          },
+          "title": {
+           "type": "string"
+          },
+          "why_important": {
+           "type": "string"
+          },
+          "how_to_use": {
+           "type": "string"
+          },
+          "evidence": {
+           "type": "object",
+           "required": [
+            "ref",
+            "quote"
+           ],
+           "properties": {
+            "ref": {
+             "type": "string"
+            },
+            "quote": {
+             "type": "string"
+            }
+           }
+          },
+          "priority": {
+           "type": "string",
+           "enum": [
+            "must",
+            "should",
+            "optional"
+           ]
+          }
+         }
+        }
+       },
+       "gaps": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "concept": {
+  "version": 1,
+  "description": "Video concept Marty writes: the theme, the core question, the viewer takeaway, the author's overall intent.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "common_theme",
+    "core_question",
+    "viewer_takeaway",
+    "intent_overall"
+   ],
+   "properties": {
+    "common_theme": {
+     "type": "string"
+    },
+    "core_question": {
+     "type": "string"
+    },
+    "viewer_takeaway": {
+     "type": "string"
+    },
+    "intent_overall": {
+     "type": "string"
+    }
+   }
+  }
+ },
+ "concepts": {
+  "version": 1,
+  "description": "Easy theory explanation report Cleo writes per structure part, with claims, Theory PC picks, gaps.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "parts"
+   ],
+   "properties": {
+    "parts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "part_id",
+       "concept_name",
+       "easy_explanation",
+       "why_it_came_about",
+       "analogy_or_example",
+       "common_misunderstanding",
+       "claims",
+       "picks",
+       "gaps"
+      ],
+      "properties": {
+       "part_id": {
+        "type": "string"
+       },
+       "concept_name": {
+        "type": "string"
+       },
+       "easy_explanation": {
+        "type": "string"
+       },
+       "why_it_came_about": {
+        "type": "string"
+       },
+       "analogy_or_example": {
+        "type": "string"
+       },
+       "common_misunderstanding": {
+        "type": "string"
+       },
+       "claims": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "text",
+          "citations"
+         ],
+         "properties": {
+          "text": {
+           "type": "string"
+          },
+          "citations": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "ref",
+             "quote"
+            ],
+            "properties": {
+             "ref": {
+              "type": "string"
+             },
+             "quote": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       },
+       "picks": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "ref",
+          "title",
+          "why_important",
+          "how_to_use",
+          "evidence",
+          "priority"
+         ],
+         "properties": {
+          "ref": {
+           "type": "string"
+          },
+          "title": {
+           "type": "string"
+          },
+          "why_important": {
+           "type": "string"
+          },
+          "how_to_use": {
+           "type": "string"
+          },
+          "evidence": {
+           "type": "object",
+           "required": [
+            "ref",
+            "quote"
+           ],
+           "properties": {
+            "ref": {
+             "type": "string"
+            },
+            "quote": {
+             "type": "string"
+            }
+           }
+          },
+          "priority": {
+           "type": "string",
+           "enum": [
+            "must",
+            "should",
+            "optional"
+           ]
+          }
+         }
+        }
+       },
+       "gaps": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "request": {
+  "description": "Video production request Sam writes for PD/production from the order consultation.",
+  "schema": {
+   "properties": {
+    "client_answers": {
+     "properties": {
+      "audience": {
+       "type": "string"
+      },
+      "depth": {
+       "type": "string"
+      },
+      "length": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string"
+      },
+      "theme": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "audience",
+      "length",
+      "depth",
+      "theme",
+      "source"
+     ],
+     "type": "object"
+    },
+    "open_questions": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "order_id": {
+     "type": "string"
+    },
+    "production_notes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "source_summary": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "order_id",
+    "client_answers",
+    "source_summary",
+    "production_notes",
+    "open_questions"
+   ],
+   "type": "object"
+  },
+  "version": 1
+ },
+ "source": {
+  "description": "Source PC entry pointer (Sam produces, lines carry): stable ref, title, size, section count, recipient rows.",
+  "schema": {
+   "additionalProperties": true,
+   "properties": {
+    "ref": {
+     "type": "string"
+    },
+    "title": {
+     "type": "string"
+    },
+    "chars": {
+     "type": "integer"
+    },
+    "sections": {
+     "type": "integer"
+    },
+    "recipients": {
+     "type": "array"
+    }
+   },
+   "required": [
+    "ref",
+    "title",
+    "chars",
+    "sections",
+    "recipients"
+   ],
+   "type": "object"
+  },
+  "version": 3
+ },
+ "structure": {
+  "version": 2,
+  "description": "Structure map Marty writes: parts in source order with Source PC refs, plus top-level author-intent links. Static shape only; input-relative rules are enforced by write_structure. (The duration time plan of §3 is designed but not built yet.)",
+  "schema": {
+   "type": "object",
+   "required": [
+    "source_ref",
+    "parts",
+    "links"
+   ],
+   "properties": {
+    "source_ref": {
+     "type": "string"
+    },
+    "parts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "id",
+       "heading",
+       "ref",
+       "covers",
+       "keywords"
+      ],
+      "properties": {
+       "id": {
+        "type": "string"
+       },
+       "heading": {
+        "type": "string"
+       },
+       "ref": {
+        "type": "string"
+       },
+       "covers": {
+        "type": "string"
+       },
+       "keywords": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    "links": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "from",
+       "to",
+       "why"
+      ],
+      "properties": {
+       "from": {
+        "type": "string"
+       },
+       "to": {
+        "type": "string"
+       },
+       "why": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "video": {
+  "description": "Final video assembly record: file, scenes, per-line citations carried from narration. Produced by the postprocess code step.",
+  "schema": {
+   "properties": {
+    "built_from": {
+     "type": "string"
+    },
+    "duration_s": {
+     "type": "number"
+    },
+    "file": {
+     "properties": {
+      "format": {
+       "type": "string"
+      },
+      "path": {
+       "type": "string"
+      },
+      "resolution": {
+       "type": "string"
+      },
+      "size_bytes": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "path",
+      "size_bytes",
+      "format",
+      "resolution"
+     ],
+     "type": "object"
+    },
+    "scenes": {
+     "items": {
+      "properties": {
+       "end_s": {
+        "type": "number"
+       },
+       "lines": {
+        "items": {
+         "properties": {
+          "citations": {
+           "items": {
+            "properties": {
+             "quote": {
+              "type": "string"
+             },
+             "ref": {
+              "type": "string"
+             }
             },
             "required": [
-              "n",
-              "start_s",
-              "end_s",
-              "lines"
+             "ref",
+             "quote"
             ],
             "type": "object"
+           },
+           "type": "array"
           },
-          "type": "array"
-        }
+          "end_s": {
+           "type": "number"
+          },
+          "start_s": {
+           "type": "number"
+          },
+          "text": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "text",
+          "start_s",
+          "end_s",
+          "citations"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "n": {
+        "type": "integer"
+       },
+       "start_s": {
+        "type": "number"
+       }
       },
       "required": [
-        "file",
-        "duration_s",
-        "built_from",
-        "scenes"
+       "n",
+       "start_s",
+       "end_s",
+       "lines"
       ],
       "type": "object"
-    },
-    "version": 1
-  }
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "file",
+    "duration_s",
+    "built_from",
+    "scenes"
+   ],
+   "type": "object"
+  },
+  "version": 1
+ }
 }
