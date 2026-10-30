@@ -309,6 +309,10 @@
           <input id="o-input" maxlength="500" placeholder="Talk to sales…" aria-label="Message">
           <button type="submit">Send</button>
         </form>
+        <div id="o-confirm" style="display:none">
+          <button id="o-yes">Yes, start</button>
+          <button id="o-no">No, not yet</button>
+        </div>
       </div>
     </div>
     <h3 id="o-qh">THE 5 QUESTIONS</h3>
@@ -1347,6 +1351,9 @@
         "\nPDF: " + pdfName;
       boxEl.style.display = "block";
     }
+    function showConfirm(on) {
+      document.getElementById("o-confirm").style.display = on ? "block" : "none";
+    }
     function samSay(text) {
       const el = document.getElementById("o-sambub");
       el.innerHTML = "";
@@ -1367,8 +1374,8 @@
         document.getElementById("o-qh").style.display = free ? "none" : "block";
         document.getElementById("o-row").style.display = free ? "flex" : "none";
         document.getElementById("o-modehint").textContent = free
-          ? "Free chat: just talk with Sam. To produce a video, fill the guided form."
-          : "Guided: fill the answers, choose the PDF, approve, press START PRODUCTION.";
+          ? "Free chat: talk with Sam. When she has all 5 answers and your PDF, she asks before starting."
+          : "Guided: answer in the chat, or fill the form and PDF below.";
         document.getElementById("start").style.display = free ? "none" : "";
         addMsg("sys", free ? "Free-chat mode." : "Guided mode.");
         checkReady();
@@ -1437,6 +1444,7 @@
       approvedSnap = "";
       document.getElementById("start").disabled = true;
       document.getElementById("o-approve").style.display = "none";
+      showConfirm(false);
       ["o-audience", "o-length", "o-depth", "o-theme"].forEach((id) => {
         document.getElementById(id).value = "";
       });
@@ -1505,11 +1513,13 @@
       addMsg("me", text);
       history.push({ role: "user", content: text });
       input.value = "";
+      showConfirm(false);
       addMsg("typing", "…");
       try {
         const r = await api.send("POST", "api/orders/" + oid + "/chat", { messages: history, mode: mode });
         addMsg("them", r.reply);
         history.push({ role: "assistant", content: r.reply });
+        showConfirm(!!r.ready);
       } catch (err) {
         addMsg("them", lastSam);
         addMsg("sys", "Error: " + err.message);
@@ -1583,18 +1593,63 @@
         msg.textContent = "Sales is writing the production request… (may take a minute)";
         const r = await api.send("POST", "api/orders/" + oid + "/start", {});
         btn.disabled = false;
-        msg.textContent = "Order " + oid + " in production: " + r.files.join(", ");
-        const pre = document.getElementById("o-result");
-        pre.style.display = "block";
-        pre.innerHTML = esc("=== intake.json ===\n" + JSON.stringify(r.intake, null, 2) +
-          "\n\n=== report.md (generated, do not edit) ===\n" + r.report_md).replace(/\[([^\]]+)\]\(api\/ref\?ref=([^)]+)\)/g, '<a href="api/ref?ref=$2" target="_blank" rel="noopener">$1</a>');
-        statusEl.textContent = "Order " + oid + " — in production.";
-        document.getElementById("queued").textContent = "Production started.";
-        sessionStorage.removeItem("shoestring_order");
+        showStarted(r);
       } catch (e) {
         btn.disabled = false;
         fail(e);
       }
+    };
+    function showStarted(r) {
+      msg.textContent = "Order " + oid + " in production: " + r.files.join(", ");
+      const pre = document.getElementById("o-result");
+      pre.style.display = "block";
+      pre.innerHTML = esc("=== intake.json ===\n" + JSON.stringify(r.intake, null, 2) +
+        "\n\n=== report.md (generated, do not edit) ===\n" + r.report_md).replace(/\[([^\]]+)\]\(api\/ref\?ref=([^)]+)\)/g, '<a href="api/ref?ref=$2" target="_blank" rel="noopener">$1</a>');
+      statusEl.textContent = "Order " + oid + " — in production.";
+      document.getElementById("queued").textContent = "Production started.";
+      sessionStorage.removeItem("shoestring_order");
+    }
+    document.getElementById("o-yes").onclick = async () => {
+      showConfirm(false);
+      if (!oid || form.dataset.busy) return;
+      form.dataset.busy = "1";
+      const btn = form.querySelector("button");
+      btn.disabled = true;
+      addMsg("me", "Yes, start.");
+      history.push({ role: "user", content: "Yes, start." });
+      let prog = "";
+      try {
+        samSay("Starting…");
+        const c = await api.send("POST", "api/orders/" + oid + "/confirm", { confirm: true });
+        history.push({ role: "assistant", content: c.reply });
+        const a = c.answers || {};
+        prog = "Here's what I have:\n" +
+          "Audience: " + a.audience + "\nLength: " + a.length +
+          "\nDepth: " + a.depth + "\nTheme: " + a.theme +
+          "\nPDF sections: " + c.sections.count + " (" + c.sections.file + ")";
+        samSay(prog);
+        msg.textContent = "Answers saved, PDF sectioned. Sales is writing the production request… (may take a minute)";
+        const r = await api.send("POST", "api/orders/" + oid + "/start", {});
+        samSay(prog + "\nProduction started.");
+        showStarted(r);
+      } catch (e) {
+        samSay((prog ? prog + "\n" : "") + "Couldn't start: " + e.message);
+        fail(e);
+      } finally {
+        delete form.dataset.busy;
+        btn.disabled = false;
+      }
+    };
+    document.getElementById("o-no").onclick = async () => {
+      showConfirm(false);
+      if (!oid || form.dataset.busy) return;
+      try {
+        const c = await api.send("POST", "api/orders/" + oid + "/confirm", { confirm: false });
+        addMsg("me", "No, not yet.");
+        history.push({ role: "user", content: "No, not yet." });
+        addMsg("them", c.reply);
+        history.push({ role: "assistant", content: c.reply });
+      } catch (e) { fail(e); }
     };
     newOrder().catch(fail);
   })();

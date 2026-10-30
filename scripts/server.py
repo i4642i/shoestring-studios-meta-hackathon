@@ -1281,6 +1281,7 @@ class Handler(BaseHTTPRequestHandler):
         print("order confirm %s (%d sections)" % (oid, len(heads)),
               flush=True)
         return self._json(200, {"ok": True, "answers": meta["answers"],
+                                "reply": intake.START_LINE,
                                 "sections": {"file": "sections.md",
                                              "count": len(heads),
                                              "headings": heads[:20]}})
