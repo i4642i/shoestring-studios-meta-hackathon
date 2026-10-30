@@ -630,7 +630,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"reply": reply.strip()})
 
     def _api_start_prompt(self, eid):
-        """Preview the Source-PC start prompt preloaded for Cleo/Rex."""
+        """Preview the recipients-gated PC input preloaded for one
+        crew member: the same shared builder a real run uses."""
         if eid not in ("explain_cleo", "case_rex", "plan_ash",
                        "pd_marty"):
             return self._json(404, {"error": "start prompts exist for "
@@ -641,62 +642,28 @@ class Handler(BaseHTTPRequestHandler):
         if not d:
             return self._json(404, {"error": "no such order"})
         meta = self._order_meta(d)
-        if eid == "plan_ash":
-            try:
-                text, meta2 = pc.picks_preview_for("Ash", oid,
-                                                   flows.RUNS_DIR)
-            except KeyError as exc:
-                return self._json(409, {"error": str(exc)})
-            return self._json(200, {"prompt": text,
-                                    "picks": meta2["picks"],
-                                    "refs": meta2["refs"]})
-        ref = (meta.get("files") or {}).get("pc_ref", "")
-        if not ref:
-            return self._json(409, {"error": "order has no PC entry: "
-                                             "upload its PDF first"})
-        if eid == "pd_marty":
-            try:
-                mtext = pc.marty_input_text(ref)
-            except (OSError, ValueError, KeyError) as exc:
-                return self._json(404, {"error": "PC entry missing: %s"
-                                                 % exc})
-            return self._json(200, {"prompt": mtext,
-                                    "chars": len(mtext),
-                                    "entry_ref": ref})
-        best, best_t = None, -1.0
-        rdir = flows.RUNS_DIR
-        if os.path.isdir(rdir):
-            for rid in os.listdir(rdir):
-                sp = os.path.join(rdir, rid, "STATUS.json")
-                mp = os.path.join(rdir, rid, "pd_marty", "result.json")
-                try:
-                    with open(sp, encoding="utf-8") as f:
-                        st = json.load(f)
-                    if st.get("order_id") != oid:
-                        continue
-                    t = os.path.getmtime(mp)
-                    if t <= best_t:
-                        continue
-                    with open(mp, encoding="utf-8") as f:
-                        res = json.load(f)
-                    data = res["categories"]["structure"]["data"]
-                    best, best_t = (rid, data), t
-                except (OSError, ValueError, KeyError):
-                    continue
-        if best is None:
-            return self._json(409, {"error": "no Marty structure for this "
-                                             "order yet: run the flow first"})
+        refs = []
+        sent = (meta.get("files") or {}).get("pc_ref", "")
+        if sent:
+            refs.append(sent)
         try:
-            entry = pc.load_entry_by_ref(ref)
-        except (OSError, ValueError, KeyError) as exc:
-            return self._json(404, {"error": "PC entry missing: %s" % exc})
-        name = "Cleo" if eid == "explain_cleo" else "Rex"
-        mp = pc.load_map_by_ref(ref)
-        text, meta2 = pc.start_prompt_for(name, best[1], entry, mp)
-        return self._json(200, {"prompt": text, "parts": meta2["parts"],
-                                "missing": meta2["missing"],
-                                "entry_ref": ref,
-                                "structure_run": best[0]})
+            text, meta2 = pc.prompt_chunks_for(eid, oid, refs,
+                                               flows.RUNS_DIR)
+        except (OSError, ValueError) as exc:
+            return self._json(409, {"error": str(exc)})
+        if not meta2["included"]:
+            if not refs and not pc.order_picks_with_reasons(
+                    oid, flows.RUNS_DIR):
+                return self._json(409, {"error": "order has no Source "
+                                                 "entry yet: Sam sends it "
+                                                 "after Yes"})
+            return self._json(409, {"error": "no access to this order's "
+                                             "items for %s" % eid,
+                                    "denied": meta2["denied"]})
+        return self._json(200, {"prompt": text, "chars": len(text),
+                                "included": meta2["included"],
+                                "denied": meta2["denied"],
+                                "picks": meta2["picks"]})
 
     # ---- orders ----
     def _order_dir(self, oid):
@@ -1121,6 +1088,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, out)
 
     def _api_order_upload(self, oid):
+        """Store the client's PDF only. Sam parses and sends it to the
+        Source PC after the client confirms (Yes)."""
         d = self._order_dir(oid)
         if not d:
             return self._json(404, {"error": "no such order"})
@@ -1135,78 +1104,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "PDF over 25 MB"})
         with open(os.path.join(d, "source.pdf"), "wb") as f:
             f.write(raw)
-        try:
-            pages, images, tables, skipped, marks = pdf_parse(raw)
-        except RuntimeError as e:
-            return self._json(500, {"error": str(e)})
-        except Exception as exc:  # noqa: BLE001 - broken PDF, reported
-            return self._json(400, {"error": "cannot parse PDF: %s" % exc})
-        text = "\n\n".join(pages)
-        if not text.strip():
-            return self._json(400, {"error": "no extractable text in PDF"})
-        parsed = ["# Parsed source: %s" % base, ""]
-        for i, p in enumerate(pages):
-            parsed += ["## Page %d" % (i + 1), "", p.strip(), ""]
-        with open(os.path.join(d, "parsed.md"), "w", encoding="utf-8") as f:
-            f.write("\n".join(parsed))
-        imgdir = os.path.join(d, "images")
-        os.makedirs(imgdir, exist_ok=True)
-        imnames, perpage = [], {}
-        for im in images:
-            perpage[im["page"]] = perpage.get(im["page"], 0) + 1
-            name = "p%02d-i%02d.png" % (im["page"], perpage[im["page"]])
-            with open(os.path.join(imgdir, name), "wb") as f:
-                f.write(im["blob"])
-            imnames.append("images/" + name)
         meta = self._order_meta(d)
-        meta["files"] = {"source": "source.pdf", "parsed": "parsed.md",
-                         "images": imnames, "tables": len(tables),
-                         "pages": len(pages)}
+        meta["files"] = {"source": "source.pdf", "bytes": len(raw),
+                         "upload_name": base}
         self._order_save_meta(d, meta)
-        try:
-            ing = pc.ingest_source(oid, base,
-                                   time.strftime("%Y-%m-%dT%H:%M:%S"),
-                                   meta["assignee"], pages, images, tables,
-                                   skipped, marks=marks)
-        except Exception as exc:  # noqa: BLE001 - ingest never breaks upload
-            print("order pc ingest failed %s: %s" % (oid, exc), flush=True)
-            meta["pc_error"] = str(exc)[:200]
-            self._order_save_meta(d, meta)
-            ing = {"ref": None, "doc_id": None, "duplicate": False,
-                   "figures": 0, "tables": 0}
-        else:
-            meta["files"]["pc_ref"] = ing["ref"]
-            meta["files"]["pc_duplicate"] = ing["duplicate"]
-            meta["files"]["pc_title"] = ing["title"]
-            meta["files"]["pc_sections"] = ing["sections"]
-            meta["files"]["pc_chars"] = ing["chars"]
-            meta["files"]["pc_figures"] = ing["figures"]
-            meta["files"]["pc_tables"] = ing["tables"]
-            meta.pop("pc_error", None)
-            self._order_save_meta(d, meta)
-            print("order pc %s %s%s (%d sections, %d paras, "
-                  "%d figs, %d tabs)" % (oid, ing["ref"], " (duplicate)"
-                                         if ing["duplicate"] else "",
-                                         ing["sections"], ing["paras"],
-                                         ing["figures"], ing["tables"]),
-                  flush=True)
-            try:
-                self._pc_maybe_build(ing["doc_id"])
-            except Exception as exc:  # noqa: BLE001 - spawn never breaks it
-                print("order pc spawn failed %s: %s" % (oid, exc),
-                      flush=True)
-        print("order upload %s/%s (%d pages, %d chars, %d images, "
-              "%d tables, %d decor skipped)"
-              % (oid, base, len(pages), len(text), len(images),
-                 len(tables), skipped), flush=True)
-        return self._json(200, {"ok": True, "pages": len(pages),
-                                "chars": len(text), "images": len(images),
-                                "tables": len(tables),
-                                "skipped_decor": skipped,
-                                "pc_ref": ing["ref"],
-                                "pc_duplicate": ing["duplicate"],
-                                "pc_figures": ing["figures"],
-                                "pc_tables": ing["tables"]})
+        print("order upload %s/%s (%d bytes, stored; Sam parses it "
+              "after Yes)" % (oid, base, len(raw)), flush=True)
+        return self._json(200, {"ok": True, "file": "source.pdf",
+                                "bytes": len(raw), "name": base})
 
     def _api_order_intake(self, oid):
         d = self._order_dir(oid)
@@ -1269,10 +1174,6 @@ class Handler(BaseHTTPRequestHandler):
         else:
             context.append("Still missing: %s. Steer the chat toward them, "
                            "one question at a time." % ", ".join(missing))
-        parsed = os.path.join(d, "parsed.md")
-        if os.path.isfile(parsed):
-            with open(parsed, encoding="utf-8") as f:
-                context.append("Parsed source head:\n" + f.read(1500))
         hints = self._handbook_hints(path, msgs[-1]["content"])
         if hints:
             context.append("Handbook examples for this topic (follow their "
@@ -1371,35 +1272,62 @@ class Handler(BaseHTTPRequestHandler):
         if missing:
             return self._json(409, {"error": "intake incomplete",
                                     "missing": missing})
-        try:
-            with open(os.path.join(d, "parsed.md"),
-                      encoding="utf-8") as f:
+        legacy = None
+        parsed_p = os.path.join(d, "parsed.md")
+        if os.path.isfile(parsed_p):
+            with open(parsed_p, encoding="utf-8") as f:
                 text = f.read()
-        except OSError:
-            return self._json(409, {"error": "no parsed PDF yet"})
-        md, heads = intake.build_sections(text)
-        with open(os.path.join(d, "sections.md"), "w",
-                  encoding="utf-8") as f:
-            f.write(md)
-        files = dict(meta.get("files", {}))
-        files["sections"] = "sections.md"
-        files["section_count"] = len(heads)
-        meta["files"] = files
+            md, heads = intake.build_sections(text)
+            with open(os.path.join(d, "sections.md"), "w",
+                      encoding="utf-8") as f:
+                f.write(md)
+            files = dict(meta.get("files", {}))
+            files["sections"] = "sections.md"
+            files["section_count"] = len(heads)
+            meta["files"] = files
+            legacy = {"file": "sections.md", "count": len(heads),
+                      "headings": heads[:20]}
+        pdf_p = os.path.join(d, "source.pdf")
+        pdf = {"file": "source.pdf",
+               "bytes": os.path.getsize(pdf_p)
+               if os.path.isfile(pdf_p) else 0}
         meta["approved"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                             "answers": dict(meta.get("answers", {})),
                             "via": "chat"}
         self._order_save_meta(d, meta)
         self._chat_append(d, intake.YES_LINE, intake.START_LINE)
-        print("order confirm %s (%d sections)" % (oid, len(heads)),
+        print("order confirm %s (%s)" % (oid, "legacy sections.md"
+                                         if legacy else "stored PDF"),
               flush=True)
-        return self._json(200, {"ok": True, "answers": meta["answers"],
-                                "reply": intake.START_LINE,
-                                "sections": {"file": "sections.md",
-                                             "count": len(heads),
-                                             "headings": heads[:20]}})
+        out = {"ok": True, "answers": meta["answers"],
+               "reply": intake.START_LINE, "pdf": pdf}
+        if legacy:
+            out["sections"] = legacy
+        return self._json(200, out)
+
+    @staticmethod
+    def _sam_inputs_md(oid, meta):
+        """Sam's run input: the order answers + the attached PDF facts.
+        The send/sequence instructions live in Sam's persona."""
+        files = meta.get("files", {}) or {}
+        pdf = os.path.join(ROOT, "orders", oid, "source.pdf")
+        nbytes = os.path.getsize(pdf) if os.path.isfile(pdf) else 0
+        return "\n".join([
+            "# Inputs for sales_sam", "",
+            "## Order brief (order %s)" % oid,
+            json.dumps({"order_id": oid,
+                        "answers": meta.get("answers", {}),
+                        "source_file": files.get("source", "source.pdf")},
+                       ensure_ascii=False, indent=1), "",
+            "## Attached source",
+            "%s (%d bytes, uploaded as %s). Stored, not parsed yet."
+            % (files.get("source", "source.pdf"), nbytes,
+               files.get("upload_name", "?")), ""])
 
     def _do_complete(self, oid, d, meta, body, final_status):
-        """Shared consultation pipeline. Returns (code, obj)."""
+        """Shared consultation pipeline: run Sam live (he sends the
+        PDF to the Source PC, sets recipients, writes request +
+        source). Returns (code, obj)."""
         if meta.get("status") in ("complete", "in_production"):
             with open(os.path.join(d, "report.md"), encoding="utf-8") as f:
                 md = f.read()
@@ -1416,18 +1344,22 @@ class Handler(BaseHTTPRequestHandler):
         missing = [k for k in INTAKE_KEYS if k not in meta.get("answers", {})]
         if missing:
             return (409, {"error": "intake incomplete", "missing": missing})
-        if not meta.get("files", {}).get("parsed"):
-            return (409, {"error": "no parsed PDF yet"})
+        if not os.path.isfile(os.path.join(d, "source.pdf")):
+            return (409, {"error": "no attached PDF yet"})
         agent_dir = self._employee(meta["assignee"])
         run_model = self._load_agent(agent_dir)["model"]
         if not runner.key_present(run_model):
             return (503, {"error": "%s missing: add it to .env"
                           % runner.key_var(run_model)})
         brief = {"order_id": oid, "answers": meta["answers"],
-                 "source_file": meta["files"].get("source", "source.pdf")}
+                 "source_file": meta.get("files", {}).get("source",
+                                                          "source.pdf")}
         run_dir = os.path.join(ROOT, "output", "runs", oid)
-        result = runner.run(agent_dir, run_dir, brief,
-                            os.path.join(d, "parsed.md"))
+        os.makedirs(run_dir, exist_ok=True)
+        input_md = os.path.join(run_dir, "INPUTS.md")
+        with open(input_md, "w", encoding="utf-8") as f:
+            f.write(self._sam_inputs_md(oid, meta))
+        result = runner.run(agent_dir, run_dir, brief, input_md)
         if not result.get("ok"):
             reason = "unknown"
             for ev in reversed(result.get("events", [])):
@@ -1438,26 +1370,37 @@ class Handler(BaseHTTPRequestHandler):
                           "usage": result.get("usage")})
         for fn in ("result.json", "report.md"):
             shutil.copyfile(os.path.join(run_dir, fn), os.path.join(d, fn))
+        with open(os.path.join(d, "result.json"), encoding="utf-8") as f:
+            res = json.load(f)
+        cats = res.get("categories", {}) or {}
+        source = (cats.get("source", {}) or {}).get("data", {})
+        files = dict(meta.get("files", {}))
         intake = {"order_id": oid,
                   "answers": dict(meta["answers"],
-                                  source=meta["files"].get("source",
-                                                           "source.pdf")),
-                  "files": {"source": meta["files"].get("source"),
-                            "parsed": meta["files"].get("parsed"),
-                            "sections": meta["files"].get("sections"),
-                            "images": meta["files"].get("images", [])}}
+                                  source=files.get("source", "source.pdf")),
+                  "files": {"source": files.get("source"),
+                            "pc_ref": source.get("ref", "")},
+                  "source": source}
         with open(os.path.join(d, "intake.json"), "w", encoding="utf-8") as f:
             json.dump(intake, f, ensure_ascii=False, indent=2)
         meta["status"] = final_status
         self._order_save_meta(d, meta)
         with open(os.path.join(d, "report.md"), encoding="utf-8") as f:
             md = f.read()
-        print("order %s %s (%s)"
+        stages = [
+            "a) answers saved (audience, length, depth, theme)",
+            "b) PDF sent to the Source PC: %s (%s sections, %s chars)"
+            % (source.get("ref", "?"), source.get("sections", "?"),
+               source.get("chars", "?")),
+            "c) production request written (result.json + report.md)"]
+        print("order %s %s (%s, %s)"
               % ("start" if final_status == "in_production" else "complete",
-                 oid, result.get("usage")), flush=True)
+                 oid, source.get("ref", "?"), result.get("usage")),
+              flush=True)
         return (200, {"ok": True, "intake": intake, "report_md": md,
                       "files": ["intake.json", "result.json", "report.md"],
-                      "usage": result.get("usage")})
+                      "usage": result.get("usage"), "source": source,
+                      "stages": stages})
 
     def _try_fill_answers(self, d, meta, extra=""):
         """Best-effort fill of meta["answers"] from the chat, one LLM call.
@@ -1687,6 +1630,7 @@ class Handler(BaseHTTPRequestHandler):
                                for p in e.get("paragraphs", [])]
         entry["figures"] = e.get("figures", [])
         entry["tables"] = e.get("tables", [])
+        entry["recipients"] = e.get("recipients")
         job = _PC_JOBS.get(doc_id)
         entry["building"] = job is not None and job.poll() is None
         entry["index"] = {p: self._pc_indexed(p, pcname, doc_id)

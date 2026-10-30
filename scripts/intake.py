@@ -28,14 +28,15 @@ _HEADING_RE = re.compile(r"^(\d+\.)+\s*\S")
 
 
 def missing_of(answers, files):
-    """Missing intake items: blank answers count as missing; the parsed
-    PDF is the fifth item."""
+    """Missing intake items: blank answers count as missing; the
+    attached source PDF is the fifth item (stored at upload, parsed
+    by Sam after Yes)."""
     answers = answers if isinstance(answers, dict) else {}
     files = files if isinstance(files, dict) else {}
     missing = [k for k in INTAKE_KEYS
                if not isinstance(answers.get(k), str)
                or not answers[k].strip()]
-    if not files.get("parsed"):
+    if not files.get("source"):
         missing.append("source PDF")
     return missing
 
