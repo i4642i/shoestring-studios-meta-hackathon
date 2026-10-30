@@ -4,8 +4,10 @@ Pure functions (stdlib only) behind the Source PC ingest pipeline and
 the open_ref reader. Docs: RESULT_JSON_DRAFT_EN.md sections 8-10.
 """
 import hashlib
+import json
 import os
 import re
+import time
 
 MAP_VERSION = 1
 PCS = ("source", "theory", "article")
@@ -14,17 +16,17 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(_HERE))
 
 
-def pc_dir(pc):
+def pc_dir(pc, root=None):
     assert pc in PCS, "unknown PC: %r" % pc
-    return os.path.join(ROOT, "storage", "_pc", pc)
+    return os.path.join(root or ROOT, "storage", "_pc", pc)
 
 
-def entry_dir(pc, doc_id):
-    return os.path.join(pc_dir(pc), "entries", doc_id)
+def entry_dir(pc, doc_id, root=None):
+    return os.path.join(pc_dir(pc, root), "entries", doc_id)
 
 
-def index_dir(pc, profile):
-    return os.path.join(pc_dir(pc), "index", profile)
+def index_dir(pc, profile, root=None):
+    return os.path.join(pc_dir(pc, root), "index", profile)
 
 
 # ---- ids and refs (§9) ----
@@ -423,6 +425,52 @@ def open_ref(entry, ref, grant=None):
                         "provenance": _provenance(entry, p["pages"])}
         raise KeyError("no such object: %r" % ref)
     raise ValueError("bad ref fragment: %r" % ref)
+
+
+# ---- ingest (§10: hash -> id -> entry, map/index later) ----
+def ingest_source(order_id, base, parsed_at, added_by, pages, images,
+                  root=None):
+    """Full Source ingest: clean pages, split sections, hash the cleaned
+    text to an id, dedup, and write entries/<id>/{entry.json, map.json,
+    figures/} plus the first log line. images: [(name, blob)] with
+    names like p01-img02.png. Map/index are built by the worker.
+    Returns {"ref", "doc_id", "duplicate"}."""
+    paras = clean_pages(pages)
+    sections = split_sections(paras)
+    fulltext = "\n\n".join(p["text"] for p in paras)
+    doc_id = content_id(fulltext)
+    edir = entry_dir("source", doc_id, root)
+    ep = os.path.join(edir, "entry.json")
+    if os.path.isfile(ep):
+        with open(ep, encoding="utf-8") as f:
+            ref = json.load(f).get("ref", entry_ref("source", doc_id))
+        return {"ref": ref, "doc_id": doc_id, "duplicate": True}
+    imgs = []
+    for n, (name, _blob) in enumerate(images or []):
+        m = re.match(r"^p(\d+)-img(\d+)\.png$", name or "")
+        if m:
+            imgs.append((name, int(m.group(1)), int(m.group(2))))
+        else:
+            imgs.append((name, 1, n + 1))
+    title = os.path.splitext(base or "document")[0]
+    entry = build_entry(doc_id, title, base or "", order_id, parsed_at,
+                        added_by, sections, imgs)
+    os.makedirs(os.path.join(edir, "figures"), exist_ok=True)
+    with open(ep, "w", encoding="utf-8") as f:
+        json.dump(entry, f, ensure_ascii=False, indent=2)
+    with open(os.path.join(edir, "map.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(blank_map(entry, ""), f, ensure_ascii=False, indent=2)
+    for (name, _b), (_n2, _pg, _k) in zip(images or [], imgs):
+        with open(os.path.join(edir, "figures", name), "wb") as f:
+            f.write(_b)
+    with open(os.path.join(edir, "log.jsonl"), "w",
+              encoding="utf-8") as f:
+        f.write(json.dumps({"ev": "ingested",
+                           "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                             "order_id": order_id, "pages": len(pages),
+                             "paras": len(entry["paragraphs"])}) + "\n")
+    return {"ref": entry["ref"], "doc_id": doc_id, "duplicate": False}
 
 
 # ---- map skeleton (§10.3/10.5) ----

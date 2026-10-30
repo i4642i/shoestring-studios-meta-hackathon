@@ -6,11 +6,16 @@ page-break joins, page metadata), numbered-section split, addresses,
 omitted candidates, key terms, see-range checks, and open_ref reads.
 No sockets, no model calls, no writes.
 """
+import json
 import os
+import shutil
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
+os.makedirs(tempfile.tempdir, exist_ok=True)
 from agents._frame import pc  # noqa: E402
 
 FAILS = []
@@ -186,6 +191,49 @@ ok(skel["status"] == "pending" and skel["llm_model"] == "model-x"
    and skel["map_version"] == pc.MAP_VERSION
    and len(skel["sections"]) == len(entry["sections"]),
    "blank map skeleton")
+
+# ---- ingest_source (temp root under gitignored scratch) ----
+tmp = tempfile.mkdtemp(prefix="pc_ingest_")
+try:
+    IPAGES = ["CHAPTER ONE\n1.1 Getting started\nBody of one one.\n1",
+              "CHAPTER ONE\n1.2 Moving on\nBody of one two.\n2"]
+    r1 = pc.ingest_source("ord-20261030-001", "book.pdf",
+                          "2026-10-30T03:00:00", "sales_sam", IPAGES,
+                          [("p01-img01.png", b"PNGDATA")], root=tmp)
+    ok(r1["ref"].startswith("pc://source/")
+       and len(r1["doc_id"]) == 12 and r1["duplicate"] is False,
+       "ingest returns ref + id")
+    edir = pc.entry_dir("source", r1["doc_id"], root=tmp)
+    with open(os.path.join(edir, "entry.json"),
+              encoding="utf-8") as f:
+        ientry = json.load(f)
+    ok(ientry["title"] == "book" and ientry["order_id"]
+       == "ord-20261030-001" and ientry["added_by"] == "sales_sam",
+       "ingest provenance recorded")
+    ok([s["n"] for s in ientry["sections"]] == ["1.1", "1.2"],
+       "ingest sections split")
+    with open(os.path.join(edir, "map.json"), encoding="utf-8") as f:
+        imap = json.load(f)
+    ok(imap["status"] == "pending", "ingest leaves map pending")
+    with open(os.path.join(edir, "figures", "p01-img01.png"),
+              "rb") as f:
+        ok(f.read() == b"PNGDATA", "ingest stores figures")
+    ok(os.path.isfile(os.path.join(edir, "log.jsonl")),
+       "ingest writes first log line")
+    r2 = pc.ingest_source("ord-20261030-002", "book.pdf",
+                          "2026-10-30T04:00:00", "sales_sam", IPAGES,
+                          [], root=tmp)
+    ok(r2["duplicate"] is True and r2["ref"] == r1["ref"],
+       "same content re-ingest is a no-op")
+    with open(os.path.join(edir, "entry.json"),
+              encoding="utf-8") as f:
+        ok(json.load(f)["order_id"] == "ord-20261030-001",
+           "duplicate keeps first provenance")
+    got = pc.open_ref(ientry, r1["ref"] + "#s1.1/p2")
+    ok(got["text"] == "Body of one one.",
+       "ingested entry opens via ref")
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
 
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
 sys.exit(1 if FAILS else 0)

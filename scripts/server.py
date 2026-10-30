@@ -28,6 +28,7 @@ from agents._frame import runner  # noqa: E402
 from agents._frame import tools as registry  # noqa: E402
 import validate_agent  # noqa: E402
 import intake  # noqa: E402
+from agents._frame import pc  # noqa: E402
 
 ALLOWED_UPLOAD = (".md", ".txt", ".pdf")
 
@@ -1044,13 +1045,25 @@ class Handler(BaseHTTPRequestHandler):
                                 "stale": stale})
 
     def _api_ref(self):
-        """open_ref stub: citation links point here until the PCs exist."""
+        """open_ref: the passage at ref, verbatim, with provenance."""
         qs = unquote(self.path).split("?", 1)
         ref = ""
         if len(qs) > 1:
             ref = dict(parse_qsl(qs[1])).get("ref", "")
-        return self._json(501, {"error": "PCs not built yet; cannot open %r"
-                                         % (ref or "this ref",)})
+        try:
+            pcname, doc_id, _frag = pc.parse_ref(ref)
+        except ValueError:
+            return self._json(400, {"error": "bad ref: %r" % ref})
+        ep = os.path.join(pc.entry_dir(pcname, doc_id), "entry.json")
+        if not os.path.isfile(ep):
+            return self._json(404, {"error": "no such PC entry"})
+        with open(ep, encoding="utf-8") as f:
+            entry = json.load(f)
+        try:
+            out = pc.open_ref(entry, ref)
+        except (KeyError, ValueError) as exc:
+            return self._json(404, {"error": str(exc)})
+        return self._json(200, out)
 
     def _api_order_upload(self, oid):
         d = self._order_dir(oid)
@@ -1091,10 +1104,30 @@ class Handler(BaseHTTPRequestHandler):
                          "images": ["images/" + n for n, _ in images],
                          "pages": len(pages)}
         self._order_save_meta(d, meta)
+        try:
+            ing = pc.ingest_source(oid, base,
+                                   time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                   meta["assignee"], pages, images)
+        except Exception as exc:  # noqa: BLE001 - ingest never breaks upload
+            print("order pc ingest failed %s: %s" % (oid, exc), flush=True)
+            meta["pc_error"] = str(exc)[:200]
+            self._order_save_meta(d, meta)
+            ing = {"ref": None, "doc_id": None, "duplicate": False}
+        else:
+            meta["files"]["pc_ref"] = ing["ref"]
+            meta["files"]["pc_duplicate"] = ing["duplicate"]
+            meta.pop("pc_error", None)
+            self._order_save_meta(d, meta)
+            print("order pc %s %s%s" % (oid, ing["ref"],
+                                        " (duplicate)"
+                                        if ing["duplicate"] else ""),
+                  flush=True)
         print("order upload %s/%s (%d pages, %d chars, %d images)"
               % (oid, base, len(pages), len(text), len(images)), flush=True)
         return self._json(200, {"ok": True, "pages": len(pages),
-                                "chars": len(text), "images": len(images)})
+                                "chars": len(text), "images": len(images),
+                                "pc_ref": ing["ref"],
+                                "pc_duplicate": ing["duplicate"]})
 
     def _api_order_intake(self, oid):
         d = self._order_dir(oid)
