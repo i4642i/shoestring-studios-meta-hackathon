@@ -1436,6 +1436,76 @@ def ref_within(requested_ref, part_ref):
     return rpc == ppc and rid == pid and _frag_within(rfrag, pfrag)
 
 
+def apply_handoff(order_id, draft, set_by="plan_ash", root=None):
+    """Apply storyboard_draft scenes[].handoff[] as recipient rows
+    (kind map + parts). Same lister rule as the tool: set_by must
+    hold a row on each entry, and every handoff ref must sit inside
+    what set_by holds (no widening). Validates everything first,
+    then applies. Returns {"applied": [(ref, agent)], "grants": n}
+    or {"error": msg} (nothing applied)."""
+    scenes = (draft or {}).get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        return {"error": "draft has no scenes"}
+    planned = {}
+    for sc in scenes:
+        if not isinstance(sc, dict):
+            return {"error": "scene is not an object"}
+        for h in (sc.get("handoff") or []):
+            if not isinstance(h, dict):
+                return {"error": "scene %s: handoff is not an object"
+                                 % sc.get("n", "?")}
+            ref = h.get("ref", "")
+            tos = h.get("to", [])
+            if not isinstance(ref, str) or not ref:
+                return {"error": "scene %s: handoff needs ref"
+                                 % sc.get("n", "?")}
+            if not isinstance(tos, list) or not tos \
+                    or any(not isinstance(a, str) or not a
+                           for a in tos):
+                return {"error": "scene %s: handoff %r needs "
+                                 "to: [agent ids]" % (sc.get("n", "?"),
+                                                      ref)}
+            try:
+                rpc, rid, _frag = parse_ref(ref)
+            except ValueError:
+                return {"error": "scene %s: bad handoff ref %r"
+                                 % (sc.get("n", "?"), ref)}
+            try:
+                entry = load_entry_by_ref(entry_ref(rpc, rid),
+                                          root=root)
+            except (OSError, ValueError, KeyError):
+                return {"error": "scene %s: unknown entry for %r"
+                                 % (sc.get("n", "?"), ref)}
+            mine = entry_access(entry, set_by, order_id)
+            if mine is None:
+                return {"error": "scene %s: %s holds no row for %s"
+                                 " (order %s)"
+                                 % (sc.get("n", "?"), set_by,
+                                    entry.get("ref", ""), order_id)}
+            if row_parts(mine) and not any(
+                    ref_within(ref, part)
+                    for part in row_parts(mine)):
+                return {"error": "scene %s: %r sits outside %s's "
+                                 "listed parts" % (sc.get("n", "?"),
+                                                   ref, set_by)}
+            for a in tos:
+                if not os.path.isfile(os.path.join(
+                        ROOT, "agents", a, "agent.json")):
+                    return {"error": "scene %s: unknown agent %r"
+                                     % (sc.get("n", "?"), a)}
+                planned.setdefault((rpc, rid, a), []).append(ref)
+    applied = []
+    for (rpc, rid, a), refs in sorted(planned.items()):
+        try:
+            set_recipients(rpc, rid, order_id, [a], set_by,
+                           kind="map", parts=refs, root=root)
+        except (OSError, ValueError) as exc:
+            return {"error": "cannot list %s on %s: %s"
+                             % (a, entry_ref(rpc, rid), exc)}
+        applied.append((entry_ref(rpc, rid), a))
+    return {"applied": applied, "grants": len(applied)}
+
+
 def entry_parts_allow(entry, agent_id, order_id, target_ref):
     """True when (agent, order) may open target_ref: a row exists and
     (no parts limit, or the ref sits inside a listed part). Legacy
@@ -1623,9 +1693,10 @@ def _parts_text(entry, parts):
         want = frag.split("/", 1)[1]
         lo, hi = (want.split("-", 1) + [None])[:2]
         for p in paras[sec["start"]:sec["start"] + sec["count"]]:
-            ptag = p["ref"].split("#", 1)[1].split("/", 1)[1]
+            paddr = p.get("addr") or p.get("ref", "").split("#", 1)[-1]
+            ptag = paddr.split("/", 1)[1] if "/" in paddr else paddr
             if ptag == want or (hi and lo <= ptag <= hi):
-                out += ["(ref: %s)" % p["ref"], p["text"], ""]
+                out += ["(ref: %s#%s)" % (ref, paddr), p["text"], ""]
     return "\n".join(out)
 
 

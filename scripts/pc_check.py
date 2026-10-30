@@ -668,6 +668,16 @@ try:
        and "Open only your listed parts" in text5
        and "Body tools here." not in text5,
        "parts row gets listed parts only")
+    pc.set_recipients("source", r3["doc_id"], "ord-20261030-009",
+                      ["voice_wren"], "plan_ash", kind="full",
+                      parts=[pcp], root=tmp2)
+    text6, meta6 = pc.prompt_chunks_for("voice_wren", "ord-20261030-009",
+                                        [r3["ref"]],
+                                        os.path.join(tmp2, "runs"))
+    ok(meta6["included"] == [r3["ref"]]
+       and "(ref: %s)" % pcp in text6
+       and "MAP NOTES" not in text6,
+       "full+parts row gets the listed part text")
 finally:
     pc.ROOT_OVERRIDE = None
     shutil.rmtree(tmp2, ignore_errors=True)

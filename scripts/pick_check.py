@@ -181,6 +181,56 @@ try:
                                       [], os.path.join(tmp, "runs"))
     ok(pmeta["included"] == [] and pmeta["denied"] == [p["ref"]],
        "penn has nothing until ash lists him")
+    src = pc.ingest_source("ord-20261030-001", "s.pdf",
+                           "2026-10-30T00:00:00", "sales_sam",
+                           ["1.1 Alpha\nAlpha body here.",
+                            "1.2 Beta\nBeta body here."], [], [], 0,
+                           root=tmp)
+    pc.set_recipients("source", src["doc_id"], "ord-20261030-001",
+                      ["plan_ash"], "sales_sam", kind="map")
+    draft = {"scenes": [{"n": 1, "handoff": [
+        {"ref": p["ref"] + "#p1", "to": ["board_penn"],
+         "why": "w", "how_to_use": "h"},
+        {"ref": src["ref"] + "#s1.1", "to": ["board_penn"],
+         "why": "w", "how_to_use": "h"}]}]}
+    ap = pc.apply_handoff("ord-20261030-001", draft)
+    ok(ap.get("grants") == 2, "handoff applies map+parts rows")
+    ptext, pmeta2 = pc.prompt_chunks_for(
+        "board_penn", "ord-20261030-001", [src["ref"]],
+        os.path.join(tmp, "runs"))
+    ok(sorted(pmeta2["included"]) == sorted([p["ref"], src["ref"]])
+       and src["ref"] + "#s1.1" in ptext
+       and p["ref"] + "#p1" in ptext
+       and src["ref"] + "#s1.2" not in ptext
+       and "Beta body here." not in ptext,
+       "penn prompt holds exactly the handed parts")
+    wtext, wmeta = pc.prompt_chunks_for(
+        "voice_wren", "ord-20261030-001", [src["ref"]],
+        os.path.join(tmp, "runs"))
+    ok(src["ref"] not in str(wmeta["included"])
+       and "Alpha body here." not in wtext,
+       "wren gets no source part before her handoff")
+    wpart = src["ref"] + "#s1.2/p2"
+    ap2 = pc.apply_handoff("ord-20261030-001",
+                           {"scenes": [{"n": 2, "handoff": [
+                               {"ref": wpart, "to": ["voice_wren"],
+                                "why": "w", "how_to_use": "h"}]}]})
+    ok(ap2.get("grants") == 1, "map-only ash hands a part to wren")
+    w = ctx("voice_wren", "voice_wren")
+    ok(tmod.pc_read_source(w, {"ref": wpart}).get("text", "")
+       == "Beta body here.",
+       "wren quotes inside the part")
+    ok(tmod.pc_read_source(
+        w, {"ref": src["ref"] + "#s1.1/p1"}).get("error")
+       == "no access to this item",
+       "wren refused outside the part")
+    bad = pc.apply_handoff("ord-20261030-001",
+                           {"scenes": [{"n": 3, "handoff": [
+                               {"ref": other["ref"] + "#p1",
+                                "to": ["voice_wren"],
+                                "why": "w", "how_to_use": "h"}]}]})
+    ok("holds no row" in bad.get("error", ""),
+       "handoff outside ash rows fails clean")
 
     saved = os.environ.pop("TAVILY_API_KEY", None)
     try:

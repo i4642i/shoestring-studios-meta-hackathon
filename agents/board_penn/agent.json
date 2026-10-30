@@ -1,30 +1,32 @@
 {
-  "bounds": {
-    "max_steps": 10
-  },
-  "done": [
-    "one page per plan beat",
-    "every page has learn/screen/material/next",
-    "storyboard category complete per RESULT_JSON_DRAFT_EN.md"
+ "bounds": {
+  "max_steps": 10
+ },
+ "done": [
+  "one page per plan beat",
+  "every page has learn/screen/material/next",
+  "storyboard category complete per RESULT_JSON_DRAFT_EN.md"
+ ],
+ "frame_version": 1,
+ "id": "board_penn",
+ "io": {
+  "inputs": [
+   "plan.json",
+   "structure.json"
   ],
-  "frame_version": 1,
-  "id": "board_penn",
-  "io": {
-    "inputs": [
-      "plan.json",
-      "structure.json"
-    ],
-    "output": "storyboard.json"
-  },
-  "model": "meta-models/muse-spark-open-1026",
-  "name": "Penn",
-  "title": "Storyboard writer",
-  "stage": 4,
-  "tools": [
-    "query_graph",
-    "read_md_section",
-    "open_ref",
-    "pc_read_theory",
-    "pc_read_article"
-  ]
+  "output": "storyboard.json"
+ },
+ "model": "meta-models/muse-spark-open-1026",
+ "name": "Penn",
+ "title": "Storyboard writer",
+ "stage": 4,
+ "tools": [
+  "query_graph",
+  "read_md_section",
+  "open_ref",
+  "pc_read_theory",
+  "pc_read_article",
+  "pc_list_source",
+  "pc_read_source"
+ ]
 }
