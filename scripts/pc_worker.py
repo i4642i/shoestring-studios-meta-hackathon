@@ -296,6 +296,31 @@ def _log_lines(idx):
         return f.read().splitlines()
 
 
+def index_docs(entry):
+    """(docs, ids) for the LightRAG index: main text plus one chunk
+    per figure/table, each id its full ref."""
+    heads = {s["n"]: s.get("heading", "")
+             for s in entry.get("sections", [])}
+    docs = ["\n\n".join("[%s] %s" % (p["addr"], p["text"])
+                        for p in entry["paragraphs"])]
+    ids = [entry["ref"]]
+    for fig in entry.get("figures", []):
+        kind = fig.get("kind") or "figure"
+        ids.append(entry["ref"] + "#" + fig["addr"])
+        docs.append(pc.chunk_text(
+            ids[-1], "Figure (%s)" % kind,
+            heads.get(_sec_no(fig["addr"]), ""), fig.get("caption", ""),
+            fig.get("description", ""), fig.get("text_in_image", ""),
+            fig.get("numbers", [])))
+    for tab in entry.get("tables", []):
+        ids.append(entry["ref"] + "#" + tab["addr"])
+        docs.append(pc.chunk_text(
+            ids[-1], "Table", heads.get(_sec_no(tab["addr"]), ""),
+            tab.get("caption", ""), "", "", [],
+            extra=tab.get("markdown", "")))
+    return docs, ids
+
+
 def main(doc_id):
     edir = pc.entry_dir("source", doc_id)
     with open(os.path.join(edir, "entry.json"), encoding="utf-8") as f:
@@ -333,25 +358,7 @@ def main(doc_id):
                                      stats["calls"]), flush=True)
     prof = mod.embed_settings()["profile"]
     idx = pc.index_dir("source", prof)
-    heads = {s["n"]: s.get("heading", "")
-             for s in entry.get("sections", [])}
-    docs = ["\n\n".join("[%s] %s" % (p["addr"], p["text"])
-                        for p in entry["paragraphs"])]
-    ids = [entry["ref"]]
-    for fig in entry.get("figures", []):
-        kind = fig.get("kind") or "figure"
-        ids.append(entry["ref"] + "#" + fig["addr"])
-        docs.append(pc.chunk_text(
-            ids[-1], "Figure (%s)" % kind,
-            heads.get(_sec_no(fig["addr"]), ""), fig.get("caption", ""),
-            fig.get("description", ""), fig.get("text_in_image", ""),
-            fig.get("numbers", [])))
-    for tab in entry.get("tables", []):
-        ids.append(entry["ref"] + "#" + tab["addr"])
-        docs.append(pc.chunk_text(
-            ids[-1], "Table", heads.get(_sec_no(tab["addr"]), ""),
-            tab.get("caption", ""), "", "", [],
-            extra=tab.get("markdown", "")))
+    docs, ids = index_docs(entry)
     lockd = _lock(idx)
     try:
         before = len(_log_lines(idx))
