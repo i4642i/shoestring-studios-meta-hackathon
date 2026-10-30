@@ -89,6 +89,13 @@ def _is_bullet(line):
     return bool(_BULLET_RE.match(line))
 
 
+_SENT_CLOSE_RE = re.compile(r"[.!?]['\"’”)\]]*$")
+
+
+def _ends_sentence(line):
+    return bool(_SENT_CLOSE_RE.search((line or "").strip()))
+
+
 _NONCONTENT_RE = re.compile(
     r"^(exercises|references|bibliography)\b[\s\d.,:;]*$",
     re.IGNORECASE)
@@ -222,7 +229,12 @@ def clean_pages(pages):
                 flush()
                 cur = None
             continue
-        standalone = bool(_is_heading(ln)) or _is_caps(ln)
+        hm = _is_heading(ln)
+        standalone = bool(hm and "." in hm[0]) or _is_caps(ln)
+        if cur is not None and hm and "." not in hm[0] \
+                and _ends_sentence(cur["lines"][-1]):
+            standalone = True  # bare "10 ..." heads a para only after
+            # a sentence end; mid-sentence it is a wrapped body line
         if cur is not None and (standalone or _is_bullet(ln)):
             flush()
             cur = None

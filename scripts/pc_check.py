@@ -100,6 +100,15 @@ ZSC = pc.split_sections(
 ok([s["n"] for s in ZSC] == ["0", "1.1"]
    and ZSC[0]["paras"][0]["text"] == "0 t t fragment",
    "zero-numbered line is not a section")
+WRP = pc.split_sections(pc.clean_pages(
+    ["Ends mid-sentence recorded as\n10 separate transactions here."]))
+ok([s["n"] for s in WRP] == ["1"]
+   and "recorded as 10 separate" in WRP[0]["paras"][0]["text"],
+   "wrapped line starting with a bare number joins")
+BHD = pc.split_sections(pc.clean_pages(
+    ["Body ends here.\n10 APPENDIX\nAppendix text."]))
+ok([s["n"] for s in BHD] == ["0", "10"],
+   "bare number heads a section after a sentence end")
 DUP = pc.split_sections(
     pc.clean_pages(["1.1 A\nBody a.\n\n1.1 A again\nBody b."]))
 ok([s["n"] for s in DUP] == ["1.1"]
