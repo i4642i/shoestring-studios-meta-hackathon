@@ -113,8 +113,8 @@ try:
        "read without grant refused")
     a = ctx("plan_ash", producer="plan_ash")
     ok(tmod.pc_read_theory(a, {"ref": p["ref"]}).get("error", "")
-       == "not picked for this order",
-       "later agent refused outside pick set")
+       == "no access to this item",
+       "unlisted agent refused before listing")
     rd = os.path.join(tmp, "runs", "rr1")
     os.makedirs(os.path.join(rd, "explain_cleo"))
     json.dump({"order_id": "ord-20261030-001"},
@@ -162,15 +162,15 @@ try:
        "later agent reads picked entry")
     o = tmod.open_ref(a, {"ref": p["ref"] + "#p2"})
     ok(o.get("text", "").startswith("It suits patient traders"),
-       "open_ref honors pick scope (allow)")
+       "open_ref honors listing (allow)")
     other = pc.ingest_theory("https://example.com/elsewhere", "Else",
                              "", "", "2026-10-30T00:00:00",
                              "explain_cleo",
                              "Elsewhere content body.\n\nMore here.",
                              root=tmp)
     ok(tmod.open_ref(a, {"ref": other["ref"]}).get("error", "")
-       == "not picked for this order",
-       "open_ref honors pick scope (deny)")
+       == "no access to this item",
+       "open_ref honors listing (deny)")
     atext, ameta = pc.prompt_chunks_for("plan_ash", "ord-20261030-001",
                                         [], os.path.join(tmp, "runs"))
     ok(ameta["included"] == [p["ref"]]

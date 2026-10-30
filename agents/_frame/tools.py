@@ -532,17 +532,14 @@ def _need_grant(ctx, pcname):
 
 def open_ref(ctx, args):
     """Any-PC ref reader with grant enforcement: the caller must hold
-    pc_read_<pc>. Grants are the tools listed in its agent.json.
-    Theory/Article refs are picks-scoped (§13.2)."""
+    pc_read_<pc> plus a recipient row for this order. Grants are the
+    tools listed in its agent.json."""
     ref = (args or {}).get("ref", "")
     try:
         pcname, _id, _frag = pc.parse_ref(ref)
     except ValueError:
         return {"error": "bad ref"}
     err = _need_grant(ctx, pcname)
-    if err:
-        return err
-    err = _pick_scope_error(ctx, pcname, ref)
     if err:
         return err
     try:
@@ -622,61 +619,6 @@ def _log_research(ctx, obj):
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
     except OSError:
         pass
-
-
-def _order_picks(order_id):
-    """Union of picks[].ref across concepts/cases results for the
-    order. The reports ARE the pick set (§13.2); no new store."""
-    out = set()
-    if not order_id:
-        return out
-    try:
-        rids = os.listdir(os.path.join(pc._base(None), "runs"))
-    except OSError:
-        return out
-    for rid in rids:
-        rd = os.path.join(pc._base(None), "runs", rid)
-        try:
-            with open(os.path.join(rd, "STATUS.json"),
-                      encoding="utf-8") as f:
-                if json.load(f).get("order_id") != order_id:
-                    continue
-        except (OSError, ValueError):
-            continue
-        for ag in ("explain_cleo", "case_rex"):
-            try:
-                with open(os.path.join(rd, ag, "result.json"),
-                          encoding="utf-8") as f:
-                    res = json.load(f)
-            except (OSError, ValueError):
-                continue
-            for cat in res.get("categories", {}).values():
-                data = (cat or {}).get("data", {})
-                for part in data.get("parts", []):
-                    for pk in part.get("picks", []):
-                        if pk.get("ref"):
-                            out.add(pk["ref"])
-    return out
-
-
-def _pick_scope_error(ctx, pcname, ref):
-    """None when ctx may open ref; else an error dict. The picker
-    reads the whole PC; everyone else only entries picked for their
-    order (§13.2)."""
-    if pcname not in PICKERS:
-        return None
-    if (ctx or {}).get("producer") == PICKERS[pcname]:
-        return None
-    try:
-        epc, eid, _frag = pc.parse_ref(ref)
-    except ValueError:
-        return {"error": "bad ref"}
-    if epc != pcname:
-        return {"error": "bad ref"}
-    if pc.entry_ref(epc, eid) not in _order_picks(
-            (ctx or {}).get("order_id")):
-        return {"error": "not picked for this order"}
-    return None
 
 
 def _domain(url):
@@ -804,9 +746,6 @@ def _pc_read_web(ctx, args, pcname):
     if rpc != pcname:
         return {"error": "pc_read_%s reads %s only; use open_ref"
                          % (pcname, pcname)}
-    err = _pick_scope_error(ctx, pcname, ref)
-    if err:
-        return err
     try:
         entry = pc.load_entry_by_ref(ref)
     except (OSError, KeyError, ValueError) as exc:
@@ -831,13 +770,13 @@ def _pc_read_web(ctx, args, pcname):
 
 def pc_read_theory(ctx, args):
     """Read a Theory PC ref verbatim with provenance. Refused unless
-    listed as a recipient; later agents also need this order's pick."""
+    listed as a recipient for this order."""
     return _pc_read_web(ctx, args, "theory")
 
 
 def pc_read_article(ctx, args):
     """Read an Article PC ref verbatim with provenance. Refused unless
-    listed as a recipient; later agents also need this order's pick."""
+    listed as a recipient for this order."""
     return _pc_read_web(ctx, args, "article")
 
 
@@ -1200,8 +1139,7 @@ TOOLS = {
     "open_ref": (
         open_ref,
         "Open any stable pc:// ref verbatim with provenance. Refused "
-        "without that PC's read grant or a recipient listing; "
-        "Theory/Article refs are picks-scoped.",
+        "without that PC's read grant or a recipient listing.",
         {"type": "object",
          "properties": {"ref": {"type": "string"}},
          "required": ["ref"], "additionalProperties": False},
