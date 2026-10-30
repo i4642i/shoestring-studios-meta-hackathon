@@ -96,7 +96,7 @@ ok(len(cp) == 3 and cp[1]["text"] == "INTRODUCTION",
    "caps heading not glued to previous page")
 
 # ---- section split ----
-SEC = ["Preface line.\n\n1.1 Getting started\nBody of one one.\n"
+SEC = ["Preface line.\n\n1.1 Getting started\nBody of one one.",
        "1.1.1 First steps\nDeep detail here.\n\n1.2 Moving on\n"
        "Body of one two."]
 secs = pc.split_sections(pc.clean_pages(SEC))
@@ -116,21 +116,42 @@ ok(len(lp) == 3 and lp[1]["text"] == "- apples",
    "list items stay separate")
 
 # ---- entry assembly + addresses ----
+FIGS = [{"page": 1, "top": 100.0, "caption": "Figure 1 Getting started",
+         "number": "1", "bbox": [10.0, 100.0, 200.0, 300.0], "w": 190.0,
+         "h": 200.0, "blob": b"PNGDATA"}]
+TABLES = [{"page": 2, "top": 50.0, "caption": "Table 1 Data",
+           "number": "1", "bbox": [10.0, 50.0, 300.0, 150.0],
+           "rows": [["a", "b"], ["c", "d"]],
+           "markdown": "| a | b |\n| c | d |", "blob": None}]
 entry = pc.build_entry(
     doc_id="a3f9c1d4e2b8", title="book", origin_file="book.pdf",
     order_id="ord-20261030-001", parsed_at="2026-10-30T03:00:00",
-    added_by="sales_sam", sections=secs,
-    images=[("p01-img01.png", 1, 1)])
+    added_by="sales_sam", sections=secs, figures=FIGS, tables=TABLES)
 addrs = [p["addr"] for p in entry["paragraphs"]]
 ok(addrs[0] == "s0/p1" and "s1.1/p1" in addrs and "s1.2/p1" in addrs,
    "paragraph addrs restart per section")
-ok(entry["images"] == [{"file": "p01-img01.png", "caption": "",
-                        "addr": "fig1.1"}],
-   "figure addresses from images")
+ok(entry["figures"][0]["addr"] == "fig1.1.1"
+   and entry["figures"][0]["file"] == "fig1.png"
+   and entry["tables"][0]["addr"] == "tab1.2.1",
+   "section-based fig/tab addresses + fig files")
+ok(entry["figures"][0]["caption"] == "Figure 1 Getting started"
+   and entry["figures"][0]["printed_no"] == "1"
+   and entry["figures"][0]["page"] == 1
+   and entry["figures"][0]["described"] is False,
+   "figure record keeps caption, page, undescribed")
+ok(entry["tables"][0]["rows"] == [["a", "b"], ["c", "d"]]
+   and entry["tables"][0]["generated_by"] == "pdfplumber",
+   "table record keeps rows + generator")
+ok("[fig1.1.1 p.1] Figure 1 Getting started" in
+   [p["text"] for p in entry["paragraphs"]],
+   "figure placeholder placed in text")
+ok("[tab1.2.1 p.2] Table 1 Data" in
+   [p["text"] for p in entry["paragraphs"]],
+   "table placeholder placed in text")
 ok(entry["chars"] == sum(len(p["text"]) for p in entry["paragraphs"]),
    "chars counted")
 ok(entry["sections"][1] == {"n": "1.1", "heading": "Getting started",
-                            "start": 1, "count": 4,
+                            "start": 1, "count": 5,
                             "subsections": ["1.1.1 First steps"]},
    "section index points into paragraphs")
 
@@ -144,8 +165,13 @@ ok(got["provenance"]["order_id"] == "ord-20261030-001"
 ok("Body of one one" in
    pc.open_ref(entry, "pc://source/a3f9c1d4e2b8#s1.1")["text"],
    "open_ref whole section")
-ok(pc.open_ref(entry, "pc://source/a3f9c1d4e2b8#fig1.1")["file"]
-   == "p01-img01.png", "open_ref figure resolves")
+fgot = pc.open_ref(entry, "pc://source/a3f9c1d4e2b8#fig1.1.1")
+ok(fgot["file"] == "fig1.png" and fgot["page"] == 1
+   and fgot["caption"] == "Figure 1 Getting started"
+   and fgot["described"] is False, "open_ref figure resolves")
+tgot = pc.open_ref(entry, "pc://source/a3f9c1d4e2b8#tab1.2.1")
+ok(tgot["rows"] == [["a", "b"], ["c", "d"]]
+   and "| a | b |" in tgot["markdown"], "open_ref table resolves")
 for bad in ("pc://source/WRONGIDHERE12#s1.1/p1",
             "pc://source/a3f9c1d4e2b8#s9.9/p1",
             "pc://theory/a3f9c1d4e2b8#p1", "not-a-ref"):
@@ -168,6 +194,30 @@ LC = pc.split_sections(pc.clean_pages(["1.1 Lists\n- apples\n- oranges\n"]))
 lc = pc.omitted_candidates(LC[0])
 ok(any("apples" in c["what"] and c["see"] == "p2" for c in lc),
    "list items are candidates")
+ph = pc.split_sections(pc.clean_pages(["1.1 Pics\nBody here."]))
+ph[0]["paras"].append({"text": "[fig1.1.1 p.1] Cap", "pages": [1],
+                       "has": ["fig1.1.1"]})
+ok(any(c["what"] == "figure fig1.1.1" for c in pc.omitted_candidates(ph[0])),
+   "figure tags read as figures, not formulas")
+
+# ---- captions, chunks, caption terms ----
+cap = pc.parse_caption("Figure 1.1 System overview")
+ok(cap == {"label": "Figure 1.1", "number": "1.1",
+           "rest": "System overview"}, "figure caption parsed")
+ok(pc.parse_caption("Exhibit A Growth")["number"] == "A",
+   "exhibit caption parsed")
+ok(pc.parse_caption("Just body text.") is None,
+   "non-caption rejected")
+ct = pc.chunk_text("pc://source/abc#fig1.1.1", "figure", "Getting started",
+                   "Figure 1 Cap", "A chart going up.", "Jan Feb",
+                   ["42%"])
+ok(ct.startswith("[REF pc://source/abc#fig1.1.1]\n")
+   and "Getting started" in ct and "42%" in ct,
+   "figure chunk carries ref + context")
+ok(pc.caption_terms("Figure 1.1 System Overview") == ["System", "Overview"]
+   and pc.caption_terms("Table 2 Regional Sales Data")
+   == ["Regional", "Sales", "Data"],
+   "caption terms extracted")
 terms = pc.key_terms(OM[0])
 ok("Baptism" in terms and "everything" in terms and "Ada" in terms,
    "key terms: quoted, bold, capitalized")
@@ -197,12 +247,20 @@ tmp = tempfile.mkdtemp(prefix="pc_ingest_")
 try:
     IPAGES = ["CHAPTER ONE\n1.1 Getting started\nBody of one one.\n1",
               "CHAPTER ONE\n1.2 Moving on\nBody of one two.\n2"]
+    IFIGS = [{"page": 1, "top": 100.0, "caption": "Figure 1 One",
+              "number": "1", "bbox": [0.0, 100.0, 100.0, 200.0],
+              "w": 100.0, "h": 100.0, "blob": b"PNGDATA"}]
+    ITABS = [{"page": 2, "top": 50.0, "caption": "Table 1 Two",
+              "number": "1", "bbox": [0.0, 50.0, 100.0, 120.0],
+              "rows": [["x"]], "markdown": "| x |", "blob": None}]
     r1 = pc.ingest_source("ord-20261030-001", "book.pdf",
                           "2026-10-30T03:00:00", "sales_sam", IPAGES,
-                          [("p01-img01.png", b"PNGDATA")], root=tmp)
+                          IFIGS, ITABS, 2, root=tmp)
     ok(r1["ref"].startswith("pc://source/")
        and len(r1["doc_id"]) == 12 and r1["duplicate"] is False,
        "ingest returns ref + id")
+    ok(r1["figures"] == 1 and r1["tables"] == 1,
+       "ingest returns figure/table counts")
     ok(r1["title"] == "book" and r1["sections"] == 2
        and r1["chars"] > 0, "ingest returns title/sections/chars")
     edir = pc.entry_dir("source", r1["doc_id"], root=tmp)
@@ -217,14 +275,14 @@ try:
     with open(os.path.join(edir, "map.json"), encoding="utf-8") as f:
         imap = json.load(f)
     ok(imap["status"] == "pending", "ingest leaves map pending")
-    with open(os.path.join(edir, "figures", "p01-img01.png"),
+    with open(os.path.join(edir, "figures", "fig1.png"),
               "rb") as f:
-        ok(f.read() == b"PNGDATA", "ingest stores figures")
+        ok(f.read() == b"PNGDATA", "ingest stores figures as figN")
     ok(os.path.isfile(os.path.join(edir, "log.jsonl")),
        "ingest writes first log line")
     r2 = pc.ingest_source("ord-20261030-002", "book.pdf",
                           "2026-10-30T04:00:00", "sales_sam", IPAGES,
-                          [], root=tmp)
+                          [], [], 0, root=tmp)
     ok(r2["duplicate"] is True and r2["ref"] == r1["ref"],
        "same content re-ingest is a no-op")
     with open(os.path.join(edir, "entry.json"),
@@ -234,6 +292,15 @@ try:
     got = pc.open_ref(ientry, r1["ref"] + "#s1.1/p2")
     ok(got["text"] == "Body of one one.",
        "ingested entry opens via ref")
+    fz, tz = pc.assign_objects(
+        pc.split_sections(pc.clean_pages(["1.1 Solo\nBody solo."])),
+        [], [{"page": 1, "top": 10.0, "caption": "Table 9 Scanned",
+              "number": "9", "bbox": [0.0, 10.0, 50.0, 60.0],
+              "rows": None, "markdown": "", "blob": b"SCAN"}])
+    ok(len(tz) == 0 and len(fz) == 1
+       and fz[0]["kind"] == "table-image"
+       and fz[0]["addr"] == "fig1.1.1",
+       "failed table becomes a table-image figure")
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

@@ -429,18 +429,23 @@ def index_agent(agent_dir, profile=None):
             "llm_calls": calls}
 
 
-def index_texts(text, log_id, profile, working_dir, entry_id=""):
-    """Insert raw text into a LightRAG at an explicit working dir (PC
-    indexes). One ainsert for the whole text; writes the index.json
-    marker there, tracking indexed entry ids. Returns stats."""
+def index_texts(texts, log_id, profile, working_dir, entry_id="",
+                ids=None):
+    """Insert raw texts into a LightRAG at an explicit working dir (PC
+    indexes). One ainsert for the whole list (each item one document,
+    ids tracked when given); writes the index.json marker there,
+    tracking indexed entry ids. Returns stats."""
     pcfg = profile_config(profile)
     prof = pcfg["profile"]
     if prof == "jetson":
         jetson_health()  # fail fast, never silently local
     rag = get_rag(log_id, prof, working_dir)
+    docs = [texts] if isinstance(texts, str) else list(texts)
+    kw = {"ids": ids} if ids else {}
     t0 = time.time()
-    _run(rag.ainsert(text))
+    _run(rag.ainsert(docs, **kw))
     secs = time.time() - t0
+    total = sum(len(d) for d in docs)
     os.makedirs(working_dir, exist_ok=True)
     mp = os.path.join(working_dir, "index.json")
     entries, chars = [], 0
@@ -454,7 +459,7 @@ def index_texts(text, log_id, profile, working_dir, entry_id=""):
             pass
     if entry_id and entry_id not in entries:
         entries.append(entry_id)
-        chars += len(text)
+        chars += total
     lm = llm_settings()
     with open(mp, "w", encoding="utf-8") as f:
         json.dump({"backend": "lightrag", "profile": prof,
@@ -467,7 +472,7 @@ def index_texts(text, log_id, profile, working_dir, entry_id=""):
                   f, ensure_ascii=False, indent=1)
     return {"ok": True, "profile": prof, "model": pcfg["model"],
             "dim": pcfg["dim"], "seconds": round(secs, 1),
-            "chars": len(text)}
+            "chars": total, "docs": len(docs)}
 
 
 def query_agent(agent_dir, question, profile=None):

@@ -110,29 +110,102 @@ def pdf_to_text(raw):
         return "\n\n".join((page.extract_text() or "") for page in pdf.pages)
 
 
+def _rows_to_md(rows):
+    cells = [[(c or "").strip().replace("|", "\\|") for c in r]
+             for r in rows]
+    width = max(len(r) for r in cells)
+    cells = [r + [""] * (width - len(r)) for r in cells]
+    out = ["| " + " | ".join(cells[0]) + " |",
+           "| " + " | ".join("---" for _ in cells[0]) + " |"]
+    out += ["| " + " | ".join(r) + " |" for r in cells[1:]]
+    return "\n".join(out)
+
+
+def _near_caption(page, box):
+    """Printed caption near a figure/table box: scan a band below, then
+    above. Returns (caption_line, number) or ("", "")."""
+    bottom, top = box[3], box[1]
+    bands = [(0, bottom, page.width, bottom + 70),
+             (0, max(0, top - 70), page.width, top)]
+    for band in bands:
+        try:
+            text = page.crop(band).extract_text() or ""
+        except Exception:  # noqa: BLE001 - weird page, no caption
+            continue
+        for ln in text.splitlines():
+            hit = pc.parse_caption(ln)
+            if hit:
+                return ln.strip(), hit["number"]
+    return "", ""
+
+
 def pdf_parse(raw):
-    """Split a PDF into per-page texts + images: ([str], [(name, bytes)])."""
+    """Split a PDF into per-page texts + figure/table records.
+
+    Returns (pages, images, tables, skipped): images and tables carry
+    page/bbox/caption for the PC; skipped counts tiny decor images.
+    """
     try:
         import pdfplumber
     except ImportError:
         raise RuntimeError(
             "pdfplumber not installed (pip install -r requirements.txt)")
     import io
-    pages, images = [], []
+    pages, images, tables = [], [], []
+    skipped = 0
     with pdfplumber.open(io.BytesIO(raw)) as pdf:
         for i, page in enumerate(pdf.pages):
             pages.append(page.extract_text() or "")
-            for j, img in enumerate(page.images):
+            for img in page.images:
+                w, h = img["x1"] - img["x0"], img["bottom"] - img["top"]
+                if w < pc.MIN_FIG_PT and h < pc.MIN_FIG_PT:
+                    skipped += 1
+                    continue
                 try:
                     crop = page.crop((img["x0"], img["top"],
                                       img["x1"], img["bottom"]))
                     buf = io.BytesIO()
-                    crop.to_image(resolution=150).original.save(buf, format="PNG")
-                    images.append(("p%02d-img%02d.png" % (i + 1, j + 1),
-                                   buf.getvalue()))
-                except Exception:  # noqa: BLE001 - one bad image skips, parse goes on
+                    crop.to_image(resolution=150).original.save(
+                        buf, format="PNG")
+                    blob = buf.getvalue()
+                except Exception:  # noqa: BLE001 - one bad image skips
                     continue
-    return pages, images
+                cap, num = _near_caption(
+                    page, (img["x0"], img["top"], img["x1"], img["bottom"]))
+                images.append({"page": i + 1, "top": img["top"],
+                               "caption": cap, "number": num,
+                               "bbox": [img["x0"], img["top"], img["x1"],
+                                        img["bottom"]],
+                               "w": w, "h": h, "blob": blob})
+            try:
+                found = page.find_tables()
+            except Exception:  # noqa: BLE001 - detection failed, no tables
+                found = []
+            for tab in found:
+                bbox = list(tab.bbox)
+                try:
+                    rows = tab.extract()
+                except Exception:  # noqa: BLE001 - extraction failed
+                    rows = None
+                if not rows or not any(
+                        (c or "").strip() for r in rows for c in (r or [])):
+                    rows = None
+                cap, num = _near_caption(page, bbox)
+                blob, md = None, ""
+                if rows:
+                    md = _rows_to_md(rows)
+                else:
+                    try:
+                        buf = io.BytesIO()
+                        page.crop(bbox).to_image(
+                            resolution=150).original.save(buf, format="PNG")
+                        blob = buf.getvalue()
+                    except Exception:  # noqa: BLE001 - crop failed, drop it
+                        continue
+                tables.append({"page": i + 1, "top": bbox[1],
+                               "caption": cap, "number": num, "bbox": bbox,
+                               "rows": rows, "markdown": md, "blob": blob})
+    return pages, images, tables, skipped
 
 
 def load_dotenv(path):
@@ -226,6 +299,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:3] == ["api", "pcs", "source"] and len(parts) == 5 \
                 and parts[3] == "entries":
             return self._api_pc_entry(parts[4])
+        if parts[:3] == ["api", "pcs", "source"] and len(parts) == 7 \
+                and parts[3] == "entries" and parts[5] == "figures":
+            return self._api_pc_figure(parts[4], parts[6])
         if parts[:2] == ["api", "settings"] and len(parts) == 2:
             return self._api_settings_get()
         if parts[:2] == ["api", "version"] and len(parts) == 2:
@@ -1087,7 +1163,7 @@ class Handler(BaseHTTPRequestHandler):
         with open(os.path.join(d, "source.pdf"), "wb") as f:
             f.write(raw)
         try:
-            pages, images = pdf_parse(raw)
+            pages, images, tables, skipped = pdf_parse(raw)
         except RuntimeError as e:
             return self._json(500, {"error": str(e)})
         except Exception as exc:  # noqa: BLE001 - broken PDF, reported
@@ -1102,29 +1178,37 @@ class Handler(BaseHTTPRequestHandler):
             f.write("\n".join(parsed))
         imgdir = os.path.join(d, "images")
         os.makedirs(imgdir, exist_ok=True)
-        for name, blob in images:
+        imnames, perpage = [], {}
+        for im in images:
+            perpage[im["page"]] = perpage.get(im["page"], 0) + 1
+            name = "p%02d-i%02d.png" % (im["page"], perpage[im["page"]])
             with open(os.path.join(imgdir, name), "wb") as f:
-                f.write(blob)
+                f.write(im["blob"])
+            imnames.append("images/" + name)
         meta = self._order_meta(d)
         meta["files"] = {"source": "source.pdf", "parsed": "parsed.md",
-                         "images": ["images/" + n for n, _ in images],
+                         "images": imnames, "tables": len(tables),
                          "pages": len(pages)}
         self._order_save_meta(d, meta)
         try:
             ing = pc.ingest_source(oid, base,
                                    time.strftime("%Y-%m-%dT%H:%M:%S"),
-                                   meta["assignee"], pages, images)
+                                   meta["assignee"], pages, images, tables,
+                                   skipped)
         except Exception as exc:  # noqa: BLE001 - ingest never breaks upload
             print("order pc ingest failed %s: %s" % (oid, exc), flush=True)
             meta["pc_error"] = str(exc)[:200]
             self._order_save_meta(d, meta)
-            ing = {"ref": None, "doc_id": None, "duplicate": False}
+            ing = {"ref": None, "doc_id": None, "duplicate": False,
+                   "figures": 0, "tables": 0}
         else:
             meta["files"]["pc_ref"] = ing["ref"]
             meta["files"]["pc_duplicate"] = ing["duplicate"]
             meta["files"]["pc_title"] = ing["title"]
             meta["files"]["pc_sections"] = ing["sections"]
             meta["files"]["pc_chars"] = ing["chars"]
+            meta["files"]["pc_figures"] = ing["figures"]
+            meta["files"]["pc_tables"] = ing["tables"]
             meta.pop("pc_error", None)
             self._order_save_meta(d, meta)
             print("order pc %s %s%s" % (oid, ing["ref"],
@@ -1136,12 +1220,18 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:  # noqa: BLE001 - spawn never breaks it
                 print("order pc spawn failed %s: %s" % (oid, exc),
                       flush=True)
-        print("order upload %s/%s (%d pages, %d chars, %d images)"
-              % (oid, base, len(pages), len(text), len(images)), flush=True)
+        print("order upload %s/%s (%d pages, %d chars, %d images, "
+              "%d tables, %d decor skipped)"
+              % (oid, base, len(pages), len(text), len(images),
+                 len(tables), skipped), flush=True)
         return self._json(200, {"ok": True, "pages": len(pages),
                                 "chars": len(text), "images": len(images),
+                                "tables": len(tables),
+                                "skipped_decor": skipped,
                                 "pc_ref": ing["ref"],
-                                "pc_duplicate": ing["duplicate"]})
+                                "pc_duplicate": ing["duplicate"],
+                                "pc_figures": ing["figures"],
+                                "pc_tables": ing["tables"]})
 
     def _api_order_intake(self, oid):
         d = self._order_dir(oid)
@@ -1531,7 +1621,8 @@ class Handler(BaseHTTPRequestHandler):
                             "sections": len(e.get("sections", [])),
                             "paras": len(e.get("paragraphs", [])),
                             "chars": e.get("chars", 0),
-                            "images": len(e.get("images", [])),
+                            "figures": len(e.get("figures", [])),
+                            "tables": len(e.get("tables", [])),
                             "map": mstatus,
                             "building": job is not None
                             and job.poll() is None,
@@ -1560,12 +1651,43 @@ class Handler(BaseHTTPRequestHandler):
         entry["sections"] = [{"n": s["n"], "heading": s["heading"],
                                "count": s["count"]}
                               for s in e.get("sections", [])]
-        entry["images"] = e.get("images", [])
+        entry["figures"] = e.get("figures", [])
+        entry["tables"] = e.get("tables", [])
         job = _PC_JOBS.get(doc_id)
         entry["building"] = job is not None and job.poll() is None
         entry["index"] = {p: self._pc_indexed(p, doc_id)
                           for p in ("local", "jetson")}
         return self._json(200, {"entry": entry, "map": m})
+
+    def _api_pc_figure(self, doc_id, file):
+        if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
+            return self._json(404, {"error": "no such PC entry"})
+        if not re.fullmatch(r"fig\d+\.png", file or ""):
+            return self._json(404, {"error": "no such figure"})
+        full = os.path.join(pc.entry_dir("source", doc_id), "figures",
+                            file)
+        if not os.path.isfile(full):
+            return self._json(404, {"error": "no such figure"})
+        qs = unquote(self.path).split("?", 1)
+        thumb = len(qs) > 1 and dict(parse_qsl(qs[1])).get("thumb") == "1"
+        with open(full, "rb") as f:
+            data = f.read()
+        if thumb:
+            try:
+                import io
+                from PIL import Image
+                im = Image.open(io.BytesIO(data))
+                im.thumbnail((320, 320))
+                buf = io.BytesIO()
+                im.save(buf, format="PNG")
+                data = buf.getvalue()
+            except Exception:  # noqa: BLE001 - thumb failed, full size
+                pass
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def _api_pc_build(self, doc_id):
         if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):

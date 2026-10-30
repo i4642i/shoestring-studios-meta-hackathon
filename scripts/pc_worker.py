@@ -21,6 +21,9 @@ from agents._frame import graph, pc, runner  # noqa: E402
 LOCK_WAIT = 600
 LOCK_STALE = 1800
 POLL = 5
+META_VISION_MODEL = "muse-spark-1.3"  # Meta Model API flagship; second
+# vision attempt when the primary model cannot take images.
+FIG_KINDS = ("chart", "diagram", "photo", "formula", "table-image")
 
 
 def log(edir, obj):
@@ -102,6 +105,124 @@ def _section_map(model, n, heading, paras, stats):
     return [], True
 
 
+def _vision_models(primary):
+    """Vision attempt order: primary map model first, Meta flagship
+    next. Models without keys are skipped."""
+    out = []
+    for m in (primary, META_VISION_MODEL):
+        if m and m not in out and runner.key_present(m):
+            out.append(m)
+    return out
+
+
+def _describe_one(model, blob, caption):
+    import base64
+    prompt = ("Describe this document figure for NAVIGATION (never quote "
+              "it as evidence). Reply with ONLY a JSON object, no other "
+              "text:\n{\"description\": \"2-4 sentences: what it shows "
+              "and its point\", \"text_in_image\": \"all readable words, "
+              "labels, legend, axis names\", \"numbers\": [\"key values\"], "
+              "\"kind\": \"chart|diagram|photo|formula|table-image\"}\n"
+              + ("Printed caption: %s" % caption if caption else
+                 "No printed caption."))
+    msg = {"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {
+            "url": "data:image/png;base64," + base64.b64encode(blob)
+            .decode(), "detail": "auto"}}]}
+    resp = runner._chat(model, [msg], None, timeout=180)
+    text = (resp.get("choices") or [{}])[0].get("message", {}).get(
+        "content", "")
+    obj, status = runner.parse_json_answer(text or "")
+    if status != "ok" or not isinstance(obj, dict):
+        raise ValueError("no JSON in describe reply")
+    if not isinstance(obj.get("description"), str) \
+            or not obj["description"].strip():
+        raise ValueError("empty description")
+    if obj.get("kind") not in FIG_KINDS:
+        raise ValueError("bad kind %r" % obj.get("kind"))
+    nums = obj.get("numbers", [])
+    obj["numbers"] = [str(n) for n in nums] if isinstance(nums, list) \
+        else []
+    use = resp.get("usage", {})
+    toks = use.get("prompt_tokens", 0) + use.get("completion_tokens", 0)
+    return obj, toks or (len(prompt) + len(text or "")) // 4
+
+
+def describe_figures(entry, edir, model):
+    """Describe each figure once (table-images included). The first
+    figure probes vision support; on failure the rest stay
+    caption-only. Returns (described, failed, calls, tokens, backend).
+    AI text is navigation only, never evidence."""
+    figs = entry.get("figures", [])
+    if not figs:
+        return 0, 0, 0, 0, "none"
+    models = _vision_models(model)
+    if not models:
+        return 0, len(figs), 0, 0, "no-key"
+    backend, ok_n, fail_n, calls, toks = None, 0, 0, 0, 0
+    for fig in figs:
+        with open(os.path.join(edir, "figures", fig["file"]),
+                  "rb") as f:
+            blob = f.read()
+        done = False
+        for m in models if backend is None else [backend]:
+            for _ in range(2):
+                try:
+                    obj, tk = _describe_one(m, blob,
+                                            fig.get("caption", ""))
+                    calls += 1
+                    toks += tk
+                    fig["description"] = obj["description"].strip()
+                    fig["text_in_image"] = str(
+                        obj.get("text_in_image", "")).strip()
+                    fig["numbers"] = obj["numbers"]
+                    if fig.get("kind") != "table-image":
+                        fig["kind"] = obj["kind"]
+                    fig["described"] = True
+                    fig["generated_by"] = m
+                    fig["generated_at"] = time.strftime(
+                        "%Y-%m-%dT%H:%M:%S")
+                    backend = backend or m
+                    done = True
+                    break
+                except Exception as exc:  # noqa: BLE001 - next try/model
+                    calls += 1
+                    print("describe %s via %s failed: %s"
+                          % (fig["addr"], m, exc), flush=True)
+            if done:
+                break
+        if done:
+            ok_n += 1
+        else:
+            fail_n += 1
+            if backend is None:
+                break  # vision dead everywhere: rest stay caption-only
+    if backend is None:
+        fail_n = len(figs)
+    return ok_n, fail_n, calls, toks, backend or "unavailable"
+
+
+def _sec_no(addr):
+    return addr[3:].rsplit(".", 1)[0]
+
+
+def _fig_desc(fig):
+    if fig.get("description"):
+        first = fig["description"].split(".")[0].strip()
+        return first + "." if first else fig.get("caption", "")
+    return fig.get("caption", "")
+
+
+def _tab_desc(tab):
+    rows = tab.get("rows") or []
+    cols = max([len(r) for r in rows] or [0])
+    head = "Table %dx%d" % (len(rows), cols)
+    if tab.get("caption"):
+        head += ": " + tab["caption"]
+    return head
+
+
 def build_map(entry, model):
     stats = {"calls": 0, "prompt_chars": 0, "reply_chars": 0}
     flat = entry["paragraphs"]
@@ -112,19 +233,30 @@ def build_map(entry, model):
         items, miss = _section_map(model, s["n"], s["heading"], paras,
                                    stats)
         missing += 1 if miss else 0
-        pages = sorted({pg for p in paras for pg in p["pages"]})
-        has = sorted({h for p in paras for h in p.get("has", [])})
-        for img in entry.get("images", []):
-            try:
-                if int(img["addr"][3:].split(".")[0]) in pages:
-                    has.append(img["addr"])
-            except (ValueError, IndexError):
-                pass
+        has, terms = [], list(pc.key_terms(sec))
+        for fig in entry.get("figures", []):
+            if _sec_no(fig["addr"]) != s["n"]:
+                continue
+            has.append({"ref": entry["ref"] + "#" + fig["addr"],
+                        "caption": fig.get("caption", ""),
+                        "desc": _fig_desc(fig)})
+            for t in pc.caption_terms(fig.get("caption", "")):
+                if t not in terms:
+                    terms.append(t)
+        for tab in entry.get("tables", []):
+            if _sec_no(tab["addr"]) != s["n"]:
+                continue
+            has.append({"ref": entry["ref"] + "#" + tab["addr"],
+                        "caption": tab.get("caption", ""),
+                        "desc": _tab_desc(tab)})
+            for t in pc.caption_terms(tab.get("caption", "")):
+                if t not in terms:
+                    terms.append(t)
         out.append({"ref": "s" + s["n"], "heading": s["heading"],
                     "summary": items,
                     "omitted": pc.resolve_omitted(
                         pc.omitted_candidates(sec), items),
-                    "key_terms": pc.key_terms(sec), "has": sorted(has),
+                    "key_terms": terms, "has": has,
                     "chars": sum(len(p["text"]) for p in paras),
                     "subsections": list(s.get("subsections", []))})
         if miss:
@@ -175,6 +307,19 @@ def main(doc_id):
         log(edir, {"ev": "map_failed", "error": msg})
         raise SystemExit(msg)
     t0 = time.time()
+    ok_n, fail_n, dcalls, dtoks, backend = describe_figures(
+        entry, edir, model)
+    with open(os.path.join(edir, "entry.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(entry, f, ensure_ascii=False, indent=2)
+    log(edir, {"ev": "describe_done",
+               "figures": len(entry.get("figures", [])),
+               "described": ok_n, "failed": fail_n, "calls": dcalls,
+               "tokens": dtoks, "backend": backend,
+               "seconds": round(time.time() - t0, 1)})
+    print("describe %s: %d ok, %d failed (%s)"
+          % (doc_id, ok_n, fail_n, backend), flush=True)
+    t0 = time.time()
     mapd, stats = build_map(entry, model)
     with open(os.path.join(edir, "map.json"), "w",
               encoding="utf-8") as f:
@@ -188,13 +333,30 @@ def main(doc_id):
                                      stats["calls"]), flush=True)
     prof = mod.embed_settings()["profile"]
     idx = pc.index_dir("source", prof)
-    text = "\n\n".join("[%s] %s" % (p["addr"], p["text"])
-                       for p in entry["paragraphs"])
+    heads = {s["n"]: s.get("heading", "")
+             for s in entry.get("sections", [])}
+    docs = ["\n\n".join("[%s] %s" % (p["addr"], p["text"])
+                        for p in entry["paragraphs"])]
+    ids = [entry["ref"]]
+    for fig in entry.get("figures", []):
+        kind = fig.get("kind") or "figure"
+        ids.append(entry["ref"] + "#" + fig["addr"])
+        docs.append(pc.chunk_text(
+            ids[-1], "Figure (%s)" % kind,
+            heads.get(_sec_no(fig["addr"]), ""), fig.get("caption", ""),
+            fig.get("description", ""), fig.get("text_in_image", ""),
+            fig.get("numbers", [])))
+    for tab in entry.get("tables", []):
+        ids.append(entry["ref"] + "#" + tab["addr"])
+        docs.append(pc.chunk_text(
+            ids[-1], "Table", heads.get(_sec_no(tab["addr"]), ""),
+            tab.get("caption", ""), "", "", [],
+            extra=tab.get("markdown", "")))
     lockd = _lock(idx)
     try:
         before = len(_log_lines(idx))
         t1 = time.time()
-        res = mod.index_texts(text, "pc-source", prof, idx, doc_id)
+        res = mod.index_texts(docs, "pc-source", prof, idx, doc_id, ids)
         calls, chars = 0, 0
         for ln in _log_lines(idx)[before:]:
             try:

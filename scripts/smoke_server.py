@@ -272,7 +272,7 @@ def main():
                    mp("img.pdf", make_img_pdf()),
                    {"Content-Type": "multipart/form-data; boundary=BOUND123"})
         r = json.loads(b.decode()) if s == 200 else {}
-        img_ok = os.path.isfile("orders/%s/images/p01-img01.png" % oid)
+        img_ok = os.path.isfile("orders/%s/images/p01-i01.png" % oid)
         check("order pdf images", s == 200 and r.get("images") == 1
               and img_ok, (s, r))
         s, _ = jpost("/api/orders/" + oid + "/chat", {"messages": []})

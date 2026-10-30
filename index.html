@@ -397,8 +397,8 @@
     <div id="pc-cards"></div>
     <h3>SOURCE PC — ENTRIES</h3>
     <table id="pc-table">
-      <thead><tr><th>TITLE</th><th>REF</th><th>ORDER</th><th>SECTIONS</th><th>MAP</th><th>INDEX</th></tr></thead>
-      <tbody id="pc-rows"><tr><td colspan="6">Loading…</td></tr></tbody>
+      <thead><tr><th>TITLE</th><th>REF</th><th>ORDER</th><th>SECTIONS</th><th>FIG/TAB</th><th>MAP</th><th>INDEX</th></tr></thead>
+      <tbody id="pc-rows"><tr><td colspan="7">Loading…</td></tr></tbody>
     </table>
     <div id="pc-detail" style="display:none">
       <h3 id="pc-dtitle"></h3>
@@ -2384,6 +2384,47 @@
         " · index " + idxText(d.entry.index);
       const map = document.getElementById("pc-dmap");
       map.innerHTML = "";
+      (d.entry.figures || []).forEach((f) => {
+        const h = document.createElement("h4");
+        h.textContent = f.addr + " — " + (f.caption || "(no caption)") +
+          " · p. " + f.page;
+        map.appendChild(h);
+        const a = document.createElement("a");
+        a.href = "api/pcs/source/entries/" + encodeURIComponent(id) +
+          "/figures/" + encodeURIComponent(f.file);
+        a.target = "_blank";
+        a.rel = "noopener";
+        const img = document.createElement("img");
+        img.src = a.href + "?thumb=1";
+        img.alt = f.caption || f.addr;
+        img.style.maxWidth = "320px";
+        a.appendChild(img);
+        map.appendChild(a);
+        const dp = document.createElement("p");
+        dp.textContent = f.description || "(no AI description yet)";
+        map.appendChild(dp);
+        const np = document.createElement("p");
+        np.className = "hint";
+        np.textContent = "Kind: " + (f.kind || "—") +
+          " · Numbers: " + ((f.numbers || []).join(", ") || "—") +
+          (f.described ? " · described by " + f.generated_by : "");
+        map.appendChild(np);
+      });
+      if ((d.entry.figures || []).length) {
+        const nh = document.createElement("p");
+        nh.className = "hint";
+        nh.textContent = "AI-made descriptions are navigation only, never evidence.";
+        map.appendChild(nh);
+      }
+      (d.entry.tables || []).forEach((t) => {
+        const h = document.createElement("h4");
+        h.textContent = t.addr + " — " + (t.caption || "(no caption)") +
+          " · p. " + t.page;
+        map.appendChild(h);
+        const pre = document.createElement("pre");
+        pre.textContent = t.markdown || "(no rows)";
+        map.appendChild(pre);
+      });
       const mhead = document.createElement("p");
       mhead.textContent = "Map: " + d.map.status +
         (d.map.llm_model ? " · " + d.map.llm_model : "") +
@@ -2425,9 +2466,21 @@
         }
         const foot = document.createElement("p");
         foot.className = "hint";
-        foot.textContent = "Terms: " + ((s.key_terms || []).join(", ") || "—") +
-          " · Has: " + ((s.has || []).join(", ") || "—");
+        foot.textContent = "Terms: " + ((s.key_terms || []).join(", ") || "—");
         map.appendChild(foot);
+        if ((s.has || []).length) {
+          const hp = document.createElement("p");
+          hp.appendChild(document.createTextNode("Has: "));
+          s.has.forEach((h, i) => {
+            if (i) hp.appendChild(document.createTextNode(" · "));
+            const a = document.createElement("a");
+            a.href = "#";
+            a.textContent = (h.caption || h.ref) + " — " + (h.desc || "");
+            a.onclick = (e) => { e.preventDefault(); openPassage(h.ref).catch(fail); };
+            hp.appendChild(a);
+          });
+          map.appendChild(hp);
+        }
       });
       document.getElementById("pc-rebuild").onclick = async () => {
         try {
@@ -2476,6 +2529,7 @@
         tr.appendChild(td0);
         [["ref", e2.ref], ["order", e2.order_id || "—"],
          ["sections", String(e2.sections)],
+         ["figtab", String(e2.figures || 0) + "/" + String(e2.tables || 0)],
          ["map", e2.map + (e2.building ? " (building…)" : "")],
          ["index", idxText(e2.index)]].forEach((kv) => {
           const td = document.createElement("td");
@@ -2485,11 +2539,11 @@
         rows.appendChild(tr);
       });
       if (!(e.entries || []).length) {
-        rows.innerHTML = "<tr><td colspan=\"6\">No entries yet — upload a PDF in an order.</td></tr>";
+        rows.innerHTML = "<tr><td colspan=\"7\">No entries yet — upload a PDF in an order.</td></tr>";
       }
     }
     load().catch(() => {
-      rows.innerHTML = "<tr><td colspan=\"6\">PCs unavailable — is the server running?</td></tr>";
+      rows.innerHTML = "<tr><td colspan=\"7\">PCs unavailable — is the server running?</td></tr>";
     });
   })();
 </script>
