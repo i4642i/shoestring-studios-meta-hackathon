@@ -464,7 +464,8 @@ def build_entry(doc_id, title, origin_file, order_id, parsed_at,
     return {"pc": pc, "doc_id": doc_id, "ref": entry_ref(pc, doc_id),
             "title": title, "origin_file": origin_file,
             "order_id": order_id, "parsed_at": parsed_at,
-            "added_by": added_by, "sections": out_secs,
+            "added_by": added_by, "recipients": [],
+            "sections": out_secs,
             "paragraphs": flat, "figures": figrec, "tables": tabrec,
             "chars": sum(len(p["text"]) for p in flat)}
 
@@ -993,6 +994,7 @@ def _ingest_web(pcname, url, title, publisher, date, fetched_at,
              "title": title or "", "publisher": publisher or "",
              "date": date or "", "fetched_at": fetched_at,
              "added_by": added_by, "supersedes": None,
+             "recipients": [],
              "sections": [sec], "paragraphs": flat,
              "figures": [], "tables": [], "chars": len(fulltext)}
     urls = _web_urls(pcname, root)
@@ -1341,6 +1343,191 @@ def start_prompt_for(name, structure, entry, map_data=None,
               "AI-made descriptions and map summaries are navigation "
               "only, never evidence.", ""]
     return "\n".join(lines), {"parts": len(parts), "missing": missing}
+
+
+# ---- recipients: one shared gate for every PC (§8.9) ----
+def recipients_of(entry):
+    """Recipient rows [{agent, order_id, set_by, at}], or None when the
+    entry predates recipients (legacy: open to every agent)."""
+    rows = (entry or {}).get("recipients")
+    return list(rows) if isinstance(rows, list) else None
+
+
+def may_read(entry, agent_id, order_id):
+    """True when agent_id may read this entry for order_id. Legacy
+    entries without a recipients key stay open."""
+    rows = recipients_of(entry)
+    if rows is None:
+        return True
+    for r in rows:
+        if isinstance(r, dict) and r.get("agent") == agent_id \
+                and r.get("order_id") == order_id:
+            return True
+    return False
+
+
+def set_recipients(pcname, doc_id, order_id, agents, set_by, root=None):
+    """Upsert recipients for one order (merge per agent; other orders'
+    rows are kept). Returns the full row list."""
+    p = os.path.join(entry_dir(pcname, doc_id, root), "entry.json")
+    with open(p, encoding="utf-8") as f:
+        entry = json.load(f)
+    rows = recipients_of(entry) or []
+    have = {(r.get("agent"), r.get("order_id")): r for r in rows
+            if isinstance(r, dict)}
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    for a in agents or []:
+        key = (a, order_id)
+        if key in have:
+            have[key]["set_by"] = set_by
+            have[key]["at"] = now
+        else:
+            have[key] = {"agent": a, "order_id": order_id,
+                         "set_by": set_by, "at": now}
+    entry["recipients"] = [have[k] for k in sorted(have)]
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(entry, f, ensure_ascii=False, indent=2)
+    return entry["recipients"]
+
+
+def entry_markdown(entry):
+    """Full entry text as markdown (content sections only): the text
+    writer checks validate against. Headings exact, each followed by
+    its (ref: ...) line for verbatim copy."""
+    ref = entry.get("ref", "")
+    out = ["# %s" % entry.get("title", "source"), "",
+           "(Source PC %s; headings below are exact.)" % ref, ""]
+    for s in entry.get("sections", []):
+        if s.get("non_content"):
+            continue
+        if s["n"] != "0":
+            out += ["## %s %s" % (s["n"], s.get("heading", "")), "",
+                    "(ref: %s#s%s)" % (ref, s["n"]), ""]
+        for p in entry["paragraphs"][s["start"]:s["start"] + s["count"]]:
+            out += [p["text"], ""]
+    return "\n".join(out)
+
+
+def _entry_chunk(entry, mp, reason=None):
+    """Map-based input for one entry: ref/title, entry summary,
+    section list, per-section map notes with see-refs, omitted list,
+    key terms, figures/tables, and how to drill deeper. reason carries
+    a pick's {why_important, how_to_use, from} for Theory/Article."""
+    ref = entry.get("ref", "")
+    pcname = entry.get("pc", "source")
+    label = {"source": "Source", "theory": "Theory",
+             "article": "Article"}.get(pcname, pcname)
+    lines = ["### %s: %s (%s)" % (label, entry.get("title", ""), ref)]
+    if isinstance(reason, dict) and reason.get("why_important"):
+        lines += ["Picked by %s: %s"
+                  % (reason.get("from", "?"),
+                     reason["why_important"]),
+                  "How to use: %s" % reason.get("how_to_use", "")]
+    if isinstance(mp, dict) and mp.get("entry_summary"):
+        lines += ["Summary: %s" % mp["entry_summary"]]
+    else:
+        lines += ["Summary: (map pending)"]
+    lines.append("Sections:")
+    for s in entry.get("sections", []):
+        if s.get("non_content"):
+            continue
+        lines.append("- s%s %s (%s#s%s)"
+                     % (s["n"], s.get("heading", ""), ref, s["n"]))
+    by_ref = {}
+    if isinstance(mp, dict):
+        for s in mp.get("sections", []):
+            by_ref[s.get("ref", "")] = s
+    for s in entry.get("sections", []):
+        if s.get("non_content"):
+            continue
+        ms = by_ref.get("s" + s["n"], {})
+        if not ms:
+            continue
+        lines.append("Map s%s:" % s["n"])
+        for b in ms.get("summary", []) or []:
+            lines.append("- %s [%s#%s/%s]"
+                         % ((b or {}).get("text", ""), ref, "s" + s["n"],
+                            (b or {}).get("see", "")))
+        if ms.get("key_terms"):
+            lines.append("Terms: " + ", ".join(ms["key_terms"]))
+        if ms.get("omitted"):
+            lines.append("Omitted (look these up, never guess): "
+                         + "; ".join("%s [%s]" % (o.get("what"),
+                                                  o.get("ref",
+                                                        o.get("see")))
+                                     for o in ms["omitted"]))
+        if ms.get("has"):
+            lines.append("Has: " + "; ".join(
+                "%s %s" % (h.get("ref", "").split("#")[-1],
+                           h.get("caption", "")) for h in ms["has"]))
+    if pcname == "source":
+        lines.append("Drill deeper with pc_list_source / "
+                     "pc_read_source({section|ref}); open_ref opens any "
+                     "pc:// ref you hold the grant for.")
+    else:
+        lines.append("Drill deeper with pc_read_%s({ref}); open_ref "
+                     "opens any pc:// ref you hold the grant for."
+                     % pcname)
+    lines += ["AI-made descriptions and map summaries are navigation "
+              "only, never evidence: cite only verbatim passages.", ""]
+    return "\n".join(lines)
+
+
+def prompt_chunks_for(agent_id, order_id, source_refs, runs_root,
+                      root=None):
+    """The ONE recipients-gated PC input for a crew member's prompt:
+    every listed source entry plus this order's listed Theory/Article
+    picks, each as a map-based chunk. Returns (text, {"included",
+    "denied", "picks"}). Replaces the old per-agent preloads."""
+    refs = []
+    for r in source_refs or []:
+        try:
+            rpc, rid, _frag = parse_ref(r)
+        except ValueError:
+            continue
+        eref = entry_ref(rpc, rid)
+        if eref not in refs:
+            refs.append(eref)
+    reasons = {}
+    for pk in order_picks_with_reasons(order_id, runs_root):
+        try:
+            rpc, rid, _frag = parse_ref(pk.get("ref", ""))
+        except ValueError:
+            continue
+        eref = entry_ref(rpc, rid)
+        reasons.setdefault(eref, pk)
+        if eref not in refs:
+            refs.append(eref)
+    included, denied, blocks = [], [], []
+    for eref in refs:
+        try:
+            entry = load_entry_by_ref(eref, root=root)
+        except (OSError, ValueError, KeyError):
+            denied.append(eref)
+            continue
+        if not may_read(entry, agent_id, order_id):
+            denied.append(eref)
+            continue
+        try:
+            mp = load_map_by_ref(eref, root=root)
+        except (OSError, ValueError, KeyError):
+            mp = {}
+        blocks.append(_entry_chunk(entry, mp or {},
+                                   reasons.get(eref)))
+        included.append(eref)
+    lines = ["## PC input (order %s)" % (order_id or "?"),
+             "You may read ONLY the %d item(s) below. Open passages "
+             "with the PC read tools; cite every used passage as "
+             "{ref, quote} with the quote verbatim." % len(blocks), ""]
+    lines.extend(blocks)
+    if denied:
+        lines.append("(no access to %d other item(s) for this order)"
+                     % len(denied))
+    meta = {"included": included, "denied": denied,
+            "picks": sum(1 for r in included if "/"
+                         in r and r.split("/")[1] in ("theory",
+                                                      "article"))}
+    return "\n".join(lines), meta
 
 
 # ---- map skeleton (§10.3/10.5) ----

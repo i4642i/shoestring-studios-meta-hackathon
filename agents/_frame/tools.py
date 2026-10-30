@@ -6,12 +6,15 @@ ctx: {"run_dir":..., "agent_dir":..., "input_md":...}
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
 
 from . import graph
 from . import pc
+from . import pdfingest
 from . import results
 from .schemas import (list_headings, validate_cases, validate_concept,
                       validate_concepts, validate_draft, validate_request,
@@ -93,11 +96,37 @@ def write_structure(ctx, args):
 
 
 def write_request(ctx, args):
-    obj = args.get("request")
+    """Save Sam's two categories: the request report plus the source
+    v3 pointer, built from the entry Sam sent this run (never
+    model-written). Needs send.json (pc_send_source ran here) and a
+    non-empty recipient list for this order."""
+    obj = (args or {}).get("request")
     errors = validate_request(obj)
     if errors:
         return {"ok": False, "errors": errors}
-    return _save_category(ctx, "request", obj)
+    d = (ctx or {}).get("run_dir", "")
+    try:
+        with open(os.path.join(d, "send.json"), encoding="utf-8") as f:
+            sent = json.load(f)
+    except (OSError, ValueError):
+        return {"ok": False, "errors": [
+            "no source sent in this run: call pc_send_source first"]}
+    try:
+        entry = pc.load_entry_by_ref(sent.get("ref", ""))
+    except (OSError, ValueError, KeyError) as exc:
+        return {"ok": False, "errors": ["sent entry missing: %s" % exc]}
+    rows = [r for r in pc.recipients_of(entry) or []
+            if isinstance(r, dict)
+            and r.get("order_id") == (ctx or {}).get("order_id")]
+    if not rows:
+        return {"ok": False, "errors": [
+            "no recipients for this order: call pc_set_recipients "
+            "before writing"]}
+    source = {"ref": entry.get("ref", ""), "title": entry.get("title"),
+              "chars": entry.get("chars", 0),
+              "sections": len(entry.get("sections", [])),
+              "recipients": rows}
+    return _save_categories(ctx, {"request": obj, "source": source})
 
 
 def _verbatim_haystack(passage):
@@ -370,8 +399,19 @@ def _entry_for(ctx, ref):
         return None, {"error": "cannot load entry: %s" % exc}
 
 
+def _recipients_error(ctx, entry):
+    """None when ctx may read the entry; else the refusal dict."""
+    if pc.may_read(entry, (ctx or {}).get("producer", ""),
+                   (ctx or {}).get("order_id", "")):
+        return None
+    return {"error": "no access to this item"}
+
+
 def pc_list_source(ctx, args):
     entry, err = _entry_for(ctx, (args or {}).get("ref"))
+    if err:
+        return err
+    err = _recipients_error(ctx, entry)
     if err:
         return err
     return {"ref": entry.get("ref", ""), "title": entry.get("title", ""),
@@ -389,14 +429,19 @@ def pc_read_source(ctx, args):
     entry, err = _entry_for(ctx, args.get("ref"))
     if err:
         return err
+    err = _recipients_error(ctx, entry)
+    if err:
+        return err
     if args.get("ref"):
         try:
-            pcname, _id, _frag = pc.parse_ref(args["ref"])
+            pcname, _id, frag = pc.parse_ref(args["ref"])
         except ValueError:
             return {"error": "bad ref"}
         if pcname != "source":
             return {"error": "pc_read_source reads Source only; "
                              "use open_ref"}
+        if not frag:
+            return _full_entry_text(entry, args)
         want = args["ref"]
     elif not args.get("section"):
         return {"error": "give section or ref"}
@@ -411,6 +456,26 @@ def pc_read_source(ctx, args):
     if len(text) > cap:
         out["text"] = text[:cap]
         out["truncated"] = len(text) - cap
+    return out
+
+
+def _full_entry_text(entry, args):
+    """Whole entry as markdown (content sections, exact headings).
+    Capped like any other read; truncation says how much is missing."""
+    try:
+        cap = int((args or {}).get("max_chars", 60000))
+    except (TypeError, ValueError):
+        cap = 60000
+    text = pc.entry_markdown(entry)
+    out = {"kind": "full-text", "ref": entry.get("ref", ""),
+           "title": entry.get("title", ""),
+           "provenance": {"title": entry.get("title", ""),
+                           "origin_file": entry.get("origin_file", "")}}
+    if len(text) > cap:
+        out["text"] = text[:cap]
+        out["truncated"] = len(text) - cap
+    else:
+        out["text"] = text
     return out
 
 
@@ -447,8 +512,14 @@ def open_ref(ctx, args):
         return err
     try:
         entry = pc.load_entry_by_ref(ref)
-        return pc.open_ref(entry, ref)
     except (OSError, KeyError, ValueError) as exc:
+        return {"error": str(exc)}
+    err = _recipients_error(ctx, entry)
+    if err:
+        return err
+    try:
+        return pc.open_ref(entry, ref)
+    except (KeyError, ValueError) as exc:
         return {"error": str(exc)}
 
 
@@ -653,10 +724,21 @@ def _pc_pick(ctx, args, pcname):
     if trunc:
         ev["truncated_from"] = trunc + FETCH_CAP
     _log_research(ctx, ev)
-    return {"ref": r["ref"], "doc_id": r["doc_id"],
-            "duplicate": r["duplicate"], "title": r["title"],
-            "paras": r["paras"], "chars": r["chars"],
-            "supersedes": r["supersedes"]}
+    rec_err = ""
+    try:
+        pc.set_recipients(pcname, r["doc_id"],
+                           (ctx or {}).get("order_id", ""),
+                           [(ctx or {}).get("producer", "")],
+                           (ctx or {}).get("producer", ""))
+    except (OSError, ValueError) as exc:
+        rec_err = str(exc)
+    out = {"ref": r["ref"], "doc_id": r["doc_id"],
+           "duplicate": r["duplicate"], "title": r["title"],
+           "paras": r["paras"], "chars": r["chars"],
+           "supersedes": r["supersedes"]}
+    if rec_err:
+        out["recipients_error"] = rec_err
+    return out
 
 
 def pc_pick_theory(ctx, args):
@@ -691,8 +773,14 @@ def _pc_read_web(ctx, args, pcname):
         return err
     try:
         entry = pc.load_entry_by_ref(ref)
-        out = pc.open_ref(entry, ref)
     except (OSError, KeyError, ValueError) as exc:
+        return {"error": str(exc)}
+    err = _recipients_error(ctx, entry)
+    if err:
+        return err
+    try:
+        out = pc.open_ref(entry, ref)
+    except (KeyError, ValueError) as exc:
         return {"error": str(exc)}
     try:
         cap = int(args.get("max_chars", 8000))
@@ -706,15 +794,212 @@ def _pc_read_web(ctx, args, pcname):
 
 
 def pc_read_theory(ctx, args):
-    """Read a Theory PC ref verbatim with provenance. Later agents:
-    only entries picked for their order."""
+    """Read a Theory PC ref verbatim with provenance. Refused unless
+    listed as a recipient; later agents also need this order's pick."""
     return _pc_read_web(ctx, args, "theory")
 
 
 def pc_read_article(ctx, args):
-    """Read an Article PC ref verbatim with provenance. Later agents:
-    only entries picked for their order."""
+    """Read an Article PC ref verbatim with provenance. Refused unless
+    listed as a recipient; later agents also need this order's pick."""
     return _pc_read_web(ctx, args, "article")
+
+
+# ---- Sam's intake tools (§8.1): send PDF, set recipients ----
+SEND_TIMEOUT = 900  # blocking worker wait per pc_send_source call
+INTAKE_PRODUCER = "sales_sam"
+
+
+def _order_meta(order_id):
+    p = os.path.join(pc._base(None), "orders", order_id or "",
+                     "meta.json")
+    try:
+        with open(p, encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, ValueError):
+        return None, None
+    return (meta if isinstance(meta, dict) else None), p
+
+
+def _indexed(pcname, prof, doc_id):
+    try:
+        with open(os.path.join(pc.index_dir(pcname, prof),
+                               "index.json"), encoding="utf-8") as f:
+            return doc_id in json.load(f).get("entries", [])
+    except (OSError, ValueError):
+        return False
+
+
+def _worker_reason(edir):
+    """Last failure reason from the entry log (best effort)."""
+    try:
+        with open(os.path.join(edir, "log.jsonl"),
+                  encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return ""
+    for ln in reversed(lines[-5:]):
+        try:
+            ev = json.loads(ln)
+        except ValueError:
+            continue
+        if ev.get("ev") in ("failed", "map_failed") and ev.get("error"):
+            return str(ev["error"])[:200]
+    return ""
+
+
+def pc_send_source(ctx, args):
+    """Send this order's attached PDF to the Source PC: parse, ingest,
+    build the map, index. Returns the entry ref + counts. Sam only;
+    idempotent (same PDF = same ref, finished stages are skipped)."""
+    ctx = ctx or {}
+    if ctx.get("producer") != INTAKE_PRODUCER:
+        return {"error": "pc_send_source is Sam's tool"}
+    order_id = ctx.get("order_id", "")
+    meta, meta_p = _order_meta(order_id)
+    if meta is None:
+        return {"error": "no such order: %r" % order_id}
+    base = pc._base(None)
+    fname = (meta.get("files", {}) or {}).get("source", "source.pdf")
+    pdf_p = os.path.join(base, "orders", order_id, fname)
+    try:
+        with open(pdf_p, "rb") as f:
+            raw = f.read()
+    except OSError:
+        return {"error": "order has no attached PDF yet"}
+    try:
+        pages, images, tables, skipped, marks = pdfingest.pdf_parse(raw)
+    except RuntimeError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:  # noqa: BLE001 - broken PDF, reported
+        return {"error": "cannot parse PDF: %s" % exc}
+    if not "\n\n".join(pages).strip():
+        return {"error": "no extractable text in PDF"}
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    try:
+        r = pc.ingest_source(
+            order_id, (meta.get("files", {}) or {}).get(
+                "upload_name", fname),
+            now, ctx.get("producer", ""), pages, images, tables,
+            skipped, marks=marks)
+    except (OSError, ValueError) as exc:
+        return {"error": "ingest failed: %s" % exc}
+    try:
+        pc.set_recipients("source", r["doc_id"], order_id,
+                           [ctx.get("producer", "")],
+                           ctx.get("producer", ""))
+    except (OSError, ValueError) as exc:
+        return {"error": "ingested %s but cannot list recipients: %s"
+                         % (r["ref"], exc)}
+    try:
+        prof = graph._adapter().embed_settings()["profile"]
+    except (RuntimeError, KeyError):
+        prof = "jetson"
+    mp = pc.load_map_by_ref(r["ref"])
+    map_done = isinstance(mp, dict) and mp.get("status") == "done"
+    indexed = _indexed("source", prof, r["doc_id"])
+    worker_note = "skipped (map + index done)"
+    warning = ""
+    if not (map_done and indexed) and (args or {}).get("build",
+                                                       "all") != "skip":
+        mode = "index" if map_done else ("noindex" if indexed else "all")
+        try:
+            done = subprocess.run(
+                [sys.executable, os.path.join("scripts",
+                                              "pc_worker.py"),
+                 r["doc_id"], mode, "source"],
+                cwd=base, capture_output=True, timeout=SEND_TIMEOUT)
+            worker_note = "mode %s exit %d" % (mode, done.returncode)
+        except subprocess.TimeoutExpired:
+            worker_note = "mode %s timed out after %ds" \
+                % (mode, SEND_TIMEOUT)
+            warning = ("worker timed out; map/index may still be "
+                       "pending (REBUILD from the PC page)")
+        if not warning:
+            mp = pc.load_map_by_ref(r["ref"])
+            map_done = isinstance(mp, dict) \
+                and mp.get("status") == "done"
+            indexed = _indexed("source", prof, r["doc_id"])
+            if done.returncode != 0 and not map_done:
+                return {"error": "map build failed: %s"
+                                 % (_worker_reason(
+                                     pc.entry_dir("source",
+                                                  r["doc_id"]))
+                                    or worker_note)}
+            if done.returncode != 0:
+                warning = ("index failed (%s); the map is done so "
+                           "the crew can read" % (
+                               _worker_reason(pc.entry_dir(
+                                   "source", r["doc_id"]))
+                               or worker_note))
+    try:
+        entry = pc.load_entry_by_ref(r["ref"])
+    except (OSError, ValueError, KeyError) as exc:
+        return {"error": "sent entry missing: %s" % exc}
+    if ctx.get("run_dir"):
+        try:
+            os.makedirs(ctx["run_dir"], exist_ok=True)
+            with open(os.path.join(ctx["run_dir"], "send.json"), "w",
+                      encoding="utf-8") as f:
+                json.dump({"ref": r["ref"], "doc_id": r["doc_id"],
+                           "at": now}, f)
+        except OSError as exc:
+            return {"error": "cannot record send: %s" % exc}
+    meta.setdefault("files", {}).update({
+        "pc_ref": r["ref"], "pc_duplicate": r["duplicate"],
+        "pc_title": r["title"], "pc_sections": r["sections"],
+        "pc_chars": r["chars"], "pc_figures": r["figures"],
+        "pc_tables": r["tables"]})
+    try:
+        with open(meta_p, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+    except OSError as exc:
+        return {"error": "cannot record pc_ref: %s" % exc}
+    out = {"ref": r["ref"], "doc_id": r["doc_id"],
+           "duplicate": r["duplicate"], "title": r["title"],
+           "sections": [{"n": s["n"], "heading": s["heading"]}
+                        for s in entry.get("sections", [])],
+           "section_count": r["sections"], "paras": r["paras"],
+           "chars": r["chars"], "figures": r["figures"],
+           "tables": r["tables"], "map": "done" if map_done
+           else "pending", "index": indexed, "worker": worker_note}
+    if warning:
+        out["warning"] = warning
+    return out
+
+
+def pc_set_recipients(ctx, args):
+    """Set who receives this order's Source entry (merged per agent).
+    Sam only; the entry must be sent first."""
+    ctx = ctx or {}
+    if ctx.get("producer") != INTAKE_PRODUCER:
+        return {"error": "pc_set_recipients is Sam's tool"}
+    agents = (args or {}).get("agents")
+    if not isinstance(agents, list) or not agents \
+            or any(not isinstance(a, str) or not a for a in agents):
+        return {"error": "give agents: [agent ids]"}
+    aroot = os.path.dirname(os.path.abspath(ctx.get("agent_dir", "")
+                                             or "agents"))
+    if not os.path.isdir(aroot):
+        aroot = os.path.join(pc._base(None), "agents")
+    bad = [a for a in agents
+           if not os.path.isfile(os.path.join(aroot, a, "agent.json"))]
+    if bad:
+        return {"error": "unknown agents: %s" % ", ".join(bad)}
+    order_id = ctx.get("order_id", "")
+    ref = pc.order_entry_ref(order_id)
+    if not ref:
+        return {"error": "no Source entry for this order: call "
+                         "pc_send_source first"}
+    try:
+        _pcn, doc_id, _frag = pc.parse_ref(ref)
+        rows = pc.set_recipients("source", doc_id, order_id, agents,
+                                  ctx.get("producer", ""))
+    except (OSError, ValueError) as exc:
+        return {"error": str(exc)}
+    return {"ref": ref,
+            "recipients": [r for r in rows
+                            if r.get("order_id") == order_id]}
 
 
 # Writer tool -> run output file. The server keeps agent.json io.output
@@ -796,26 +1081,45 @@ TOOLS = {
     "pc_list_source": (
         pc_list_source,
         "List the Source PC entry for this order: sections with refs, "
-        "figure/table counts.",
+        "figure/table counts. Refused unless you are a recipient.",
         {"type": "object",
          "properties": {"ref": {"type": "string"}},
          "additionalProperties": False},
     ),
     "pc_read_source": (
         pc_read_source,
-        "Read one Source PC section or passage verbatim with provenance. "
-        "Give section (e.g. 1.1) or a pc://source ref.",
+        "Read one Source PC section or passage verbatim with "
+        "provenance, or the whole entry when ref has no #part. "
+        "Give section (e.g. 1.1) or a pc://source ref. Refused "
+        "unless this order lists you as a recipient.",
         {"type": "object",
          "properties": {"section": {"type": "string"},
                         "ref": {"type": "string"},
                         "max_chars": {"type": "integer"}},
          "additionalProperties": False},
     ),
+    "pc_send_source": (
+        pc_send_source,
+        "Send this order's attached PDF to the Source PC (parse, "
+        "ingest, map, index) and get the entry ref. Sam only; "
+        "idempotent. Call once, then pc_set_recipients.",
+        {"type": "object", "properties": {},
+         "additionalProperties": False},
+    ),
+    "pc_set_recipients": (
+        pc_set_recipients,
+        "Set which crew members receive this order's Source entry "
+        "(merged). Sam only; send first.",
+        {"type": "object",
+         "properties": {"agents": {"type": "array",
+                                   "items": {"type": "string"}}},
+         "required": ["agents"], "additionalProperties": False},
+    ),
     "open_ref": (
         open_ref,
         "Open any stable pc:// ref verbatim with provenance. Refused "
-        "without that PC's read grant; Theory/Article refs are "
-        "picks-scoped.",
+        "without that PC's read grant or a recipient listing; "
+        "Theory/Article refs are picks-scoped.",
         {"type": "object",
          "properties": {"ref": {"type": "string"}},
          "required": ["ref"], "additionalProperties": False},
