@@ -296,10 +296,10 @@ the new categories follow once the category set is approved.
 | 2 | Concept explainer (Cleo) | `concept`, `structure`, `source` | `concepts` (§5.1) |
 | 2 | Case researcher (Rex) | `concept`, `structure`, `source` | `cases` (§5.2) |
 | 3 | Planning PD (Ash) | `concept`, `structure`, `concepts`, `cases` | `storyboard_draft` (§5.3) |
-| 4 | Storyboard writer (Penn) | open (Q13) | open (Q13) |
+| 4 | Storyboard writer (Penn) | `storyboard_draft` | `storyboard` (§5.4) |
 | 5 | Storyboard reviewer | `storyboard`, `source` | `storyboard_checked` |
-| 6 | Narration writer | `storyboard_checked`, `plan` | `narration` |
-| 7 | Narration reviewer | `narration`, `source` | `narration_checked` |
+| 6 | Narration writer (Wren) | `storyboard_draft` | `narration` (§5.5) |
+| 7 | Narration reviewer (Iris) | `narration`, `storyboard`, `source` | `narration_checked` |
 
 New category payloads (field sketches, schemas later):
 
@@ -310,13 +310,13 @@ New category payloads (field sketches, schemas later):
   kind, date, summary, fit to Marty's concept, viewer hook, claims
   with citations, picks, gaps.
 - `plan`: RETIRED — Ash now writes `storyboard_draft` (§5.3).
-- `storyboard`: to be redefined for Penn (Q13).
+- `storyboard` (Penn): full schema in §5.4. Per scene: layout,
+  on-screen text, visuals, materials with refs, notes for Wren.
 - `storyboard_checked`: `{pages: [...same shape, corrected...],
   fixes: [{page, was, now, why}]}` — facts fixed against source and
   materials.
-- `narration`: `{pages: [{n, section (intro/body/outro), lines[],
-  evidence: [{fact, source_ref}]}]}` — lines per page with evidence
-  for each fact and number.
+- `narration` (Wren): full schema in §5.5. Per scene: lines with
+  citations, word count, estimated seconds that fit the scene.
 - `narration_checked`: `{pages: [...same shape, corrected...],
   fixes: [{page, was, now, why}]}` — lines fixed against source and
   materials.
@@ -328,8 +328,11 @@ Notes on the stage table:
   `concepts`, `cases`, and reads the Source PC plus this order's
   Theory/Article picks. No `request`: audience and theme reach Ash
   through the concept, length through the time plan.
-- Penn's role (stage 4) is open (Q13): Ash already drafts the
-  storyboard scene by scene.
+- Penn and Wren (stages 4, 6) both consume Ash's
+  `storyboard_draft`, in parallel: Penn writes scene composition,
+  Wren writes scene lines. Iris (stage 7) also reads Penn's
+  `storyboard`, so `notes_for_wren` and the layout guide narration
+  review.
 - Reviewers also receive source/materials pointers via `source`; full
   material text stays in sidecars (cf. Q3).
 - `narration_checked` is the last agent result; scene/video assembly
@@ -626,7 +629,8 @@ tools scoped the same way.
         "type": "object",
         "required": ["n", "start_s", "end_s", "part_id", "role",
                      "viewer_learns", "screen_idea",
-                     "narration_points", "materials", "next_link"],
+                     "narration_points", "materials", "handoff",
+                     "next_link"],
         "properties": {
           "n": {"type": "integer"},
           "start_s": {"type": "integer"},
@@ -671,6 +675,22 @@ tools scoped the same way.
               }
             }
           },
+          "handoff": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["ref", "to", "why", "how_to_use"],
+              "properties": {
+                "ref": {"type": "string"},
+                "to": {"type": "array",
+                       "items": {"type": "string",
+                                 "enum": ["board_penn",
+                                          "voice_wren"]}},
+                "why": {"type": "string"},
+                "how_to_use": {"type": "string"}
+              }
+            }
+          },
           "next_link": {"type": "string"}
         }
       }
@@ -702,6 +722,139 @@ tools scoped the same way.
 - Every citation passes the verbatim check (§9).
 - Every pick of this order is either used in a scene's `materials`
   or listed in `unused_picks` with a reason — no silent drops.
+- Every handoff `ref` is in this order's Theory/Article picks (Ash
+  hands off only what it can read); `to` names Penn and/or Wren.
+  When the draft passes all checks, the platform adds each `to`
+  agent to that item's entry access (read), recorded with
+  `granted_by: "plan_ash"` and the scene number. No handoff reason
+  = no access (§8.9).
+
+## 5.4 Penn (`board_penn`): `storyboard` v1
+
+Produces `{storyboard}`. Consumes `storyboard_draft` only (works
+in parallel with Wren). Writes the composition for each scene Ash
+requested: what is on screen, in order. Reads the Source PC per
+Sam's ingest access (map + refs) and the Theory/Article items Ash
+handed to Penn (§5.3 handoff); every ref must be readable by Penn.
+
+`storyboard` payload schema (`data`):
+
+```json
+{
+  "type": "object",
+  "required": ["scenes"],
+  "properties": {
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scene_n", "start_s", "end_s", "layout",
+                     "on_screen_text", "visuals", "materials",
+                     "notes_for_wren"],
+        "properties": {
+          "scene_n": {"type": "integer"},
+          "start_s": {"type": "integer"},
+          "end_s": {"type": "integer"},
+          "layout": {"type": "string"},
+          "on_screen_text": {"type": "string"},
+          "visuals": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "materials": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["ref", "how_used"],
+              "properties": {
+                "ref": {"type": "string"},
+                "how_used": {"type": "string"}
+              }
+            }
+          },
+          "notes_for_wren": {"type": "string"}
+        }
+      }
+    }
+  }
+}
+```
+
+- The scene set equals Ash's scene set exactly: no extras, none
+  missing. `start_s`/`end_s` match the draft's scene times.
+- `layout`: what is on screen, in order. `on_screen_text`: titles,
+  labels, captions shown ("" when the scene has none).
+- `visuals`: figure refs or short idea lines, one string each.
+- Every material `ref` opens for Penn (Source PC or a handed-off
+  pick); `how_used` says what it becomes on screen.
+- `notes_for_wren`: what the narration must hit in this scene.
+  Wren works in parallel from the draft, so these notes are read
+  by Iris at narration review (and by Wren's later revisions).
+
+## 5.5 Wren (`voice_wren`): `narration` v1
+
+Produces `{narration}`. Consumes `storyboard_draft` only (works
+in parallel with Penn). Writes the spoken lines for each scene
+Ash requested. Reads the Source PC per Sam's ingest access and
+the Theory/Article items Ash handed to Wren; every ref must be
+readable by Wren.
+
+`narration` payload schema (`data`):
+
+```json
+{
+  "type": "object",
+  "required": ["scenes"],
+  "properties": {
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scene_n", "start_s", "end_s", "lines",
+                     "words", "est_seconds"],
+        "properties": {
+          "scene_n": {"type": "integer"},
+          "start_s": {"type": "integer"},
+          "end_s": {"type": "integer"},
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["text", "citations"],
+              "properties": {
+                "text": {"type": "string"},
+                "citations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["ref", "quote"],
+                    "properties": {
+                      "ref": {"type": "string"},
+                      "quote": {"type": "string"}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "words": {"type": "integer"},
+          "est_seconds": {"type": "integer"}
+        }
+      }
+    }
+  }
+}
+```
+
+- The scene set equals Ash's scene set exactly; `start_s`/`end_s`
+  match the draft's scene times.
+- `words` equals the actual word count of all lines (writer
+  counts). `est_seconds` stays within ±15% of `words / 2.5` and
+  never exceeds the scene's seconds — the lines must fit.
+- Every line with a digit carries ≥1 citation (writer-enforced);
+  every citation passes the verbatim check (§9). Lines with facts
+  but no numbers are judged by Iris: every fact or number ends up
+  cited.
 
 ## 6. Rules this draft follows (from D1–D9)
 
@@ -943,6 +1096,12 @@ tool matrix. Save runs `validate_agent` for tool changes, logs who
 changed what and when, and applies from the next run. The current
 state shows on load.
 
+Stage-3 handoff grants: Ash's `storyboard_draft` scenes carry
+`handoff[]` (item, agents, why, how to use). On a passing draft
+the platform extends those items' read lists; each grant shows on
+the PC page with `granted_by` and the scene. No reason in the
+report = no access.
+
 ## 9. Stable reference addresses
 
 Every stored passage gets a stable address:
@@ -1171,10 +1330,9 @@ Code places that read the old files (Sam/Marty switch list):
   stay in the run log; PCs grow only through picks with provenance.
 - Q12 DECIDED: Marty splits into `concept` v1 + `structure` v2
   (§3); Cleo/Rex write `concepts` v1 / `cases` v1 (§§5.1–5.2).
-- Q13 OPEN: Penn's role, now that Ash writes the storyboard draft
-  (§5.3). Candidates: scene composition detail, visual/material
-  direction, or merge into Ash. Blocks: the `storyboard` category
-  shape and the stage 5–7 inputs.
+- Q13 DECIDED: Penn writes scene composition (`storyboard` v1,
+  §5.4), Wren writes scene lines (`narration` v1, §5.5); both
+  consume Ash's `storyboard_draft` in parallel.
 
 ## 13. Stage-2 research rules (Cleo/Rex)
 
