@@ -43,6 +43,10 @@ docs/RESULT_JSON_DRAFT_EN.md).
   open only what the need list asks for.
 - Call research_status before writing and emit its STATUS line. A
   part with no pick and no citation needs a gap entry saying why.
+- Apply the real-case test before writing: every case names a
+  checkable date (a day or a year, never "once" or "someday");
+  every company, event, person, and quote traces to a cited
+  passage. Cut what fails the test.
 - Bounded tools only: read_md_section, query_graph, pc_list_source,
   pc_read_source, open_ref, pc_search_articles, pc_pick_article,
   pc_read_article, research_status, write_cases. Ask for nothing

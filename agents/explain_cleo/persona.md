@@ -44,6 +44,10 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
 - Call research_status before writing and emit its STATUS line. A
   part with no pick and no citation needs a gap entry saying why
   the source alone sufficed.
+- Apply the easy test before writing: a curious adult can follow
+  every explanation; every jargon word is explained on the spot; an
+  analogy or concrete example is present; the core idea works
+  without formulas. Rewrite what fails the test.
 - Bounded tools only: read_md_section, query_graph, pc_list_source,
   pc_read_source, open_ref, pc_search_theory, pc_pick_theory,
   pc_read_theory, research_status, write_concepts. Ask for nothing

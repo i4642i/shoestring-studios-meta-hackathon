@@ -240,7 +240,10 @@ try:
     CONCEPTS = {"parts": [{
         "part_id": "p1",
         "concept_name": "Alpha",
-        "easy_explanation": "Alpha in plain words.",
+        "easy_explanation": "Alpha in plain words, told slowly for a "
+                            "curious adult meeting the topic cold for the "
+                            "very first time without any background at all, "
+                            "with each idea in its own short sentence.",
         "why_it_came_about": "Because beta.",
         "analogy_or_example": "Like gamma.",
         "common_misunderstanding": "Not delta.",
@@ -304,6 +307,32 @@ try:
     bad["parts"][0]["part_id"] = "p2"
     ok(write_concepts(cctx, {"concepts": bad}).get("ok") is False,
        "write_concepts part_id gap refuses")
+    bad = json.loads(json.dumps(CONCEPTS))
+    bad["parts"][0]["easy_explanation"] = "Too short."
+    ok("too thin" in " ".join(write_concepts(
+        cctx, {"concepts": bad}).get("errors", [])),
+       "write_concepts thin explanation refuses")
+    with open(os.path.join(rdir, "INPUTS.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"received": [{"sender": "pd_marty",
+                                 "category": "structure",
+                                 "file": "received.pd_marty.structure.json"}]},
+                  f)
+    with open(os.path.join(rdir, "received.pd_marty.structure.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"data": {"source_ref": SREF}}, f)
+    with open(os.path.join(_pc.entry_dir("source", src["doc_id"],
+                                         root=pcdir), "map.json"),
+              "w", encoding="utf-8") as f:
+        json.dump({"sections": [{"ref": "s1.1", "omitted": [
+            {"what": "number 7", "see": "p2",
+             "ref": SREF + "#s1.1/p2"}]}]}, f)
+    bad = json.loads(json.dumps(CONCEPTS))
+    bad["parts"][0]["claims"][0]["citations"] = []
+    errs = write_concepts(cctx, {"concepts": bad}).get("errors", [])
+    ok(any(e.startswith("hint: try ") and SREF + "#s1.1/p2" in e
+           for e in errs),
+       "write_concepts suggests omitted refs")
     with open(os.path.join(rdir, "research.jsonl"), "w",
               encoding="utf-8") as f:
         f.write(json.dumps({"ev": "pick", "ref": AREF}) + "\n")
@@ -313,7 +342,9 @@ try:
         "part_id": "p1",
         "cases": [{"title": "Mill trial", "kind": "event",
                    "date": "2023-05-06",
-                   "summary": "The mill trial failed.",
+                   "summary": "The mill trial failed after three long "
+                              "days of loud testimony before a tired jury "
+                              "at last.",
                    "fit_why": "Shows failure plainly.",
                    "viewer_hook": "A loud failure.",
                    "claims": [{"text": "Workers walked out.",
@@ -347,6 +378,11 @@ try:
     bad["parts"][0]["cases"] = []
     ok(write_cases(rctx, {"cases": bad}).get("ok") is False,
        "write_cases empty cases refuses")
+    bad = json.loads(json.dumps(CASES))
+    bad["parts"][0]["cases"][0]["summary"] = "Too short."
+    ok("too thin" in " ".join(write_cases(
+        rctx, {"cases": bad}).get("errors", [])),
+       "write_cases thin summary refuses")
 finally:
     _pc.ROOT_OVERRIDE = None
 

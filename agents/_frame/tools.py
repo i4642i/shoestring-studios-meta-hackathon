@@ -202,13 +202,62 @@ def _claims_of(category, part):
     return out
 
 
+def _omitted_hints(ctx, errors):
+    """Suggest map omitted refs when evidence fails (§13.4.3). Reads
+    the run's received structure for the source entry; silent when
+    anything is missing (ad-hoc runs)."""
+    if not any(k in " ".join(errors)
+               for k in ("citation", "claim", "verbatim", "evidence",
+                         "needs >=1 case")):
+        return []
+    d = (ctx or {}).get("run_dir", "")
+    if not d:
+        return []
+    try:
+        with open(os.path.join(d, "INPUTS.json"), encoding="utf-8") as f:
+            manifest = json.load(f)
+    except (OSError, ValueError):
+        return []
+    hints = []
+    seen = set()
+    for item in (manifest or {}).get("received") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("category") != "structure" or not item.get("file"):
+            continue
+        try:
+            with open(os.path.join(d, item["file"]),
+                      encoding="utf-8") as f:
+                data = json.load(f).get("data", {})
+        except (OSError, ValueError):
+            continue
+        sref = (data or {}).get("source_ref", "")
+        if not sref:
+            continue
+        try:
+            mp = pc.load_map_by_ref(sref)
+        except (OSError, ValueError, KeyError):
+            continue
+        for sec in mp.get("sections", []):
+            for om in (sec or {}).get("omitted") or []:
+                ref = (om or {}).get("ref", "")
+                what = (om or {}).get("what", "")
+                if ref and ref not in seen:
+                    seen.add(ref)
+                    hints.append("hint: try %s (%s)" % (ref, what))
+                if len(hints) >= 3:
+                    return hints
+    return hints
+
+
 def _write_report(ctx, args, category, validator):
     obj = args.get(category)
     if not isinstance(obj, dict):
         return {"ok": False, "errors": ["call with {%s: {...}}" % category]}
     errors = validator(obj)
     if errors:
-        return {"ok": False, "errors": errors}
+        return {"ok": False,
+                "errors": errors + _omitted_hints(ctx, errors)}
     cited = {}
     for i, p in enumerate(obj["parts"]):
         where = "%s.parts[%d]" % (category, i)
@@ -231,7 +280,8 @@ def _write_report(ctx, args, category, validator):
                 if isinstance(ev.get("ref"), str):
                     cited.setdefault(pid, []).append(ev["ref"])
     if errors:
-        return {"ok": False, "errors": errors}
+        return {"ok": False,
+                "errors": errors + _omitted_hints(ctx, errors)}
     got = _report_pick_refs(obj)
     want = _run_pick_refs(ctx)
     for ref in sorted(got - want):

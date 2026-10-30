@@ -321,6 +321,11 @@ def validate_concepts(obj):
         for k in ("concept_name", "easy_explanation", "why_it_came_about",
                   "analogy_or_example", "common_misunderstanding"):
             _nonempty(errors, p, k, where)
+        words = p.get("easy_explanation", "")
+        if (isinstance(words, str) and words.strip()
+                and len(words.split()) < 30):
+            errors.append("%s.easy_explanation too thin (%d words, "
+                          "need >=30)" % (where, len(words.split())))
         claims = p.get("claims")
         if not isinstance(claims, list) or not claims:
             errors.append("%s needs >=1 claim" % where)
@@ -370,6 +375,11 @@ def validate_cases(obj):
                 for k in ("title", "summary", "fit_why",
                           "viewer_hook"):
                     _nonempty(errors, cs, k, cw)
+                words = cs.get("summary", "")
+                if (isinstance(words, str) and words.strip()
+                        and len(words.split()) < 15):
+                    errors.append("%s.summary too thin (%d words, "
+                                  "need >=15)" % (cw, len(words.split())))
                 if cs.get("kind") not in CASE_KINDS:
                     errors.append("%s.kind must be %s"
                                   % (cw, "|".join(CASE_KINDS)))
