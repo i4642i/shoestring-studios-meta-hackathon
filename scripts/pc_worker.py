@@ -13,6 +13,7 @@ import os
 import shutil
 import sys
 import time
+import traceback
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -159,6 +160,8 @@ def describe_figures(entry, edir, model):
         return 0, 0, 0, 0, "none"
     models = _vision_models(model)
     if not models:
+        for fig in figs:
+            fig["described_by"] = "caption-only"
         return 0, len(figs), 0, 0, "no-key"
     backend, ok_n, fail_n, calls, toks = None, 0, 0, 0, 0
     for fig in figs:
@@ -174,13 +177,14 @@ def describe_figures(entry, edir, model):
                     calls += 1
                     toks += tk
                     fig["description"] = obj["description"].strip()
-                    fig["text_in_image"] = str(
-                        obj.get("text_in_image", "")).strip()
+                    if not fig.get("text_in_image"):
+                        fig["text_in_image"] = str(
+                            obj.get("text_in_image", "")).strip()
                     fig["numbers"] = obj["numbers"]
                     if fig.get("kind") != "table-image":
                         fig["kind"] = obj["kind"]
                     fig["described"] = True
-                    fig["generated_by"] = m
+                    fig["described_by"] = m
                     fig["generated_at"] = time.strftime(
                         "%Y-%m-%dT%H:%M:%S")
                     backend = backend or m
@@ -196,10 +200,13 @@ def describe_figures(entry, edir, model):
             ok_n += 1
         else:
             fail_n += 1
+            fig["described_by"] = "caption-only"
             if backend is None:
                 break  # vision dead everywhere: rest stay caption-only
     if backend is None:
         fail_n = len(figs)
+        for fig in figs:
+            fig.setdefault("described_by", "caption-only")
     return ok_n, fail_n, calls, toks, backend or "unavailable"
 
 
@@ -228,6 +235,8 @@ def build_map(entry, model):
     flat = entry["paragraphs"]
     out, missing = [], 0
     for s in entry["sections"]:
+        if s.get("non_content"):
+            continue
         paras = flat[s["start"]:s["start"] + s["count"]]
         sec = {"n": s["n"], "heading": s["heading"], "paras": paras}
         items, miss = _section_map(model, s["n"], s["heading"], paras,
@@ -321,7 +330,10 @@ def index_docs(entry):
     return docs, ids
 
 
-def main(doc_id):
+def main(doc_id, mode="all"):
+    """Run worker stages. mode "all" (describe+map+index), "noindex"
+    (describe+map, for sandboxes without the embed server), or
+    "index" (index only, for the Rebuild-index button)."""
     edir = pc.entry_dir("source", doc_id)
     with open(os.path.join(edir, "entry.json"), encoding="utf-8") as f:
         entry = json.load(f)
@@ -331,31 +343,37 @@ def main(doc_id):
         msg = "%s missing: add it to .env" % runner.key_var(model)
         log(edir, {"ev": "map_failed", "error": msg})
         raise SystemExit(msg)
-    t0 = time.time()
-    ok_n, fail_n, dcalls, dtoks, backend = describe_figures(
-        entry, edir, model)
-    with open(os.path.join(edir, "entry.json"), "w",
-              encoding="utf-8") as f:
-        json.dump(entry, f, ensure_ascii=False, indent=2)
-    log(edir, {"ev": "describe_done",
-               "figures": len(entry.get("figures", [])),
-               "described": ok_n, "failed": fail_n, "calls": dcalls,
-               "tokens": dtoks, "backend": backend,
-               "seconds": round(time.time() - t0, 1)})
-    print("describe %s: %d ok, %d failed (%s)"
-          % (doc_id, ok_n, fail_n, backend), flush=True)
-    t0 = time.time()
-    mapd, stats = build_map(entry, model)
-    with open(os.path.join(edir, "map.json"), "w",
-              encoding="utf-8") as f:
-        json.dump(mapd, f, ensure_ascii=False, indent=2)
-    log(edir, {"ev": "map_done", "status": mapd["status"],
-               "seconds": round(time.time() - t0, 1),
-               "llm_calls": stats["calls"],
-               "tokens_est": (stats["prompt_chars"]
-                              + stats["reply_chars"]) // 4})
-    print("map %s: %s (%d calls)" % (doc_id, mapd["status"],
-                                     stats["calls"]), flush=True)
+    if mode in ("all", "noindex"):
+        t0 = time.time()
+        ok_n, fail_n, dcalls, dtoks, backend = describe_figures(
+            entry, edir, model)
+        with open(os.path.join(edir, "entry.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(entry, f, ensure_ascii=False, indent=2)
+        log(edir, {"ev": "describe_done",
+                   "figures": len(entry.get("figures", [])),
+                   "described": ok_n, "failed": fail_n, "calls": dcalls,
+                   "tokens": dtoks, "backend": backend,
+                   "seconds": round(time.time() - t0, 1)})
+        print("describe %s: %d ok, %d failed (%s)"
+              % (doc_id, ok_n, fail_n, backend), flush=True)
+        t0 = time.time()
+        mapd, stats = build_map(entry, model)
+        with open(os.path.join(edir, "map.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(mapd, f, ensure_ascii=False, indent=2)
+        log(edir, {"ev": "map_done", "status": mapd["status"],
+                   "seconds": round(time.time() - t0, 1),
+                   "llm_calls": stats["calls"],
+                   "tokens_est": (stats["prompt_chars"]
+                                  + stats["reply_chars"]) // 4})
+        print("map %s: %s (%d calls)" % (doc_id, mapd["status"],
+                                         stats["calls"]), flush=True)
+    if mode in ("all", "index"):
+        _run_index(mod, entry, edir, doc_id)
+
+
+def _run_index(mod, entry, edir, doc_id):
     prof = mod.embed_settings()["profile"]
     idx = pc.index_dir("source", prof)
     docs, ids = index_docs(entry)
@@ -383,11 +401,13 @@ def main(doc_id):
 
 if __name__ == "__main__":
     try:
-        main(sys.argv[1])
+        main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "all")
     except Exception as exc:  # noqa: BLE001 - worker must log, not vanish
         try:
+            detail = traceback.format_exc(limit=3)
             log(pc.entry_dir("source", sys.argv[1]),
-                {"ev": "failed", "error": str(exc)[:300]})
+                {"ev": "failed", "error": str(exc),
+                 "traceback": detail[-1500:]})
         except OSError:
             pass
         print("worker failed: %s" % exc, flush=True)

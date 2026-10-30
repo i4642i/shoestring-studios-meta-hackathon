@@ -403,7 +403,7 @@
     <div id="pc-detail" style="display:none">
       <h3 id="pc-dtitle"></h3>
       <p id="pc-dmeta"></p>
-      <p><button id="pc-rebuild">REBUILD MAP + INDEX</button> <span id="pc-dmsg"></span></p>
+      <p><button id="pc-rebuild">REBUILD MAP + INDEX</button> <button id="pc-reindex">REBUILD INDEX</button> <span id="pc-dmsg"></span></p>
       <p><button id="pc-pre-cleo">PREVIEW CLEO START PROMPT</button>
       <button id="pc-pre-rex">PREVIEW REX START PROMPT</button></p>
       <pre id="pc-dprompt" style="display:none"></pre>
@@ -2420,6 +2420,21 @@
         " · index " + idxText(d.entry.index);
       const map = document.getElementById("pc-dmap");
       map.innerHTML = "";
+      const secs = document.createElement("p");
+      secs.textContent = "Sections: ";
+      (d.entry.sections || []).forEach((s, i) => {
+        if (i) secs.appendChild(document.createTextNode(" · "));
+        const a = document.createElement("a");
+        a.href = "#";
+        a.textContent = "s" + s.n + (s.non_content ? " (non-content)" : "");
+        a.title = s.heading || "";
+        a.onclick = (e) => {
+          e.preventDefault();
+          openPassage(entryRef + "#s" + s.n).catch(fail);
+        };
+        secs.appendChild(a);
+      });
+      map.appendChild(secs);
       (d.entry.figures || []).forEach((f) => {
         const h = document.createElement("h4");
         h.textContent = f.addr + " — " + (f.caption || "(no caption)") +
@@ -2443,7 +2458,7 @@
         np.className = "hint";
         np.textContent = "Kind: " + (f.kind || "—") +
           " · Numbers: " + ((f.numbers || []).join(", ") || "—") +
-          (f.described ? " · described by " + f.generated_by : "");
+          (f.described_by ? " · described by " + f.described_by : "");
         map.appendChild(np);
       });
       if ((d.entry.figures || []).length) {
@@ -2541,6 +2556,15 @@
           await api.send("POST", "api/pcs/source/entries/" +
             encodeURIComponent(id) + "/build", {});
           dmsg.textContent = "Rebuilding in the background.";
+          load().catch(fail);
+        } catch (e) { dmsg.textContent = "Error: " + e.message; }
+      };
+      document.getElementById("pc-reindex").onclick = async () => {
+        try {
+          dmsg.textContent = "Starting…";
+          await api.send("POST", "api/pcs/source/entries/" +
+            encodeURIComponent(id) + "/index", {});
+          dmsg.textContent = "Index rebuilding in the background.";
           load().catch(fail);
         } catch (e) { dmsg.textContent = "Error: " + e.message; }
       };
