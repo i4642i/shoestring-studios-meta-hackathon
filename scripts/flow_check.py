@@ -410,8 +410,9 @@ try:
         {"order_id": "o10", "answers": {"audience": "a"}}, rcv,
         os.path.join(tmp, "runs", "rid9"), "pd_marty")
     ok("## PC input" in md4 and "1.1 Getting started" in md4
-       and "Preloaded text here." not in md4,
-       "marty input is map-based like the others")
+       and "Preloaded text here." in md4
+       and "(ref: %s#s1.1)" % rr["ref"] in md4,
+       "marty input is the full text (full row)")
     md5 = flow._render_inputs_md(
         {"order_id": "o10", "answers": {"audience": "a"}}, rcv,
         os.path.join(tmp, "runs", "rid9"), "case_rex")

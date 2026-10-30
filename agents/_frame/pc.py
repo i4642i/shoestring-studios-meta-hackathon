@@ -1534,12 +1534,123 @@ def _entry_chunk(entry, mp, reason=None):
     return "\n".join(lines)
 
 
+FULL_CHUNK_CAP = 100000  # full-text chunk cap (chars)
+
+
+def _section_of(entry, frag):
+    """Section dict enclosing a fragment (section/para/range/group)."""
+    base = (frag or "").split("/")[0]
+    for s in entry.get("sections", []):
+        tag = ("g" if s["n"].startswith("g") else "s") + s["n"]
+        if tag == base:
+            return s
+    return None
+
+
+def _parts_chunk(entry, mp, parts, reason=None):
+    """Map lines for listed parts only: each part's ref plus the map
+    notes of the sections the parts sit in (nothing else)."""
+    ref = entry.get("ref", "")
+    label = {"source": "Source", "theory": "Theory",
+             "article": "Article"}.get(entry.get("pc", ""), "Source")
+    lines = ["### %s (listed parts): %s (%s)"
+             % (label, entry.get("title", ""), ref)]
+    if isinstance(reason, dict) and reason.get("why_important"):
+        lines += ["Picked by %s: %s"
+                  % (reason.get("from", "?"),
+                     reason["why_important"]),
+                  "How to use: %s" % reason.get("how_to_use", "")]
+    lines.append("Your parts:")
+    for part in parts:
+        lines.append("- %s" % part)
+    by_ref = {}
+    if isinstance(mp, dict):
+        for s in mp.get("sections", []):
+            by_ref[s.get("ref", "")] = s
+    seen = set()
+    for part in parts:
+        try:
+            _rpc, _rid, frag = parse_ref(part)
+        except ValueError:
+            continue
+        sec = _section_of(entry, frag)
+        if sec is None or sec["n"] in seen:
+            continue
+        seen.add(sec["n"])
+        ms = by_ref.get(("g" if sec["n"].startswith("g") else "s")
+                        + sec["n"], {})
+        lines.append("Map %s%s:" % ("" if sec["n"].startswith("g")
+                                    else "s", sec["n"]))
+        for b in (ms.get("summary", []) or []):
+            lines.append("- %s [%s#%s/%s]"
+                         % ((b or {}).get("text", ""), ref,
+                            ("g" if sec["n"].startswith("g") else "s")
+                            + sec["n"], (b or {}).get("see", "")))
+        if ms.get("key_terms"):
+            lines.append("Terms: " + ", ".join(ms["key_terms"]))
+    lines += ["Open only your listed parts with the PC read tools; "
+              "cite every used passage as {ref, quote} verbatim.", ""]
+    return "\n".join(lines)
+
+
+def _parts_text(entry, parts):
+    """Full text of listed parts only (section/paragraph/figure)."""
+    ref = entry.get("ref", "")
+    out = ["# %s (listed parts)" % entry.get("title", ""), ""]
+    paras = entry.get("paragraphs", [])
+    for part in parts:
+        try:
+            _rpc, _rid, frag = parse_ref(part)
+        except ValueError:
+            continue
+        if not frag:
+            continue
+        sec = _section_of(entry, frag)
+        if sec is None:
+            for fig in entry.get("figures", []) \
+                    + entry.get("tables", []):
+                if fig.get("ref", "").endswith("#" + frag):
+                    out += ["(ref: %s#%s)" % (ref, frag),
+                            fig.get("caption", ""), ""]
+            continue
+        if "/" not in frag:
+            out += ["## %s %s" % (sec["n"],
+                                  sec.get("heading", "")), "",
+                    "(ref: %s#%s)" % (ref, frag), ""]
+            for p in paras[sec["start"]:sec["start"] + sec["count"]]:
+                out += [p["text"], ""]
+            continue
+        want = frag.split("/", 1)[1]
+        lo, hi = (want.split("-", 1) + [None])[:2]
+        for p in paras[sec["start"]:sec["start"] + sec["count"]]:
+            ptag = p["ref"].split("#", 1)[1].split("/", 1)[1]
+            if ptag == want or (hi and lo <= ptag <= hi):
+                out += ["(ref: %s)" % p["ref"], p["text"], ""]
+    return "\n".join(out)
+
+
+def _full_chunk(entry, parts, root=None):
+    """Full-text chunk: the whole entry (Marty-08 shape, capped with
+    an honest note) or only the listed parts."""
+    if parts:
+        return _parts_text(entry, parts)
+    # Byte-identical to the proven full-text input (override-aware).
+    text = marty_input_text(entry.get("ref"))
+    if len(text) <= FULL_CHUNK_CAP:
+        return text
+    return text[:FULL_CHUNK_CAP] + \
+        "\n\n[TRUNCATED: %d more chars; read the rest with " \
+        "pc_read_source section by section.]" % (len(text)
+                                                 - FULL_CHUNK_CAP)
+
+
 def prompt_chunks_for(agent_id, order_id, source_refs, runs_root,
                       root=None):
     """The ONE recipients-gated PC input for a crew member's prompt:
     every listed source entry plus this order's listed Theory/Article
-    picks, each as a map-based chunk. Returns (text, {"included",
-    "denied", "picks"}). Replaces the old per-agent preloads."""
+    picks. kind map -> map chunk; kind full -> full text (capped);
+    listed parts narrow either. Returns (text, {"included", "denied",
+    "picks"})."""
     refs = []
     for r in source_refs or []:
         try:
@@ -1566,15 +1677,23 @@ def prompt_chunks_for(agent_id, order_id, source_refs, runs_root,
         except (OSError, ValueError, KeyError):
             denied.append(eref)
             continue
-        if not may_read(entry, agent_id, order_id):
+        row = entry_access(entry, agent_id, order_id)
+        if row is None and recipients_of(entry) is not None:
             denied.append(eref)
             continue
+        parts = row_parts(row)
         try:
             mp = load_map_by_ref(eref, root=root)
         except (OSError, ValueError, KeyError):
             mp = {}
-        blocks.append(_entry_chunk(entry, mp or {},
-                                   reasons.get(eref)))
+        if row_kind(row) == "full":
+            blocks.append(_full_chunk(entry, parts, root=root))
+        elif parts:
+            blocks.append(_parts_chunk(entry, mp or {}, parts,
+                                       reasons.get(eref)))
+        else:
+            blocks.append(_entry_chunk(entry, mp or {},
+                                       reasons.get(eref)))
         included.append(eref)
     lines = ["## PC input (order %s)" % (order_id or "?"),
              "You may read ONLY the %d item(s) below. Open passages "

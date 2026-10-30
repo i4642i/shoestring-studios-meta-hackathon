@@ -652,6 +652,22 @@ try:
     ok(tmod.pc_list_source(other, {"ref": r3["ref"]}).get("error")
        == "no access to this item",
        "listing in order A gives nothing in order B")
+    pc.set_recipients("source", r3["doc_id"], "ord-20261030-009",
+                      ["pd_marty"], "sales_sam", kind="full", root=tmp2)
+    text4, meta4 = pc.prompt_chunks_for("pd_marty", "ord-20261030-009",
+                                        [r3["ref"]],
+                                        os.path.join(tmp2, "runs"))
+    ok(meta4["included"] == [r3["ref"]]
+       and "Body tools here." in text4
+       and "(ref: %s#s1.1)" % r3["ref"] in text4,
+       "full row gets the full text in the prompt")
+    text5, meta5 = pc.prompt_chunks_for("board_penn", "ord-20261030-009",
+                                        [r3["ref"]],
+                                        os.path.join(tmp2, "runs"))
+    ok(meta5["included"] == [r3["ref"]] and pcp in text5
+       and "Open only your listed parts" in text5
+       and "Body tools here." not in text5,
+       "parts row gets listed parts only")
 finally:
     pc.ROOT_OVERRIDE = None
     shutil.rmtree(tmp2, ignore_errors=True)
