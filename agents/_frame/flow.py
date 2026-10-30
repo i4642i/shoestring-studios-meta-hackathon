@@ -95,7 +95,12 @@ def load_catalog():
     categories = [{"name": n, "version": v["version"],
                    "description": v["description"]}
                   for n, v in sorted(reg.items())]
-    return {"agents": agents, "categories": categories}
+    pcs = [{"id": "pc_" + name, "pc": name, "title": name.title() + " PC",
+            "color": color}
+           for name, color in (("source", "#4dabf7"),
+                               ("theory", "#9775fa"),
+                               ("article", "#66d9e8"))]
+    return {"agents": agents, "categories": categories, "pcs": pcs}
 
 
 def validate_flow(flow, catalog=None):
@@ -109,6 +114,11 @@ def validate_flow(flow, catalog=None):
     they cannot run. Same category from different senders is allowed;
     every received category keeps its sender label (Q4). Flows saved
     with the retired order node fail cleanly (no such agent).
+    PC nodes ({"id": ..., "pc": "source"|"theory"|"article"}) are shared
+    stores, not runners: they need no agent.json, no lines, and never
+    join topo order, cycles, or solid lines. Dotted pc_lines each link
+    exactly one PC with one crew node and carry a short label. The
+    final node takes only the storyboard + narration categories.
     """
     def err(message, line=None, node=None):
         out = {"message": message}
@@ -126,6 +136,16 @@ def validate_flow(flow, catalog=None):
              if isinstance(n, dict)}
     if FINAL_NODE not in nodes:
         errors.append(err("flow needs a 'final' node", node=FINAL_NODE))
+    pcs = set()
+    for nid, ndef in nodes.items():
+        pcname = ndef.get("pc")
+        if pcname is None:
+            continue
+        if pcname not in ("source", "theory", "article"):
+            errors.append(err("node %r has unknown pc %r" % (nid, pcname),
+                              node=nid))
+        else:
+            pcs.add(nid)
     lines = flow.get("lines", [])
     if not isinstance(lines, list):
         return errors + [err("lines must be an array")]
@@ -140,6 +160,10 @@ def validate_flow(flow, catalog=None):
             errors.append(err("unknown sender %r" % (src,), line=lid))
         if dst not in nodes:
             errors.append(err("unknown receiver %r" % (dst,), line=lid))
+        if src in pcs or dst in pcs:
+            errors.append(err("solid line touches a PC node (use a dotted "
+                              "pc_line for %r -> %r)" % (src, dst),
+                              line=lid))
         if src == FINAL_NODE:
             errors.append(err("final never sends", line=lid))
         if (src, dst) in pairs:
@@ -158,13 +182,57 @@ def validate_flow(flow, catalog=None):
                 if c not in reg:
                     errors.append(err("unknown category %r" % (c,),
                                       line=lid))
+    dotted = flow.get("pc_lines", [])
+    if not isinstance(dotted, list):
+        errors.append(err("pc_lines must be an array"))
+        dotted = []
+    seen_ids = {ln.get("id") for ln in lines
+                if isinstance(ln, dict)}
+    for pl in dotted:
+        if not isinstance(pl, dict):
+            errors.append(err("pc_line must be an object"))
+            continue
+        pid = pl.get("id")
+        if pid in seen_ids:
+            errors.append(err("duplicate line id %r" % (pid,), line=pid))
+        seen_ids.add(pid)
+        src, dst = pl.get("from"), pl.get("to")
+        if src not in nodes:
+            errors.append(err("unknown sender %r" % (src,), line=pid))
+        if dst not in nodes:
+            errors.append(err("unknown receiver %r" % (dst,), line=pid))
+        if (src in pcs) == (dst in pcs):
+            errors.append(err("pc_line links exactly one PC with one crew "
+                              "node (%r -> %r)" % (src, dst), line=pid))
+        label = pl.get("label", "")
+        if not isinstance(label, str) or not label.strip():
+            errors.append(err("pc_line needs a short label", line=pid))
+        elif len(label) > 64:
+            errors.append(err("pc_line label over 64 chars", line=pid))
     if errors:
         return errors
     incoming = {}
     for ln in lines:
         incoming.setdefault(ln["to"], []).append(ln)
+    for ln in incoming.get(FINAL_NODE, []):
+        cats = ln.get("categories", "*")
+        if cats == "*":
+            try:
+                sender = _load_agent(ln["from"])
+            except (OSError, ValueError):
+                continue
+            sflow = sender.get("flow", {}) \
+                if isinstance(sender, dict) else {}
+            cats = [o.get("category") for o in sflow.get("outputs", [])
+                    if isinstance(o, dict)]
+        bad = [c for c in cats if c not in ("storyboard", "narration")]
+        if bad:
+            errors.append(err("final takes only storyboard + narration "
+                              "(%r carries %s)" % (ln["from"],
+                                                   ", ".join(bad)),
+                              line=ln.get("id")))
     for nid in nodes:
-        if nid == FINAL_NODE:
+        if nid == FINAL_NODE or nid in pcs:
             continue
         if _is_draft(nid):
             if nid in incoming or any(ln["from"] == nid for ln in lines):
@@ -237,8 +305,12 @@ def validate_flow(flow, catalog=None):
 
 
 def topo_order(flow):
-    """Node ids runnable-first (starters first, final last)."""
-    nodes = [n["id"] for n in flow.get("nodes", []) if "id" in n]
+    """Node ids runnable-first (starters first, final last).
+
+    PC nodes are shared stores, not runners: they never join the order.
+    """
+    nodes = [n["id"] for n in flow.get("nodes", [])
+             if "id" in n and not n.get("pc")]
     lines = [ln for ln in flow.get("lines", []) if isinstance(ln, dict)]
     after = {n: set() for n in nodes}
     for ln in lines:

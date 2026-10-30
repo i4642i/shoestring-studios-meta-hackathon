@@ -508,7 +508,13 @@
   padding: 0 4px; border-radius: 4px; }
 .fl-line { fill: none; stroke: #6b7280; stroke-width: 2; }
 .fl-pcline { fill: none; stroke: #9ca3af; stroke-width: 1.5; stroke-dasharray: 5 4; }
-.fl-pc { position: absolute; z-index: 4; font-size: 10px; font-weight: 800; letter-spacing: 1px; color: #4b5563; background: #fff; border: 1.5px dashed #9ca3af; border-radius: 8px; padding: 4px 8px; }
+.fl-pcline.bad { stroke: #dc2626; }
+.fl-pcline.sel { stroke: var(--accent); }
+.fl-pclabel { font-size: 11px; font-weight: 600; fill: #4b5563;
+  pointer-events: none; paint-order: stroke; stroke: #f7f9fc;
+  stroke-width: 4px; }
+.fl-node.pcnode { border-style: dashed; border-color: #6b7280;
+  background: #f3f4f6; }
 .fl-line.bad { stroke: #dc2626; }
 .fl-line.sel { stroke: var(--accent); }
 .fl-hit { fill: none; stroke: rgba(0,0,0,0); stroke-width: 16; cursor: pointer; }
@@ -548,7 +554,7 @@
 <div class="page" id="p-flow">
   <div class="card">
     <h2>FLOW</h2>
-    <p class="hint">How data moves between crew. Drag a green port to a blue port to connect. Click a line to edit it. Lines carry result categories; agents never know where results go.</p>
+    <p class="hint">How data moves between crew. Drag a green port to a blue port to connect. Click a line to edit it. Lines carry result categories; agents never know where results go. Dotted lines show PC reads, picks and lists.</p>
     <div class="addform">
       <select id="fl-list" aria-label="Flow"></select>
       <input id="fl-id" maxlength="32" placeholder="Flow id" aria-label="Flow id">
@@ -1705,7 +1711,16 @@
     function titleOf(id) {
       if (id === "final") return ["Final storyboard",
         "collects Penn storyboard + Wren narration"];
+      const n = (S.flow.nodes || []).find(x => x.id === id);
+      if (n && n.pc) {
+        const p = (S.catalog.pcs || []).find(x => x.id === id);
+        return [p ? p.title : (n.pc + " PC"),
+          "shared store \u00b7 dotted lines only"];
+      }
       const a = agentOf(id);
+      if (id === "pd_marty")
+        return [a ? a.name : id,
+          "Storyboard draft (concept + structure)"];
       return [a ? a.name : id, a ? a.title : "unknown agent"];
     }
     function pos(id) {
@@ -1716,7 +1731,8 @@
     }
     function blankFlow() {
       return { id: "", name: "", nodes: [{ id: "sales_sam" }, { id: "final" }],
-        lines: [], positions: { sales_sam: [40, 200], final: [940, 200] } };
+        lines: [], pc_lines: [],
+        positions: { sales_sam: [40, 200], final: [940, 200] } };
     }
 
     function render() {
@@ -1728,6 +1744,7 @@
         div.className = "fl-node" +
           (S.selNode === n.id ? " sel" : "") +
           (S.badNodes[n.id] ? " bad" : "") +
+          (n.pc ? " pcnode" : "") +
           ((agentOf(n.id) || {}).draft ? " draft" : "");
         div.style.left = p.x + "px";
         div.style.top = p.y + "px";
@@ -1740,7 +1757,9 @@
         if (n.temp)
           inner += '<div class="sub" title="' + esc(n.temp) + '">' +
             "temporary inputs</div>";
-        if (n.id !== "final") {
+        if (n.pc) {
+          inner += '<div class="req">not a runner: dotted lines only</div>';
+        } else if (n.id !== "final") {
           const a = agentOf(n.id);
           const reqs = (((a && a.flow) || {}).inputs || [])
             .map(i => esc(i.category) + (i.required ? "*" : "")).join(", ");
@@ -1748,10 +1767,12 @@
           if (a && a.draft)
             inner += '<div class="req"><span class="dtag">DRAFT</span>cannot run yet</div>';
           if (n.id === "explain_cleo" || n.id === "case_rex" ||
-              n.id === "pd_marty" || n.id === "plan_ash")
+              n.id === "pd_marty" || n.id === "plan_ash" ||
+              n.id === "board_penn" || n.id === "voice_wren")
             inner += '<div class="req"><a href="#" data-pre="' + esc(n.id) +
               '">Preview start prompt</a></div>';
         }
+        if (!n.pc) {
           inner += '<div class="fl-port in" data-in="' + esc(n.id) + '"></div>';
         const outs = outputsOf(n.id);
         outs.forEach((o, i) => {
@@ -1761,6 +1782,7 @@
             ' title="' + esc(o.description || o.category) + '"><span>' +
             esc(o.category) + "</span></div>";
         });
+        }
         div.innerHTML = inner;
         nodesEl.appendChild(div);
       });
@@ -1807,12 +1829,6 @@
       const s = c === "*" ? "*" : (c || []).join(",");
       return s.length > 20 ? s.slice(0, 19) + "…" : s;
     }
-    const PC_DEFS = [
-      { id: "source", label: "SOURCE PC", tool: "pc_read_source", x: 120 },
-      { id: "theory", label: "THEORY PC", tool: "pc_read_theory", x: 300 },
-      { id: "article", label: "ARTICLE PC", tool: "pc_read_article",
-        x: 480 },
-    ];
     function nodeCenter(id) {
       const el = nodesEl.querySelector('[data-n="' + id + '"]');
       if (!el) return null;
@@ -1821,35 +1837,39 @@
       return { x: r.left - c.left + r.width / 2,
                y: r.top - c.top + r.height / 2, h: r.height };
     }
-    function drawPCLinks() {
-      nodesEl.querySelectorAll("[data-pc]").forEach(b => b.remove());
+    function pcLabel(pl) {
+      const s = pl.label || "";
+      return s.length > 24 ? s.slice(0, 23) + "\u2026" : s;
+    }
+    function drawDotted() {
       const NS = "http://www.w3.org/2000/svg";
-      PC_DEFS.forEach(pc => {
-        const b = document.createElement("div");
-        b.className = "fl-pc";
-        b.dataset.pc = pc.id;
-        b.textContent = pc.label;
-        b.style.left = pc.x + "px";
-        b.style.top = "446px";
-        nodesEl.appendChild(b);
-        const r = b.getBoundingClientRect();
-        const c = canvas.getBoundingClientRect();
-        const bx = r.left - c.left + r.width / 2, by = r.top - c.top;
-        S.flow.nodes.forEach(n => {
-          const a = agentOf(n.id);
-          if (!a || !(a.tools || []).includes(pc.tool)) return;
-          const t = nodeCenter(n.id);
-          if (!t) return;
-          const p = document.createElementNS(NS, "path");
-          p.setAttribute("d", linePath(bx, by, t.x, t.y + t.h / 2));
-          p.setAttribute("class", "fl-pcline");
-          svg.appendChild(p);
-        });
+      (S.flow.pc_lines || []).forEach(pl => {
+        const a = nodeCenter(pl.from), b = nodeCenter(pl.to);
+        if (!a || !b) return;
+        const d = linePath(a.x, a.y, b.x, b.y);
+        const p = document.createElementNS(NS, "path");
+        p.setAttribute("d", d);
+        p.setAttribute("class", "fl-pcline" +
+          (S.selLine === pl.id ? " sel" : "") +
+          (S.badLines[pl.id] ? " bad" : ""));
+        svg.appendChild(p);
+        const hit = document.createElementNS(NS, "path");
+        hit.setAttribute("d", d);
+        hit.setAttribute("class", "fl-hit");
+        hit.onclick = (e) => { e.stopPropagation(); openPcPop(pl, e); };
+        svg.appendChild(hit);
+        const t = document.createElementNS(NS, "text");
+        t.setAttribute("x", (a.x + b.x) / 2);
+        t.setAttribute("y", (a.y + b.y) / 2 - 6);
+        t.setAttribute("class", "fl-pclabel");
+        t.setAttribute("text-anchor", "middle");
+        t.textContent = pcLabel(pl);
+        svg.appendChild(t);
       });
     }
     function drawLines() {
       drawLinesSolid();
-      drawPCLinks();
+      drawDotted();
     }
     function drawLinesSolid() {
       while (svg.firstChild) svg.removeChild(svg.firstChild);
@@ -1930,10 +1950,46 @@
         });
         list.appendChild(row);
       });
+      const pch = document.createElement("h4");
+      pch.textContent = "SHARED PCS";
+      pch.style.marginTop = "10px";
+      list.appendChild(pch);
+      (S.catalog.pcs || []).forEach(p => {
+        const onCanvas = S.flow.nodes.some(n => n.id === p.id);
+        const row = document.createElement("div");
+        row.className = "fl-member" + (onCanvas ? " on" : "");
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        dot.style.background = p.color || "#9ca3af";
+        const who = document.createElement("span");
+        who.className = "who";
+        const nm = document.createElement("span");
+        nm.className = "nm";
+        nm.textContent = p.title;
+        const ti = document.createElement("span");
+        ti.className = "ti";
+        ti.textContent = "shared store";
+        who.appendChild(nm);
+        who.appendChild(ti);
+        row.appendChild(dot);
+        row.appendChild(who);
+        const b = document.createElement("button");
+        b.textContent = "Add";
+        b.disabled = onCanvas;
+        b.title = onCanvas ? "On canvas" : "Add " + p.title;
+        b.onclick = (e) => {
+          e.stopPropagation();
+          addAgent(p.id, null, null, p.pc);
+        };
+        row.appendChild(b);
+        list.appendChild(row);
+      });
     }
-    function addAgent(id, x, y) {
+    function addAgent(id, x, y, pc) {
       if (S.flow.nodes.some(n => n.id === id)) return;
-      S.flow.nodes.push({ id: id });
+      const node = { id: id };
+      if (pc) node.pc = pc;
+      S.flow.nodes.push(node);
       if (x == null || y == null) {
         const k = S.flow.nodes.length;
         x = 80 + (k % 4) * 250;
@@ -1949,6 +2005,8 @@
       S.flow.nodes = S.flow.nodes.filter(n => n.id !== id);
       S.flow.lines = S.flow.lines.filter(
         ln => ln.from !== id && ln.to !== id);
+      S.flow.pc_lines = (S.flow.pc_lines || []).filter(
+        ln => ln.from !== id && ln.to !== id);
       delete S.flow.positions[id];
       if (S.selNode === id) S.selNode = null;
       S.selLine = null;
@@ -1961,6 +2019,7 @@
       let k = 1;
       const have = {};
       S.flow.lines.forEach(ln => { have[ln.id] = 1; });
+      (S.flow.pc_lines || []).forEach(ln => { have[ln.id] = 1; });
       while (have["l" + k]) k++;
       return "l" + k;
     }
@@ -2009,6 +2068,27 @@
       }; });
       pop.querySelector("[data-popdel]").onclick = () => {
         S.flow.lines = S.flow.lines.filter(l => l.id !== ln.id);
+        S.selLine = null;
+        hidePop();
+        render();
+        scheduleValidate();
+      };
+      pop.querySelector("[data-popclose]").onclick = hidePop;
+    }
+    function openPcPop(pl, e) {
+      S.selLine = pl.id;
+      drawLines();
+      pop.innerHTML = "<b>" + esc(pl.from) + " \u2192 " + esc(pl.to) +
+        "</b><br>" + esc(pl.label || "") +
+        "<br><button data-popdel>DELETE LINE</button> " +
+        "<button data-popclose>CLOSE</button>";
+      const c = canvas.getBoundingClientRect();
+      pop.style.display = "block";
+      pop.style.left = Math.min(e.clientX - c.left + 8, 900) + "px";
+      pop.style.top = Math.max(e.clientY - c.top - 10, 0) + "px";
+      pop.querySelector("[data-popdel]").onclick = () => {
+        S.flow.pc_lines = (S.flow.pc_lines || [])
+          .filter(l => l.id !== pl.id);
         S.selLine = null;
         hidePop();
         render();
@@ -2165,6 +2245,7 @@
         const f = await api.get("api/flows/" + encodeURIComponent(id));
         S.flow = { id: f.id, name: f.name || f.id,
           nodes: f.nodes || [], lines: f.lines || [],
+          pc_lines: f.pc_lines || [],
           positions: f.positions || {} };
         document.getElementById("fl-id").value = f.id;
         document.getElementById("fl-name").value = f.name || f.id;
@@ -2187,6 +2268,7 @@
           document.getElementById("fl-name").value.trim() || id;
         await api.send("POST", "api/flows/" + encodeURIComponent(id), {
           name: S.flow.name, nodes: S.flow.nodes, lines: S.flow.lines,
+          pc_lines: S.flow.pc_lines || [],
           positions: S.flow.positions });
         await loadList();
         document.getElementById("fl-list").value = id;

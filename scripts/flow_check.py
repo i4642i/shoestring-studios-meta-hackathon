@@ -68,6 +68,9 @@ else:
 ok(bool(_stamp) and bool(_head) and (_stamp == _head or _anc),
    "page stamp tracks served code")
 ok("order" not in cat, "catalog has no order node")
+ok([p["id"] for p in cat.get("pcs", [])]
+   == ["pc_source", "pc_theory", "pc_article"],
+   "catalog lists the three PCs")
 samdecl = next(a for a in cat["agents"] if a["id"] == "sales_sam")
 ok(samdecl["flow"]["inputs"] == []
    and sorted(o["category"] for o in samdecl["flow"]["outputs"])
@@ -76,13 +79,23 @@ ok(samdecl["flow"]["inputs"] == []
 
 dflt = flow.load_flow("default")
 ok([n["id"] for n in dflt["nodes"]]
-   == ["sales_sam", "pd_marty", "explain_cleo", "case_rex", "final"]
+   == ["sales_sam", "pd_marty", "explain_cleo", "case_rex", "plan_ash",
+       "board_penn", "voice_wren", "final", "pc_source", "pc_theory",
+       "pc_article"]
    and dflt["name"] == "Order to storyboard",
-   "default flow is sam->marty->cleo,rex->final storyboard")
-ok(next(n for n in dflt["nodes"] if n["id"] == "final").get("temp")
+   "default flow is sam->marty->cleo,rex->ash->penn,wren->final")
+ok(not next(n for n in dflt["nodes"]
+            if n["id"] == "final").get("temp")
    and sorted(ln["id"] for ln in dflt["lines"])
-   == ["l2", "l3", "l4", "l5", "l6", "l8", "l9"],
-   "final marked temporary inputs, 7 lines")
+   == ["c1", "c10", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9"]
+   and len(dflt.get("pc_lines", [])) == 29,
+   "final takes storyboard+narration, 10 solid + 29 dotted")
+ok(all(isinstance(n.get("pc"), str)
+       for n in dflt["nodes"] if n["id"].startswith("pc_")),
+   "PC nodes carry their pc name")
+ok(all(n.get("pc") for n in dflt["nodes"]
+       if n["id"] in ("pc_source", "pc_theory", "pc_article")),
+   "all three PCs are on the canvas")
 try:
     flow.load_flow("../x")
     ok(False, "bad flow id raises")
@@ -113,12 +126,12 @@ ok(any("no incoming line" in e["message"] for e in errs)
    "agent without input + node id")
 starter = {"nodes": [{"id": "sales_sam"}, {"id": "final"}],
            "lines": [{"id": "l1", "from": "sales_sam", "to": "final",
-                      "categories": ["request"]}],
+                      "categories": ["storyboard"]}],
            "positions": {}}
 ok(flow.validate_flow(starter) == [], "sam starts without lines")
 bad = json.loads(json.dumps(dflt))
 for ln in bad["lines"]:
-    if ln["id"] == "l3":
+    if ln["id"] == "c3":
         ln["categories"] = ["structure"]
 ok(any("misses required input 'concept'" in e["message"]
        for e in flow.validate_flow(bad)), "missing required input")
@@ -129,7 +142,7 @@ cyc = {"nodes": [{"id": "sales_sam"},
                  {"id": "l3", "from": "pd_marty", "to": "sales_sam",
                   "categories": ["structure"]},
                  {"id": "l4", "from": "pd_marty", "to": "final",
-                  "categories": ["structure"]}],
+                  "categories": ["storyboard"]}],
        "positions": {}}
 ok(any(e["message"].startswith("cycle:")
        for e in flow.validate_flow(cyc)), "cycle caught")
@@ -150,24 +163,81 @@ ok(any("has no agent.json" in e["message"]
        for e in flow.validate_flow(old)),
    "retired order node fails clean")
 multi = {"nodes": [{"id": "sales_sam"}, {"id": "pd_marty"},
-                   {"id": "explain_cleo"}, {"id": "final"}],
+                   {"id": "explain_cleo"}, {"id": "case_rex"},
+                   {"id": "plan_ash"}, {"id": "board_penn"},
+                   {"id": "final"}],
          "lines": [{"id": "l1", "from": "sales_sam", "to": "pd_marty",
                     "categories": ["request", "source"]},
                    {"id": "l2", "from": "pd_marty", "to": "explain_cleo",
                     "categories": ["concept", "structure"]},
                    {"id": "l3", "from": "sales_sam", "to": "explain_cleo",
                     "categories": ["source"]},
-                   {"id": "l4", "from": "explain_cleo", "to": "final",
-                    "categories": ["concepts"]}],
+                   {"id": "l9", "from": "pd_marty", "to": "case_rex",
+                    "categories": ["concept", "structure"]},
+                   {"id": "l4", "from": "pd_marty", "to": "plan_ash",
+                    "categories": ["concept", "structure"]},
+                   {"id": "l7", "from": "explain_cleo", "to": "plan_ash",
+                    "categories": ["concepts"]},
+                   {"id": "l8", "from": "case_rex", "to": "plan_ash",
+                    "categories": ["cases"]},
+                   {"id": "l6", "from": "plan_ash", "to": "board_penn",
+                    "categories": ["storyboard_draft"]},
+                   {"id": "l5", "from": "board_penn", "to": "final",
+                    "categories": ["storyboard"]}],
          "positions": {}}
 ok(flow.validate_flow(multi) == [], "multi-sender intake validates")
+bad = json.loads(json.dumps(dflt))
+bad["lines"].append({"id": "lx", "from": "explain_cleo", "to": "final",
+                      "categories": ["concepts"]})
+ok(any("final takes only" in e["message"]
+       for e in flow.validate_flow(bad)),
+   "final rejects non-storyboard input")
+bad = {"nodes": [{"id": "sales_sam"}, {"id": "pd_marty"},
+                 {"id": "pc_source", "pc": "source"},
+                 {"id": "final"}],
+       "lines": [{"id": "l1", "from": "sales_sam", "to": "pc_source",
+                  "categories": ["request"]}],
+       "pc_lines": [], "positions": {}}
+ok(any("touches a PC" in e["message"]
+       for e in flow.validate_flow(bad)),
+   "solid line to a PC rejected")
+bad = json.loads(json.dumps(dflt))
+bad["pc_lines"].append({"id": "dx", "from": "sales_sam",
+                        "to": "pd_marty", "label": "crew to crew"})
+ok(any("exactly one PC" in e["message"]
+       for e in flow.validate_flow(bad)),
+   "dotted line between crew rejected")
+bad = json.loads(json.dumps(dflt))
+bad["nodes"].append({"id": "pc_x", "pc": "warehouse"})
+bad["pc_lines"].append({"id": "dx", "from": "sales_sam",
+                        "to": "pc_x", "label": "bad pc"})
+ok(any("unknown pc" in e["message"]
+       for e in flow.validate_flow(bad)),
+   "unknown pc name rejected")
+bad = json.loads(json.dumps(dflt))
+bad["pc_lines"].append({"id": "c1", "from": "sales_sam",
+                        "to": "pc_source", "label": "dup id"})
+ok(any("duplicate line id" in e["message"]
+       for e in flow.validate_flow(bad)),
+   "dotted id must not clash with solid ids")
+pcnodes = {n["id"] for n in dflt["nodes"] if n.get("pc")}
+ok(all((pl["from"] in pcnodes) != (pl["to"] in pcnodes)
+       and pl.get("label", "").strip()
+       and len(pl["label"]) <= 64
+       for pl in dflt["pc_lines"]),
+   "every default dotted line links one PC, labelled")
+ok(all(pl["from"] not in pcnodes and pl["to"] not in pcnodes
+       for pl in dflt["lines"]),
+   "no solid line touches a PC")
 seq = flow.topo_order(dflt)
 ok(seq.index("sales_sam") < seq.index("pd_marty")
-   < seq.index("explain_cleo")
-   < seq.index("final") == len(seq) - 1
+   < seq.index("explain_cleo") < seq.index("plan_ash")
+   < seq.index("board_penn") < seq.index("final") == len(seq) - 1
    and seq.index("pd_marty") < seq.index("case_rex")
-   < seq.index("final"),
-   "topo order respects lines, final last")
+   < seq.index("plan_ash") < seq.index("voice_wren")
+   < seq.index("final")
+   and not (pcnodes & set(seq)),
+   "topo order respects lines, final last, PCs excluded")
 ok(flow.new_run_id().startswith("flow-"), "run id shape")
 
 # ---- transfer unit ----
@@ -221,12 +291,18 @@ SAM_SOURCE = {"ref": "pc://source/abc123abc123", "title": "s",
               "chars": 24, "sections": 2,
               "recipients": [{"agent": "pd_marty", "order_id": "o9",
                               "set_by": "sales_sam", "at": "t"}]}
+DRAFT = {"total_s": 60, "scenes": [], "unused_picks": []}
+BOARD = {"total_s": 60, "scenes": [], "coverage": []}
+LINES = {"total_s": 60, "scenes": [], "total_words": 0}
 PAY = {"sales_sam": ("sales_sam", {"request": REQ,
                                    "source": SAM_SOURCE}),
        "pd_marty": ("pd_marty", {"concept": CONCEPT,
                                         "structure": STRUCT}),
        "explain_cleo": ("explain_cleo", {"concepts": CONCEPTS}),
-       "case_rex": ("case_rex", {"cases": CASES})}
+       "case_rex": ("case_rex", {"cases": CASES}),
+       "plan_ash": ("plan_ash", {"storyboard_draft": DRAFT}),
+       "board_penn": ("board_penn", {"storyboard": BOARD}),
+       "voice_wren": ("voice_wren", {"narration": LINES})}
 
 
 def stub(agent_dir, run_dir, brief, input_md):
@@ -271,6 +347,18 @@ ok(cleo["status"] == "checked"
 rex = results.load_result(os.path.join(rdir, "case_rex", "result.json"))
 ok(rex["status"] == "checked"
    and rex["categories"]["cases"]["version"] == 1, "rex checked")
+ash = results.load_result(os.path.join(rdir, "plan_ash", "result.json"))
+ok(ash["status"] == "checked"
+   and ash["categories"]["storyboard_draft"]["version"] == 1,
+   "ash checked")
+penn = results.load_result(os.path.join(rdir, "board_penn",
+                                        "result.json"))
+ok(penn["status"] == "checked"
+   and penn["categories"]["storyboard"]["version"] == 1, "penn checked")
+wren = results.load_result(os.path.join(rdir, "voice_wren",
+                                        "result.json"))
+ok(wren["status"] == "checked"
+   and wren["categories"]["narration"]["version"] == 1, "wren checked")
 ssrc = sam["categories"]["source"]
 ok(ssrc["data"]["ref"] == "pc://source/abc123abc123"
    and ssrc["data"]["sections"] == 2
@@ -290,27 +378,29 @@ mani = json.load(open(os.path.join(rdir, "pd_marty", "INPUTS.json"),
                       encoding="utf-8"))
 ok(mani["received"] == [{"sender": "sales_sam", "category": "request",
                          "version": 1,
-                         "file": "received.sales_sam.request.json"},
-                        {"sender": "sales_sam", "category": "source",
-                         "version": 3,
-                         "file": "received.sales_sam.source.json"}],
-   "marty manifest has request + source")
+                         "file": "received.sales_sam.request.json"}],
+   "marty manifest has request only (source via PC)")
 cmani = json.load(open(os.path.join(rdir, "explain_cleo", "INPUTS.json"),
                       encoding="utf-8"))
 ok([(r["sender"], r["category"], r["version"]) for r in
     cmani["received"]] == [("pd_marty", "concept", 1),
-                           ("pd_marty", "structure", 3),
-                           ("sales_sam", "source", 3)],
-   "cleo manifest has concept + structure + source")
+                           ("pd_marty", "structure", 3)],
+   "cleo manifest has concept + structure")
+amani = json.load(open(os.path.join(rdir, "plan_ash", "INPUTS.json"),
+                      encoding="utf-8"))
+ok([(r["sender"], r["category"]) for r in amani["received"]]
+   == [("pd_marty", "concept"), ("pd_marty", "structure"),
+       ("explain_cleo", "concepts"), ("case_rex", "cases")],
+   "ash manifest has concept + structure + reports")
 evs = [json.loads(ln) for ln in
        open(os.path.join(rdir, "events.jsonl"), encoding="utf-8")]
 kinds = [e["ev"] for e in evs]
 ok(kinds[0] == "flow_start" and kinds[-1] == "flow_done"
-   and "order_ready" not in kinds and kinds.count("line") == 7
+   and "order_ready" not in kinds and kinds.count("line") == 10
    and "final_ready" in kinds, "event trail complete")
-line2 = next(e for e in evs if e.get("line") == "l2")
-ok(sorted(line2["categories"]) == ["request", "source"]
-   and line2["bytes"] > 0, "line log shows sent categories")
+line1 = next(e for e in evs if e.get("line") == "c1")
+ok(line1["categories"] == ["request"]
+   and line1["bytes"] > 0, "line log shows sent categories")
 
 calls = []
 

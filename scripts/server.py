@@ -850,6 +850,7 @@ class Handler(BaseHTTPRequestHandler):
         flow_obj = {"id": fid, "name": body.get("name", fid),
                     "nodes": body.get("nodes", []),
                     "lines": body.get("lines", []),
+                    "pc_lines": body.get("pc_lines", []),
                     "positions": body.get("positions", {})}
         errs = flows.validate_flow(flow_obj)
         if errs:
