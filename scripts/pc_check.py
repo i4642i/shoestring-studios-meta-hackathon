@@ -82,6 +82,14 @@ TF = pc.clean_pages(["Body one.\nBARS 25", "Body two.\nBARS 27",
                      "Body three.\nBARS 29"])
 ok(not any("BARS" in p["text"] for p in TF),
    "trailing-number footers removed")
+FEW = ["Top %d.\nBody %d." % (i, i) for i in range(6)] + \
+    ["BARS 25\nBody six.", "BARS 27\nBody seven."]
+ok(not any("BARS" in p["text"] for p in pc.clean_pages(FEW)),
+   "short-lived numbered head stripped at 2 repeats")
+PF = ["Top %d.\nBody %d." % (i, i) for i in range(6)] + \
+    ["Same words\nBody six.", "Same words\nBody seven."]
+ok(sum("Same words" in p["text"] for p in pc.clean_pages(PF)) == 2,
+   "plain edge line kept below a third")
 ok(pc._norm_key("2.1 MOTIVATION") == "2.1 motivation"
    and pc._norm_key("BARS 25") == "bars",
    "norm key keeps dotted numbers, drops page numbers")

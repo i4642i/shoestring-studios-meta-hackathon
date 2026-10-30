@@ -98,18 +98,29 @@ def _strip_zones(page_lines):
     a candidate; a candidate on many pages (>= a third, at least 2)
     is removed everywhere it sits in a zone. The bar is a third, not
     a half, because recto/verso heads alternate and each variant sits
-    on only half the pages. Bare page numbers in zones go
+    on only half the pages. Numbered edge lines ("28 HEADS", "BARS
+    25") need only 2 repeats: body text never looks like that, and
+    subsection heads live on few pages. Bare page numbers in zones go
     unconditionally."""
     counts = {}
+    numbered = set()
     for lines in page_lines:
         lead = [ln for ln in lines if ln[0].strip()]
         if not lead:
             continue
-        for key in {_norm_key(lead[0][0]), _norm_key(lead[-1][0])}:
-            if len(key) >= 2:
-                counts[key] = counts.get(key, 0) + 1
-    need = max(2, len(page_lines) // 3) if len(page_lines) >= 2 else 10 ** 9
-    repeats = {k for k, n in counts.items() if n >= need}
+        for raw in {lead[0][0], lead[-1][0]}:
+            key = _norm_key(raw)
+            if len(key) < 2:
+                continue
+            counts[key] = counts.get(key, 0) + 1
+            if key != " ".join(raw.split()).lower():
+                numbered.add(key)
+    if len(page_lines) >= 2:
+        need = max(2, len(page_lines) // 3)
+    else:
+        need = 10 ** 9
+    repeats = {k for k, n in counts.items()
+               if n >= need or (k in numbered and n >= 2)}
     out = []
     for lines in page_lines:
         keep = []
