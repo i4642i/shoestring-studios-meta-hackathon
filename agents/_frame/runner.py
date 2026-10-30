@@ -106,12 +106,27 @@ def _chat(model, messages, tools, max_tokens=None, timeout=300):
 
 def _retry_writer(agent, messages, ctx, play, writer, writer_arg,
                   step, emit, total, errors):
-    """One tools-off correction attempt. True when the run output is saved."""
+    """One tools-off correction attempt. True when the run output is saved.
+
+    Sends a slim context (persona + the failed call + the errors), not
+    the full history: the failed JSON is all the model must repair."""
+    with open(os.path.join(ctx["agent_dir"], "persona.md"),
+              encoding="utf-8") as f:
+        persona = f.read()
+    last = None
+    for m in reversed(messages):
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            last = m
+            break
     ask = ("Your last %s call failed validation:\n%s\n"
            "Reply with ONLY the corrected, complete JSON object. "
            "No explanation, no tool calls."
            % (writer, "\n".join("- " + e for e in errors)))
-    resp = _chat(agent["model"], messages + [{"role": "user", "content": ask}], None)
+    slim = [{"role": "system", "content": persona}]
+    if last is not None:
+        slim.append(last)
+    slim.append({"role": "user", "content": ask})
+    resp = _chat(agent["model"], slim, None)
     usage = resp.get("usage", {})
     total["prompt"] += usage.get("prompt_tokens", 0)
     total["completion"] += usage.get("completion_tokens", 0)
@@ -208,7 +223,9 @@ def run(agent_dir, run_dir, brief, input_md):
               "tool_calls": [c["function"]["name"] for c in calls],
               "usage": usage})
         if not calls:
+            _obj, verdict = parse_json_answer(msg.get("content") or "")
             emit({"ev": "run_fail", "reason": "model stopped without tool call",
+                  "parse": verdict,
                   "text": (msg.get("content") or "")[:300]})
             return {"ok": False, "events": events, "usage": total}
         finished = False
@@ -254,11 +271,20 @@ def run(agent_dir, run_dir, brief, input_md):
                     emit({"ev": "run_fail", "reason": "writer tool closed"})
                     return {"ok": False, "events": events, "usage": total}
             if (name == writer and not result.get("ok")
-                    and "errors" in result and retries_left > 0):
-                retries_left -= 1
-                if _retry_writer(agent, messages, ctx, play, writer,
-                                 writer_arg, step, emit, total, result["errors"]):
-                    finished = True
+                    and "errors" in result):
+                if retries_left > 0:
+                    retries_left -= 1
+                    if _retry_writer(agent, messages, ctx, play, writer,
+                                     writer_arg, step, emit, total,
+                                     result["errors"]):
+                        finished = True
+                if not finished and retries_left == 0:
+                    emit({"ev": "run_fail",
+                          "reason": "writer validation failed after "
+                                    "%d retries; stopping" % MAX_JSON_RETRIES,
+                          "errors": result.get("errors", []),
+                          "usage": total})
+                    return {"ok": False, "events": events, "usage": total}
         if finished:
             emit({"ev": "run_done", "usage": total})
             return {"ok": True, "events": events, "usage": total}

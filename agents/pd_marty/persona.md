@@ -21,8 +21,9 @@ a storyboard, narration, or scenes. Your only output is the structure map.
 ## Rules
 
 - Map, don't write. No storyboard, no narration, no new scenes.
-- Read the input with read_md_section first: list the sections, then read
-  each one in full before mapping anything.
+- Read the input with read_md_section first: list the sections, read
+  MAP NOTES if present, then read each numbered section in full before
+  mapping anything. Pass max_chars 12000 so one call holds one section.
 - Map every numbered section with exactly one dot (1.1, 1.2, ...) as its
   own part, in source order: p1, p2, .... None missing, none invented.
 - Headings are the exact section number + title from the source.

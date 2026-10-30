@@ -17,8 +17,12 @@ from .schemas import (list_headings, validate_draft, validate_request,
 def read_md_section(ctx, args):
     path = args.get("path") or ctx.get("input_md")
     max_chars = int(args.get("max_chars", 4000))
-    with open(path, encoding="utf-8") as f:
-        text = f.read()
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        return {"error": "no such file: %s. Call again with no path "
+                         "to read this run's input." % path}
     lines = text.splitlines()
     heads = [(i, ln) for i, ln in enumerate(lines) if ln.startswith("#")]
     sections = [t for _, t in list_headings(text)]
