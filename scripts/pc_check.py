@@ -86,8 +86,10 @@ FEW = ["Top %d.\nBody %d." % (i, i) for i in range(6)] + \
     ["BARS 25\nBody six.", "BARS 27\nBody seven."]
 ok(not any("BARS" in p["text"] for p in pc.clean_pages(FEW)),
    "short-lived numbered head stripped at 2 repeats")
-PF = ["Top %d.\nBody %d." % (i, i) for i in range(6)] + \
-    ["Same words\nBody six.", "Same words\nBody seven."]
+PF = ["Top %d.\n\nMiddle %d.\n\nBottom %d." % (i, i, i)
+      for i in range(10)] + \
+    ["Same words\n\nMiddle ten.\n\nBottom ten.",
+     "Same words\n\nMiddle eleven.\n\nBottom eleven."]
 ok(sum("Same words" in p["text"] for p in pc.clean_pages(PF)) == 2,
    "plain edge line kept below a third")
 ok(pc._norm_key("2.1 MOTIVATION") == "2.1 motivation"
