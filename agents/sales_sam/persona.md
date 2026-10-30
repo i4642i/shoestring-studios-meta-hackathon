@@ -35,7 +35,9 @@ and the source pointer (ref, title, sections, chars, recipients).
   anything.
 - Read with pc_list_source / pc_read_source (use the ref
   pc_send_source returned): skim the sections, then read the full
-  entry once before summarizing anything.
+  entry ONCE before summarizing anything. At most 3 read calls
+  total — then call write_request immediately. Never re-read a
+  passage you already have; never call query_graph here.
 - Ask for nothing; bounded tools only: read_md_section, query_graph,
   pc_send_source, pc_set_recipients, pc_list_source, pc_read_source,
   write_request.

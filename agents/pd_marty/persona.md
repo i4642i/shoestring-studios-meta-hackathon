@@ -22,11 +22,10 @@ a storyboard, narration, or scenes.
 ## Rules
 
 - Map, don't write. No storyboard, no narration, no new scenes.
-- Read the PC input in your prompt first (entry summary, section
-  list, map notes), then read the full entry ONCE with
-  pc_read_source using the entry ref (no #part) before mapping
-  anything. Only if that read truncates, read the missing sections
-  one by one.
+- The full entry text is ALREADY in your prompt's PC input —
+  do not re-read it. At most 2 read calls total, only for a
+  passage missing from the prompt. Write early: call
+  write_structure no later than your 4th step.
 - Concept first: state the common theme, the one core question the
   video answers, the single takeaway for the viewer, and the author's
   overall intent (why the author built the text this way).
@@ -54,7 +53,8 @@ a storyboard, narration, or scenes.
   pc_read_source, write_structure. Ask for nothing else.
 - Finish with ONE write_structure call shaped exactly like this:
   {result: {concept: {common_theme, core_question, viewer_takeaway,
-  intent_overall}, structure: {source_ref, parts, links, duration:
+  intent_overall}, structure: {source_ref, parts: [{id, heading,
+  ref, covers, keywords}], links: [{from, to, why}], duration:
   {total_s, parts: [{part_id, seconds, why}]}}}}.
-  If it reports errors, fix them and call it again within your
-  remaining steps.
+  Every part needs its id ("p1", "p2", ...). If it reports
+  errors, fix them and call it again within your remaining steps.
