@@ -440,6 +440,53 @@ try:
     ok(all(isinstance(s.get("terms_all"), list)
            for s in ientry["sections"]),
        "ingest stores full ranked terms per section")
+    t1 = pc.ingest_theory("https://example.com/twap", "TWAP Basics",
+                          "Example", "2024-01-01", "2026-10-30T00:00:00",
+                          "explain_cleo",
+                          "TWAP slices orders over time.\n\nIt suits "
+                          "patient traders using VWAP daily.", root=tmp)
+    tentry = json.load(open(os.path.join(
+        tmp, "storage", "_pc", "theory", "entries", t1["doc_id"],
+        "entry.json"), encoding="utf-8"))
+    ok(t1["duplicate"] is False
+       and [p["addr"] for p in tentry["paragraphs"]] == ["p1", "p2"]
+       and tentry["sections"][0]["terms_all"]
+       and tentry["url"] == "https://example.com/twap",
+       "theory ingest: pN addrs, provenance, terms")
+    t2 = pc.ingest_theory("https://example.com/other", "TWAP Basics",
+                          "Example", "2024-01-01", "2026-10-30T00:00:00",
+                          "explain_cleo",
+                          "TWAP slices orders over time.\n\nIt suits "
+                          "patient traders using VWAP daily.", root=tmp)
+    ok(t2["duplicate"] is True and t2["doc_id"] == t1["doc_id"],
+       "same content under a new url is a no-op")
+    t3 = pc.ingest_theory("https://example.com/twap", "TWAP Basics",
+                          "Example", "2024-01-02", "2026-10-30T00:00:00",
+                          "explain_cleo", "TWAP slices orders over time "
+                          "in small pieces.\n\nIt suits patient traders "
+                          "using VWAP daily.",
+                          root=tmp)
+    ok(t3["duplicate"] is False and t3["doc_id"] != t1["doc_id"]
+       and t3["supersedes"] == t1["doc_id"],
+       "same url with changed content supersedes")
+    a1 = pc.ingest_article("https://example.com/flash", "Flash Crash",
+                           "News", "2010-05-06", "2026-10-30T00:00:00",
+                           "case_rex", "Stocks fell fast.\n\nThey came "
+                           "back.", root=tmp)
+    ok(a1["ref"].startswith("pc://article/"),
+       "article ingest ref shape")
+    got = pc.open_ref(tentry, t1["ref"] + "#p2")
+    ok(got["text"] == "It suits patient traders using VWAP daily."
+       and got["provenance"]["url"] == "https://example.com/twap",
+       "open_ref bare theory paragraph + provenance")
+    got = pc.open_ref(tentry, t1["ref"] + "#p1-p2")
+    ok(got["kind"] == "range" and "TWAP slices" in got["text"],
+       "open_ref theory range")
+    got = pc.open_ref(tentry, t1["ref"] + "#g1")
+    ok(got["kind"] == "group" and "patient traders" in got["text"],
+       "open_ref theory group")
+    ok(pc.blank_map(tentry, "m")["sections"][0]["ref"] == "g1",
+       "theory map uses g-prefix")
     with open(os.path.join(edir, "map.json"), encoding="utf-8") as f:
         imap = json.load(f)
     ok(imap["status"] == "pending", "ingest leaves map pending")

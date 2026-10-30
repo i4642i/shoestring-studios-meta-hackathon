@@ -233,6 +233,7 @@ def _tab_desc(tab):
 def build_map(entry, model):
     stats = {"calls": 0, "prompt_chars": 0, "reply_chars": 0}
     flat = entry["paragraphs"]
+    pre = "s" if entry.get("pc", "source") == "source" else "g"
     out, missing = [], 0
     for s in entry["sections"]:
         if s.get("non_content"):
@@ -263,11 +264,12 @@ def build_map(entry, model):
             for t in pc.caption_terms(tab.get("caption", "")):
                 if t not in terms and len(terms) < pc.TERMS_PER_SECTION:
                     terms.append(t)
-        out.append({"ref": "s" + s["n"], "heading": s["heading"],
+        base = entry["ref"] + "#" + pre + s["n"] \
+            if pre == "s" else entry["ref"] + "#"
+        out.append({"ref": pre + s["n"], "heading": s["heading"],
                     "summary": items,
                     "omitted": pc.resolve_omitted(
-                        pc.omitted_candidates(sec), items,
-                        entry["ref"] + "#s" + s["n"]),
+                        pc.omitted_candidates(sec), items, base),
                     "key_terms": terms, "has": has,
                     "chars": sum(len(p["text"]) for p in paras),
                     "subsections": list(s.get("subsections", []))})
@@ -333,11 +335,14 @@ def index_docs(entry):
     return docs, ids
 
 
-def main(doc_id, mode="all"):
+def main(doc_id, mode="all", pcname="source"):
     """Run worker stages. mode "all" (describe+map+index), "noindex"
     (describe+map, for sandboxes without the embed server), or
-    "index" (index only, for the Rebuild-index button)."""
-    edir = pc.entry_dir("source", doc_id)
+    "index" (index only, for the Rebuild-index button). pcname picks
+    the PC (source/theory/article)."""
+    if pcname not in pc.PCS:
+        raise SystemExit("unknown PC: %r" % pcname)
+    edir = pc.entry_dir(pcname, doc_id)
     with open(os.path.join(edir, "entry.json"), encoding="utf-8") as f:
         entry = json.load(f)
     mod = graph._adapter()
@@ -378,13 +383,14 @@ def main(doc_id, mode="all"):
 
 def _run_index(mod, entry, edir, doc_id):
     prof = mod.embed_settings()["profile"]
-    idx = pc.index_dir("source", prof)
+    idx = pc.index_dir(entry.get("pc", "source"), prof)
     docs, ids = index_docs(entry)
     lockd = _lock(idx)
     try:
         before = len(_log_lines(idx))
         t1 = time.time()
-        res = mod.index_texts(docs, "pc-source", prof, idx, doc_id, ids)
+        res = mod.index_texts(docs, "pc-" + entry.get("pc", "source"),
+                              prof, idx, doc_id, ids)
         calls, chars = 0, 0
         for ln in _log_lines(idx)[before:]:
             try:
@@ -403,12 +409,15 @@ def _run_index(mod, entry, edir, doc_id):
 
 
 if __name__ == "__main__":
+    pcname = sys.argv[3] if len(sys.argv) > 3 else "source"
     try:
-        main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "all")
+        main(sys.argv[1],
+             sys.argv[2] if len(sys.argv) > 2 else "all", pcname)
     except Exception as exc:  # noqa: BLE001 - worker must log, not vanish
         try:
             detail = traceback.format_exc(limit=3)
-            log(pc.entry_dir("source", sys.argv[1]),
+            log(pc.entry_dir(pcname if pcname in pc.PCS else "source",
+                             sys.argv[1]),
                 {"ev": "failed", "error": str(exc),
                  "traceback": detail[-1500:]})
         except OSError:

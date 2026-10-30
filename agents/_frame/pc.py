@@ -698,7 +698,9 @@ def resolve_omitted(candidates, summaries, base=None):
         if not stated:
             d = dict(c)
             if base:
-                d["ref"] = "%s/%s" % (base, c.get("see", ""))
+                d["ref"] = "%s%s" % (base, c.get("see", "")) \
+                    if base.endswith("#") \
+                    else "%s/%s" % (base, c.get("see", ""))
             out.append(d)
     return out
 
@@ -712,6 +714,16 @@ def _provenance(entry, pages=None):
             "order_id": entry.get("order_id", ""),
             "parsed_at": entry.get("parsed_at", ""),
             "added_by": entry.get("added_by", "")}
+    if entry.get("url"):
+        prov["url"] = entry["url"]
+    if entry.get("publisher"):
+        prov["publisher"] = entry["publisher"]
+    if entry.get("date"):
+        prov["date"] = entry["date"]
+    if entry.get("fetched_at"):
+        prov["fetched_at"] = entry["fetched_at"]
+    if entry.get("supersedes"):
+        prov["supersedes"] = entry["supersedes"]
     if pages:
         prov["pages"] = list(pages)
     return prov
@@ -771,6 +783,48 @@ def open_ref(entry, ref, grant=None):
                         "text": "\n\n".join(p["text"] for p in ps),
                         "provenance": _provenance(entry, pages)}
         raise KeyError("no such section: %r" % ref)
+    m = re.match(r"^p(\d+)-p?(\d+)$", frag)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        if a > b:
+            raise ValueError("bad ref range: %r" % ref)
+        want = ["p%d" % k for k in range(a, b + 1)]
+        got = [p for p in entry.get("paragraphs", [])
+               if p["addr"] in want]
+        if len(got) != len(want):
+            raise KeyError("no such paragraph range: %r" % ref)
+        pages = sorted({pg for p in got for pg in p["pages"]})
+        return {"kind": "range", "ref": ref,
+                "text": "\n\n".join(p["text"] for p in got),
+                "provenance": _provenance(entry, pages)}
+    m = re.match(r"^p(\d+)$", frag)
+    if m:
+        for p in entry.get("paragraphs", []):
+            if p["addr"] == frag:
+                return {"kind": "paragraph", "ref": ref,
+                        "text": p["text"],
+                        "provenance": _provenance(entry, p["pages"])}
+        raise KeyError("no such paragraph: %r" % ref)
+    m = re.match(r"^g(.+?)(?:/p(\d+))?$", frag)
+    if m:
+        for s in entry.get("sections", []):
+            if "g" + s["n"] == "g" + m.group(1):
+                ps = entry["paragraphs"][s["start"]
+                                          :s["start"] + s["count"]]
+                if m.group(2):
+                    k = int(m.group(2)) - 1
+                    if 0 <= k < len(ps):
+                        return {"kind": "paragraph", "ref": ref,
+                                "text": ps[k]["text"],
+                                "provenance": _provenance(
+                                    entry, ps[k]["pages"])}
+                    raise KeyError("no such paragraph: %r" % ref)
+                pages = sorted({pg for p in ps for pg in p["pages"]})
+                return {"kind": "group", "ref": ref,
+                        "heading": s["heading"],
+                        "text": "\n\n".join(p["text"] for p in ps),
+                        "provenance": _provenance(entry, pages)}
+        raise KeyError("no such group: %r" % ref)
     for fig in entry.get("figures", []):
         if fig["addr"] == frag:
             return {"kind": "figure", "ref": ref, "file": fig["file"],
@@ -887,6 +941,96 @@ def ingest_source(order_id, base, parsed_at, added_by, pages, images,
             "paras": len(entry["paragraphs"]),
             "figures": len(entry["figures"]),
             "tables": len(entry["tables"])}
+
+
+# ---- theory/article pick ingest (§8.2, §13.1) ----
+def _web_urls(pcname, root=None):
+    p = os.path.join(pc_dir(pcname, root), "urls.json")
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _web_save_urls(pcname, urls, root=None):
+    os.makedirs(pc_dir(pcname, root), exist_ok=True)
+    with open(os.path.join(pc_dir(pcname, root), "urls.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(urls, f, ensure_ascii=False, indent=2)
+
+
+def _ingest_web(pcname, url, title, publisher, date, fetched_at,
+                added_by, text, root=None):
+    """Pick ingest for Theory/Article PCs: clean the fetched text, hash
+    it to an id, and write entries/<id>/{entry.json, map.json} plus
+    the first log line. Same content = same id (no-op, even under a
+    new url); same url + changed content = new entry with
+    `supersedes` pointing at the previous id. Paragraphs are one
+    group addressed p1..pN (§9); map/index/descriptions are built by
+    the worker. Returns {"ref", "doc_id", "duplicate", "title",
+    "paras", "chars", "supersedes"}."""
+    paras = clean_pages([text or ""])
+    fulltext = "\n\n".join(p["text"] for p in paras)
+    doc_id = content_id(fulltext)
+    edir = entry_dir(pcname, doc_id, root)
+    ep = os.path.join(edir, "entry.json")
+    if os.path.isfile(ep):
+        with open(ep, encoding="utf-8") as f:
+            old = json.load(f)
+        return {"ref": old.get("ref", entry_ref(pcname, doc_id)),
+                "doc_id": doc_id, "duplicate": True,
+                "title": old.get("title", ""),
+                "paras": len(old.get("paragraphs", [])),
+                "chars": old.get("chars", 0), "supersedes": None}
+    flat = [{"addr": "p%d" % (k + 1), "text": p["text"], "pages": [],
+             "has": []} for k, p in enumerate(paras)]
+    sec = {"n": "1", "heading": title or "Full text", "start": 0,
+           "count": len(flat), "subsections": [], "non_content": False,
+           "terms_all": rank_key_terms({"paras": flat})}
+    entry = {"pc": pcname, "doc_id": doc_id,
+             "ref": entry_ref(pcname, doc_id), "url": url,
+             "title": title or "", "publisher": publisher or "",
+             "date": date or "", "fetched_at": fetched_at,
+             "added_by": added_by, "supersedes": None,
+             "sections": [sec], "paragraphs": flat,
+             "figures": [], "tables": [], "chars": len(fulltext)}
+    urls = _web_urls(pcname, root)
+    ids = urls.get(url, [])
+    if ids:
+        entry["supersedes"] = ids[-1]
+    urls[url] = ids + [doc_id]
+    os.makedirs(edir, exist_ok=True)
+    with open(ep, "w", encoding="utf-8") as f:
+        json.dump(entry, f, ensure_ascii=False, indent=2)
+    with open(os.path.join(edir, "map.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(blank_map(entry, ""), f, ensure_ascii=False, indent=2)
+    with open(os.path.join(edir, "log.jsonl"), "w",
+              encoding="utf-8") as f:
+        f.write(json.dumps({"ev": "ingested",
+                            "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                            "url": url, "paras": len(flat),
+                            "supersedes": entry["supersedes"]}) + "\n")
+    _web_save_urls(pcname, urls, root)
+    return {"ref": entry["ref"], "doc_id": doc_id, "duplicate": False,
+            "title": entry["title"], "paras": len(flat),
+            "chars": entry["chars"],
+            "supersedes": entry["supersedes"]}
+
+
+def ingest_theory(url, title, publisher, date, fetched_at, added_by,
+                  text, root=None):
+    """Pick ingest into the Theory PC (§13.1)."""
+    return _ingest_web("theory", url, title, publisher, date,
+                       fetched_at, added_by, text, root)
+
+
+def ingest_article(url, title, publisher, date, fetched_at, added_by,
+                   text, root=None):
+    """Pick ingest into the Article PC (§13.1)."""
+    return _ingest_web("article", url, title, publisher, date,
+                       fetched_at, added_by, text, root)
 
 
 # ---- order linkage + start prompts (§8.6) ----
@@ -1022,11 +1166,12 @@ def start_prompt_for(name, structure, entry, map_data=None,
 
 # ---- map skeleton (§10.3/10.5) ----
 def blank_map(entry, llm_model):
+    pre = "s" if entry.get("pc", "source") == "source" else "g"
     return {"ref": entry.get("ref", ""), "doc_id": entry.get("doc_id"),
             "built_at": "", "llm_model": llm_model,
             "map_version": MAP_VERSION, "status": "pending",
             "entry_summary": "",
-            "sections": [{"ref": "s" + s["n"], "heading": s["heading"],
+            "sections": [{"ref": pre + s["n"], "heading": s["heading"],
                           "summary": [], "omitted": [],
                           "key_terms": [], "has": [], "chars": 0,
                           "subsections": list(s.get("subsections", []))}
