@@ -124,8 +124,9 @@ This file doubles as the system prompt: the runner sends it verbatim.
 
 ## 9. Flow participation (OPTIONAL)
 
-Why: the Flow tab wires crew into pipelines (Sam → Marty → Cleo, Rex →
-Final storyboard). Connections live ONLY in the flow file
+Why: the Flow tab wires crew into pipelines (Sam → Marty →
+Cleo, Rex → Ash → Penn, Wren → Final storyboard). Connections live
+ONLY in the flow file
 (`data/flows/<id>.json`): an agent declares what it consumes and
 produces, never where results go. This section is the contract that
 makes lines checkable and handoffs safe.
