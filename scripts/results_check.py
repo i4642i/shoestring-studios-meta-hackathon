@@ -40,11 +40,13 @@ REQ = {"order_id": "o1",
        "open_questions": []}
 
 reg = results.registry()
-ok(set(reg) == {"brief", "source", "request", "structure", "video"},
-   "registry has 5 incl video")
-ok(reg["source"]["version"] == 2
-   and all(reg[c]["version"] == 1 for c in reg if c != "source"),
-   "source v2, rest v1")
+ok(set(reg) == {"brief", "concept", "source", "request", "structure",
+                "video"},
+   "registry has 6 incl concept")
+ok(reg["source"]["version"] == 2 and reg["structure"]["version"] == 2
+   and all(reg[c]["version"] == 1 for c in reg
+           if c not in ("source", "structure")),
+   "source+structure v2, rest v1")
 
 r = results.make_result("sales_sam", "o1", "r1", {"request": dict(REQ)})
 ok(r["status"] == "unverified" and r["format_version"] == 1
@@ -131,22 +133,40 @@ ok(write_request(ctx, {"request": bad}).get("ok") is False,
 mdp = os.path.join(wdir, "input.md")
 with open(mdp, "w", encoding="utf-8") as f:
     f.write("# T\n\n## 1.1 Alpha\n\ntext\n\n## 1.2 Beta\n\ntext\n")
-struct = {"source": {"book": "b", "chapter": "c"},
-          "common_theme": "t",
-          "parts": [{"id": "p1", "heading": "1.1 Alpha", "covers": "x",
+CONCEPT = {"common_theme": "t", "core_question": "q",
+           "viewer_takeaway": "v", "intent_overall": "o"}
+SREF = "pc://source/abcd1234abcd1234"
+struct = {"source_ref": SREF,
+          "parts": [{"id": "p1", "heading": "1.1 Alpha",
+                     "ref": SREF + "#s1.1", "covers": "x",
                      "keywords": ["k"]},
-                    {"id": "p2", "heading": "1.2 Beta", "covers": "y",
+                    {"id": "p2", "heading": "1.2 Beta",
+                     "ref": SREF + "#s1.2", "covers": "y",
                      "keywords": ["k"]}],
           "intent": {"overall": "o",
                      "links": [{"from": "p1", "to": "p2", "why": "w"}]}}
 ctx2 = dict(ctx, input_md=mdp, producer="pd_marty", run_id="r10")
-out2 = write_structure(ctx2, {"structure": struct})
+out2 = write_structure(ctx2, {"result": {"concept": dict(CONCEPT),
+                                      "structure": struct}})
 ok(out2.get("ok") and out2.get("output") == "result.json",
    "write_structure emits result.json")
 saved2 = results.load_result(os.path.join(wdir, "result.json"))
 ok("structure" in saved2["categories"]
+   and "concept" in saved2["categories"]
    and results.check_result(saved2) == [],
-   "structure envelope validates")
+   "concept+structure envelope validates")
+badc = dict(CONCEPT)
+del badc["core_question"]
+ok(write_structure(ctx2, {"result": {"concept": badc,
+                                    "structure": struct}}).get("ok")
+   is False, "write_structure bad concept refuses")
+badp = json.loads(json.dumps(struct))
+badp["parts"][0]["ref"] = "pc://source/other#s1.1"
+ok(write_structure(ctx2, {"result": {"concept": dict(CONCEPT),
+                                    "structure": badp}}).get("ok")
+   is False, "write_structure foreign ref refuses")
+ok(write_structure(ctx2, {"structure": struct}).get("ok") is False,
+   "write_structure old shape refuses")
 ok(os.path.isfile(os.path.join(wdir, "report.md")),
    "writers also write report.md")
 
@@ -155,8 +175,9 @@ ok("generated from r9, do not edit" in rep
    and "## request (v1)" in rep and "Client answers" in rep,
    "request report renders with stamp")
 rep2 = results.render_report(saved2)
-ok("## structure (v1)" in rep2 and "1.1 Alpha" in rep2
-   and "p1 -> p2" in rep2, "structure report renders")
+ok("## structure (v2)" in rep2 and "1.1 Alpha" in rep2
+   and "p1 -> p2" in rep2 and "## concept (v1)" in rep2,
+   "structure+concept report renders")
 ok(render_cite_md("pc://article/ab12#p3", "quoted")
    == "[quoted](api/ref?ref=pc%3A%2F%2Farticle%2Fab12%23p3)",
    "citation link format")

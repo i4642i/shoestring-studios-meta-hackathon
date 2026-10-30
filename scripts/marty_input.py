@@ -50,7 +50,8 @@ def main():
         if s.get("non_content"):
             continue
         if s["n"] != "0":
-            out += ["## %s %s" % (s["n"], s.get("heading", "")), ""]
+            out += ["## %s %s" % (s["n"], s.get("heading", "")), "",
+                    "(ref: %s#s%s)" % (entry["ref"], s["n"]), ""]
         for p in entry["paragraphs"][s["start"]:s["start"] + s["count"]]:
             out += [p["text"], ""]
     os.makedirs(a.out, exist_ok=True)

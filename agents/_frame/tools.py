@@ -13,8 +13,8 @@ import urllib.request
 from . import graph
 from . import pc
 from . import results
-from .schemas import (list_headings, validate_draft, validate_request,
-                      validate_structure)
+from .schemas import (list_headings, validate_concept, validate_draft,
+                      validate_request, validate_structure)
 
 
 def read_md_section(ctx, args):
@@ -52,11 +52,11 @@ def write_draft(ctx, args):
     return {"ok": True, "path": out, "output": "draft.json"}
 
 
-def _save_category(ctx, category, obj):
-    """Wrap one validated payload as the run's result.json (Q6 cutover)."""
+def _save_categories(ctx, categories):
+    """Wrap validated payloads as the run's result.json + report.md."""
     try:
         res = results.make_result(ctx["producer"], ctx["order_id"],
-                                  ctx["run_id"], {category: obj})
+                                  ctx["run_id"], categories)
     except (KeyError, RuntimeError) as exc:
         return {"ok": False, "errors": ["bad result context: %s" % exc]}
     problems = results.check_result(res)
@@ -73,12 +73,22 @@ def _save_category(ctx, category, obj):
             "report": report_path}
 
 
+def _save_category(ctx, category, obj):
+    return _save_categories(ctx, {category: obj})
+
+
 def write_structure(ctx, args):
-    obj = args.get("structure")
-    errors = validate_structure(obj, ctx.get("input_md"))
+    bundle = args.get("result")
+    if not isinstance(bundle, dict):
+        return {"ok": False, "errors": [
+            "call with {result: {concept: {...}, structure: {...}}}"]}
+    errors = validate_concept(bundle.get("concept"))
+    errors += validate_structure(bundle.get("structure"),
+                                 ctx.get("input_md"))
     if errors:
         return {"ok": False, "errors": errors}
-    return _save_category(ctx, "structure", obj)
+    return _save_categories(ctx, {"concept": bundle["concept"],
+                                  "structure": bundle["structure"]})
 
 
 def write_request(ctx, args):
@@ -490,12 +500,12 @@ TOOLS = {
     ),
     "write_structure": (
         write_structure,
-        "Save the input structure map as this run's result.json "
-        "(structure category). Fails unless every section is mapped in "
-        "source order with neighbour links.",
+        "Save this run's result.json (concept + structure categories). "
+        "Fails unless the concept is complete and every section is "
+        "mapped in source order with refs and neighbour links.",
         {"type": "object",
-         "properties": {"structure": {"type": "object"}},
-         "required": ["structure"], "additionalProperties": False},
+         "properties": {"result": {"type": "object"}},
+         "required": ["result"], "additionalProperties": False},
     ),
     "write_request": (
         write_request,

@@ -221,6 +221,8 @@ TEMPLATES = {
     ("source", 2): schemas.render_source_v2_md,
     ("request", 1): schemas.render_request_md,
     ("structure", 1): schemas.render_structure_md,
+    ("concept", 1): schemas.render_concept_md,
+    ("structure", 2): schemas.render_structure_v2_md,
     ("video", 1): schemas.render_video_md,
 }
 

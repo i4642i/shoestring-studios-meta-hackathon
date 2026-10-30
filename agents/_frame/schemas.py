@@ -112,7 +112,22 @@ def validate_draft(obj):
     return errors
 
 
-REQUIRED_STRUCT_TOP = ("source", "common_theme", "parts", "intent")
+REQUIRED_CONCEPT_TOP = ("common_theme", "core_question",
+                          "viewer_takeaway", "intent_overall")
+REQUIRED_STRUCT_TOP = ("source_ref", "parts", "intent")
+
+
+def validate_concept(obj):
+    """Return a list of error strings (empty == valid)."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["concept must be an object"]
+    for k in REQUIRED_CONCEPT_TOP:
+        if k not in obj:
+            errors.append("concept missing: %s" % k)
+        elif (not isinstance(obj[k], str) or not obj[k].strip()):
+            errors.append("concept.%s must be a non-empty string" % k)
+    return errors
 
 
 def validate_structure(obj, input_md_path):
@@ -123,17 +138,11 @@ def validate_structure(obj, input_md_path):
     for k in REQUIRED_STRUCT_TOP:
         if k not in obj:
             errors.append("missing: %s" % k)
-    src = obj.get("source")
-    if isinstance(src, dict):
-        for k in ("book", "chapter"):
-            if not isinstance(src.get(k), str) or not src[k].strip():
-                errors.append("source.%s must be a non-empty string" % k)
-    elif "source" in obj:
-        errors.append("source must be an object")
-    if "common_theme" in obj and (
-            not isinstance(obj["common_theme"], str)
-            or not obj["common_theme"].strip()):
-        errors.append("common_theme must be a non-empty string")
+    sref = obj.get("source_ref", "")
+    if not isinstance(sref, str) or not sref.startswith("pc://source/"):
+        errors.append("source_ref must be a pc://source/<id> ref "
+                      "(copy it from the input head)")
+        sref = ""
     try:
         with open(input_md_path, encoding="utf-8") as f:
             input_text = f.read()
@@ -161,6 +170,14 @@ def validate_structure(obj, input_md_path):
                 errors.append("parts[%s] needs a non-empty heading" % (pid,))
             else:
                 got.append(_norm(heading))
+            ref = p.get("ref", "")
+            if sref and (not isinstance(ref, str)
+                          or not ref.startswith(sref + "#s")):
+                errors.append("parts[%s].ref must be the input section "
+                              "address (%s#s<n>)" % (pid, sref))
+            elif not sref and (not isinstance(ref, str)
+                                or not ref.strip()):
+                errors.append("parts[%s] needs a non-empty ref" % (pid,))
             if not isinstance(p.get("covers"), str) or not p["covers"].strip():
                 errors.append("parts[%s] needs non-empty covers" % (pid,))
             kws = p.get("keywords")
@@ -338,6 +355,31 @@ def render_structure_md(obj):
         lines.append("- %s `%s`: %s (keywords: %s)"
                      % (p["id"], p["heading"], p["covers"],
                         ", ".join(p["keywords"])))
+    lines += ["", "## Author intent", "", obj["intent"]["overall"], ""]
+    for link in obj["intent"]["links"]:
+        lines.append("- %s -> %s: %s"
+                     % (link["from"], link["to"], link["why"]))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_concept_md(obj):
+    """Video concept (concept v1) as markdown."""
+    return "\n".join(
+        ["# Video concept", "", "Theme: %s" % obj["common_theme"], "",
+         "## Core question", "", obj["core_question"], "",
+         "## Viewer takeaway", "", obj["viewer_takeaway"], "",
+         "## Author intent (overall)", "", obj["intent_overall"], ""])
+
+
+def render_structure_v2_md(obj):
+    """Structure map (structure v2) as markdown."""
+    lines = ["# Structure map — %s" % obj["source_ref"], "",
+             "## Parts", ""]
+    for p in obj["parts"]:
+        lines.append("- %s `%s`: %s (keywords: %s) [%s]"
+                     % (p["id"], p["heading"], p["covers"],
+                        ", ".join(p["keywords"]), p["ref"]))
     lines += ["", "## Author intent", "", obj["intent"]["overall"], ""]
     for link in obj["intent"]["links"]:
         lines.append("- %s -> %s: %s"

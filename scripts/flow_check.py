@@ -37,8 +37,8 @@ ok(drafts == ["board_penn", "board_vera", "case_rex", "explain_cleo",
 ok("sales_sam" in [a["id"] for a in cat["agents"] if a.get("flow")],
    "workers declare flow I/O")
 ok(sorted(c["name"] for c in cat["categories"])
-   == ["brief", "request", "source", "structure", "video"],
-   "catalog has 5 categories")
+   == ["brief", "concept", "request", "source", "structure", "video"],
+   "catalog has 6 categories")
 ok(all((a.get("color") or "").startswith("#") for a in cat["agents"]),
    "catalog colors")
 
@@ -166,19 +166,23 @@ REQ = {"order_id": "o9",
                          "theme": "d", "source": "e"},
        "source_summary": "s", "production_notes": ["n"],
        "open_questions": []}
-STRUCT = {"source": {"book": "b", "chapter": "c"}, "common_theme": "t",
-          "parts": [{"id": "p1", "heading": "h", "covers": "x",
-                     "keywords": ["k"]}],
+CONCEPT = {"common_theme": "t", "core_question": "q",
+           "viewer_takeaway": "v", "intent_overall": "o"}
+STRUCT = {"source_ref": "pc://source/abc123abc123",
+          "parts": [{"id": "p1", "heading": "h",
+                     "ref": "pc://source/abc123abc123#s1",
+                     "covers": "x", "keywords": ["k"]}],
           "intent": {"overall": "o", "links": []}}
-PAY = {"sales_sam": ("sales_sam", "request", REQ),
-       "pd_marty": ("pd_marty", "structure", STRUCT)}
+PAY = {"sales_sam": ("sales_sam", {"request": REQ}),
+       "pd_marty": ("pd_marty", {"concept": CONCEPT,
+                                        "structure": STRUCT})}
 
 
 def stub(agent_dir, run_dir, brief, input_md):
     who = os.path.basename(run_dir)
-    producer, cat, data = PAY[who]
+    producer, cats = PAY[who]
     res = results.make_result(producer, brief["order_id"],
-                              brief["flow_run_id"], {cat: data})
+                              brief["flow_run_id"], cats)
     results.save_result(run_dir, res)
     return {"ok": True}
 
@@ -210,7 +214,9 @@ sam = results.load_result(os.path.join(rdir, "sales_sam", "result.json"))
 ok(sam["status"] == "checked"
    and sam["categories"]["request"]["version"] == 1, "sam checked")
 mar = results.load_result(os.path.join(rdir, "pd_marty", "result.json"))
-ok(mar["status"] == "checked", "marty checked")
+ok(mar["status"] == "checked"
+   and mar["categories"]["concept"]["version"] == 1
+   and mar["categories"]["structure"]["version"] == 2, "marty checked")
 ores = results.load_result(os.path.join(rdir, "order", "result.json"))
 osrc = ores["categories"]["source"]
 ok(osrc["version"] == 2

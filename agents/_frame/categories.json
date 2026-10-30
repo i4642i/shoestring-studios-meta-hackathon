@@ -1,1 +1,361 @@
-{"brief": {"description": "Order intake: client answers plus the source file reference. Produced by the Order node.", "schema": {"additionalProperties": true, "properties": {"answers": {"additionalProperties": true, "properties": {"audience": {"type": "string"}, "depth": {"type": "string"}, "length": {"type": "string"}, "theme": {"type": "string"}}, "required": ["audience", "length", "depth", "theme"], "type": "object"}, "order_id": {"type": "string"}, "source_file": {"type": "string"}}, "required": ["order_id", "answers", "source_file"], "type": "object"}, "version": 1}, "request": {"description": "Video production request Sam writes for PD/production from the order consultation.", "schema": {"properties": {"client_answers": {"properties": {"audience": {"type": "string"}, "depth": {"type": "string"}, "length": {"type": "string"}, "source": {"type": "string"}, "theme": {"type": "string"}}, "required": ["audience", "length", "depth", "theme", "source"], "type": "object"}, "open_questions": {"items": {"type": "string"}, "type": "array"}, "order_id": {"type": "string"}, "production_notes": {"items": {"type": "string"}, "type": "array"}, "source_summary": {"type": "string"}}, "required": ["order_id", "client_answers", "source_summary", "production_notes", "open_questions"], "type": "object"}, "version": 1}, "source": {"description": "Source PC entry pointer: stable ref, title, size, section count. Transitional file/head sidecar fields stay until agents read via PC tools.", "schema": {"additionalProperties": true, "properties": {"ref": {"type": "string"}, "title": {"type": "string"}, "chars": {"type": "integer"}, "sections": {"type": "integer"}, "file": {"type": "string"}, "head": {"type": "string"}}, "required": ["ref", "title", "chars", "sections"], "type": "object"}, "version": 2}, "structure": {"description": "Structure map Marty writes: parts in source order plus author intent links. Static shape only; input-relative rules (heading coverage, order) are enforced by the write_structure tool at creation time.", "schema": {"properties": {"common_theme": {"type": "string"}, "intent": {"properties": {"links": {"items": {"properties": {"from": {"type": "string"}, "to": {"type": "string"}, "why": {"type": "string"}}, "required": ["from", "to", "why"], "type": "object"}, "type": "array"}, "overall": {"type": "string"}}, "required": ["overall", "links"], "type": "object"}, "parts": {"items": {"properties": {"covers": {"type": "string"}, "heading": {"type": "string"}, "id": {"type": "string"}, "keywords": {"items": {"type": "string"}, "type": "array"}}, "required": ["id", "heading", "covers", "keywords"], "type": "object"}, "type": "array"}, "source": {"properties": {"book": {"type": "string"}, "chapter": {"type": "string"}}, "required": ["book", "chapter"], "type": "object"}}, "required": ["source", "common_theme", "parts", "intent"], "type": "object"}, "version": 1}, "video": {"description": "Final video assembly record: file, scenes, per-line citations carried from narration. Produced by the postprocess code step.", "schema": {"properties": {"built_from": {"type": "string"}, "duration_s": {"type": "number"}, "file": {"properties": {"format": {"type": "string"}, "path": {"type": "string"}, "resolution": {"type": "string"}, "size_bytes": {"type": "integer"}}, "required": ["path", "size_bytes", "format", "resolution"], "type": "object"}, "scenes": {"items": {"properties": {"end_s": {"type": "number"}, "lines": {"items": {"properties": {"citations": {"items": {"properties": {"quote": {"type": "string"}, "ref": {"type": "string"}}, "required": ["ref", "quote"], "type": "object"}, "type": "array"}, "end_s": {"type": "number"}, "start_s": {"type": "number"}, "text": {"type": "string"}}, "required": ["text", "start_s", "end_s", "citations"], "type": "object"}, "type": "array"}, "n": {"type": "integer"}, "start_s": {"type": "number"}}, "required": ["n", "start_s", "end_s", "lines"], "type": "object"}, "type": "array"}}, "required": ["file", "duration_s", "built_from", "scenes"], "type": "object"}, "version": 1}}
+{
+  "brief": {
+    "description": "Order intake: client answers plus the source file reference. Produced by the Order node.",
+    "schema": {
+      "additionalProperties": true,
+      "properties": {
+        "answers": {
+          "additionalProperties": true,
+          "properties": {
+            "audience": {
+              "type": "string"
+            },
+            "depth": {
+              "type": "string"
+            },
+            "length": {
+              "type": "string"
+            },
+            "theme": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "audience",
+            "length",
+            "depth",
+            "theme"
+          ],
+          "type": "object"
+        },
+        "order_id": {
+          "type": "string"
+        },
+        "source_file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "order_id",
+        "answers",
+        "source_file"
+      ],
+      "type": "object"
+    },
+    "version": 1
+  },
+  "concept": {
+    "version": 1,
+    "description": "Video concept Marty writes: the theme, the core question, the viewer takeaway, the author's overall intent.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "common_theme",
+        "core_question",
+        "viewer_takeaway",
+        "intent_overall"
+      ],
+      "properties": {
+        "common_theme": {
+          "type": "string"
+        },
+        "core_question": {
+          "type": "string"
+        },
+        "viewer_takeaway": {
+          "type": "string"
+        },
+        "intent_overall": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "request": {
+    "description": "Video production request Sam writes for PD/production from the order consultation.",
+    "schema": {
+      "properties": {
+        "client_answers": {
+          "properties": {
+            "audience": {
+              "type": "string"
+            },
+            "depth": {
+              "type": "string"
+            },
+            "length": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "theme": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "audience",
+            "length",
+            "depth",
+            "theme",
+            "source"
+          ],
+          "type": "object"
+        },
+        "open_questions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "order_id": {
+          "type": "string"
+        },
+        "production_notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source_summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "order_id",
+        "client_answers",
+        "source_summary",
+        "production_notes",
+        "open_questions"
+      ],
+      "type": "object"
+    },
+    "version": 1
+  },
+  "source": {
+    "description": "Source PC entry pointer: stable ref, title, size, section count. Transitional file/head sidecar fields stay until agents read via PC tools.",
+    "schema": {
+      "additionalProperties": true,
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "chars": {
+          "type": "integer"
+        },
+        "sections": {
+          "type": "integer"
+        },
+        "file": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "title",
+        "chars",
+        "sections"
+      ],
+      "type": "object"
+    },
+    "version": 2
+  },
+  "structure": {
+    "version": 2,
+    "description": "Structure map Marty writes: parts in source order with Source PC refs, plus author intent links. Static shape only; input-relative rules (heading coverage, order, ref match) are enforced by the write_structure tool at creation time.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "source_ref",
+        "parts",
+        "intent"
+      ],
+      "properties": {
+        "source_ref": {
+          "type": "string"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "heading",
+              "ref",
+              "covers",
+              "keywords"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "heading": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              },
+              "covers": {
+                "type": "string"
+              },
+              "keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "intent": {
+          "type": "object",
+          "required": [
+            "overall",
+            "links"
+          ],
+          "properties": {
+            "overall": {
+              "type": "string"
+            },
+            "links": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "from",
+                  "to",
+                  "why"
+                ],
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "why": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "video": {
+    "description": "Final video assembly record: file, scenes, per-line citations carried from narration. Produced by the postprocess code step.",
+    "schema": {
+      "properties": {
+        "built_from": {
+          "type": "string"
+        },
+        "duration_s": {
+          "type": "number"
+        },
+        "file": {
+          "properties": {
+            "format": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "resolution": {
+              "type": "string"
+            },
+            "size_bytes": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "path",
+            "size_bytes",
+            "format",
+            "resolution"
+          ],
+          "type": "object"
+        },
+        "scenes": {
+          "items": {
+            "properties": {
+              "end_s": {
+                "type": "number"
+              },
+              "lines": {
+                "items": {
+                  "properties": {
+                    "citations": {
+                      "items": {
+                        "properties": {
+                          "quote": {
+                            "type": "string"
+                          },
+                          "ref": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "ref",
+                          "quote"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "end_s": {
+                      "type": "number"
+                    },
+                    "start_s": {
+                      "type": "number"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "start_s",
+                    "end_s",
+                    "citations"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "n": {
+                "type": "integer"
+              },
+              "start_s": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "n",
+              "start_s",
+              "end_s",
+              "lines"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "file",
+        "duration_s",
+        "built_from",
+        "scenes"
+      ],
+      "type": "object"
+    },
+    "version": 1
+  }
+}
