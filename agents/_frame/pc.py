@@ -68,10 +68,12 @@ _BARE_NUM_RE = re.compile(r"^(?:\d{1,4}|p(?:ag(?:e)?)?\.?\s*\d{1,4})$",
                            re.IGNORECASE)
 def _norm_key(line):
     """Repeat-comparison key: whitespace-normalized, lowercased, with a
-    leading bare page number dropped (running heads vary only by it).
+    bare page number dropped from either end (running heads/footers
+    vary only by it: "28 HEADS" and "BARS 25" both reduce to words).
     Dotted numbers ("1.1") survive: only NAMELESS digits strip."""
     key = " ".join(line.split()).lower()
-    return re.sub(r"^\d{1,4}\s+", "", key)
+    key = re.sub(r"^\d{1,4}\s+", "", key)
+    return re.sub(r"\s+\d{1,4}$", "", key)
 
 
 def _is_heading(line):

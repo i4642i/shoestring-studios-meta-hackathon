@@ -78,6 +78,13 @@ RARE = ["SHARED EDGE\nBody %d." % i for i in range(2)] + \
     ["Unique top %d.\nBody %d." % (i, i) for i in range(10)]
 ok(sum("SHARED EDGE" in p["text"] for p in pc.clean_pages(RARE)) == 2,
    "rare edge repeat kept")
+TF = pc.clean_pages(["Body one.\nBARS 25", "Body two.\nBARS 27",
+                     "Body three.\nBARS 29"])
+ok(not any("BARS" in p["text"] for p in TF),
+   "trailing-number footers removed")
+ok(pc._norm_key("2.1 MOTIVATION") == "2.1 motivation"
+   and pc._norm_key("BARS 25") == "bars",
+   "norm key keeps dotted numbers, drops page numbers")
 ZSC = pc.split_sections(
     pc.clean_pages(["0 t t fragment\n1.1 Real\nBody."]))
 ok([s["n"] for s in ZSC] == ["0", "1.1"]
