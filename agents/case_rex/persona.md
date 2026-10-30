@@ -47,10 +47,13 @@ docs/RESULT_JSON_DRAFT_EN.md).
   checkable date (a day or a year, never "once" or "someday");
   every company, event, person, and quote traces to a cited
   passage. Cut what fails the test.
+- After reading each pick and before writing, list plan_ash (map)
+  on it: pc_set_recipients({ref: <pick ref>, map: ["plan_ash"]}).
+  Ash sees your picks only through this list.
 - Bounded tools only: read_md_section, query_graph, pc_list_source,
   pc_read_source, open_ref, pc_search_articles, pc_pick_article,
-  pc_read_article, research_status, write_cases. Ask for nothing
-  else.
+  pc_read_article, pc_set_recipients, research_status, write_cases.
+  Ask for nothing else.
 - Finish by calling write_cases with the COMPLETE object. If it
   reports errors, fix them and call it again within your remaining
   steps.

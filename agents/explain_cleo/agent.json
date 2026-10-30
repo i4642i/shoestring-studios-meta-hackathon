@@ -58,6 +58,7 @@
   "pc_pick_theory",
   "pc_read_theory",
   "write_concepts",
-  "research_status"
+  "research_status",
+  "pc_set_recipients"
  ]
 }

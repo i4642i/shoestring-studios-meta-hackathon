@@ -120,20 +120,43 @@ try:
     json.dump({"order_id": "ord-20261030-001"},
               open(os.path.join(rd, "STATUS.json"), "w"))
     json.dump({"categories": {"concepts": {"data": {"parts": [
-        {"picks": [{"ref": p["ref"]}]}]}}}},
+        {"picks": [{"ref": p["ref"], "title": "TWAP Guide",
+                    "why_important": "core method",
+                    "how_to_use": "explain simply"}]}]}}}},
               open(os.path.join(rd, "explain_cleo", "result.json"),
                    "w"))
     auto = pc.load_entry_by_ref(p["ref"], root=tmp)
     ok(any(r.get("agent") == "explain_cleo"
            and r.get("order_id") == "ord-20261030-001"
+           and r.get("kind") == "full"
            for r in auto.get("recipients", [])),
-       "picker auto-listed on pick")
+       "picker auto-listed on pick (full)")
     ok(tmod.pc_read_theory(a, {"ref": p["ref"] + "#p1"}).get("error")
        == "no access to this item",
        "picked but unlisted agent refused")
+    cleo = ctx("explain_cleo")
+    grant = tmod.pc_set_recipients(cleo, {"ref": p["ref"],
+                                          "map": ["plan_ash"]})
+    ok("error" not in grant
+       and any(r.get("agent") == "plan_ash"
+               and r.get("kind") == "map"
+               for r in grant.get("recipients", [])),
+       "picker lists ash (map) via the tool")
+    ok("only Sam grants full" in tmod.pc_set_recipients(
+        cleo, {"ref": p["ref"], "full": ["plan_ash"]}).get("error", ""),
+       "non-sam cannot grant full")
+    ok("unknown agents" in tmod.pc_set_recipients(
+        cleo, {"ref": p["ref"], "map": ["nope"]}).get("error", ""),
+       "unknown listee refused")
     _rpc, rid, _frag = pc.parse_ref(p["ref"])
     pc.set_recipients("theory", rid, "ord-20261030-001",
-                      ["plan_ash"], "plan_ash", kind="map")
+                      ["voice_wren"], "plan_ash", kind="map",
+                      parts=[p["ref"] + "#p1"])
+    ok("widen" in tmod.pc_set_recipients(
+        ctx("voice_wren", "voice_wren"), {"ref": p["ref"],
+                                          "map": ["board_penn"]}).get(
+                                              "error", ""),
+       "parts-limited lister cannot widen")
     r2 = tmod.pc_read_theory(a, {"ref": p["ref"] + "#p1"})
     ok(r2.get("text", "").startswith("TWAP slices"),
        "later agent reads picked entry")
@@ -148,6 +171,16 @@ try:
     ok(tmod.open_ref(a, {"ref": other["ref"]}).get("error", "")
        == "not picked for this order",
        "open_ref honors pick scope (deny)")
+    atext, ameta = pc.prompt_chunks_for("plan_ash", "ord-20261030-001",
+                                        [], os.path.join(tmp, "runs"))
+    ok(ameta["included"] == [p["ref"]]
+       and "core method" in atext
+       and "TWAP slices" not in atext,
+       "ash prompt has the theory map, not the text")
+    _pt, pmeta = pc.prompt_chunks_for("board_penn", "ord-20261030-001",
+                                      [], os.path.join(tmp, "runs"))
+    ok(pmeta["included"] == [] and pmeta["denied"] == [p["ref"]],
+       "penn has nothing until ash lists him")
 
     saved = os.environ.pop("TAVILY_API_KEY", None)
     try:

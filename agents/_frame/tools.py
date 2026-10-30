@@ -1023,36 +1023,58 @@ def pc_send_source(ctx, args):
 
 
 def pc_set_recipients(ctx, args):
-    """Set who receives this order's Source entry (merged per agent).
-    Sam only; the entry must be sent first."""
+    """Grant map/full rows on one entry (merged per agent). The
+    lister must hold a row on the entry for this order; only Sam
+    grants full (on Source); map grants never widen a parts-limited
+    row. ref defaults to this order's Source entry."""
     ctx = ctx or {}
-    if ctx.get("producer") != INTAKE_PRODUCER:
-        return {"error": "pc_set_recipients is Sam's tool"}
-    agents = (args or {}).get("agents")
-    if not isinstance(agents, list) or not agents \
-            or any(not isinstance(a, str) or not a for a in agents):
-        return {"error": "give agents: [agent ids]"}
+    args = args or {}
+    maps = args.get("map", [])
+    fulls = args.get("full", [])
+    for key, grp in (("map", maps), ("full", fulls)):
+        if not isinstance(grp, list) \
+                or any(not isinstance(a, str) or not a for a in grp):
+            return {"error": "give %s: [agent ids]" % key}
+    if not maps and not fulls:
+        return {"error": "nothing to grant: give map and/or full lists"}
+    producer = ctx.get("producer", "")
+    order_id = ctx.get("order_id", "")
+    ref = args.get("ref") or pc.order_entry_ref(order_id)
+    if not ref:
+        return {"error": "no entry: give ref, or send the Source first"}
+    try:
+        pcname, doc_id, _frag = pc.parse_ref(ref)
+        entry = pc.load_entry_by_ref(ref)
+    except (OSError, ValueError, KeyError) as exc:
+        return {"error": str(exc)}
+    mine = pc.entry_access(entry, producer, order_id)
+    if mine is None:
+        return {"error": "you hold no row on %s for this order" % ref}
+    if fulls and (producer != INTAKE_PRODUCER or pcname != "source"):
+        return {"error": "only Sam grants full (on Source)"}
+    if pc.row_parts(mine):
+        return {"error": "your row is parts-limited; granting the "
+                         "whole entry would widen it"}
     aroot = os.path.dirname(os.path.abspath(ctx.get("agent_dir", "")
                                              or "agents"))
     if not os.path.isdir(aroot):
         aroot = os.path.join(pc._base(None), "agents")
-    bad = [a for a in agents
+    bad = [a for a in maps + fulls
            if not os.path.isfile(os.path.join(aroot, a, "agent.json"))]
     if bad:
         return {"error": "unknown agents: %s (use agent ids, e.g. "
                          "pd_marty, explain_cleo, case_rex)" % ", ".join(bad)}
-    order_id = ctx.get("order_id", "")
-    ref = pc.order_entry_ref(order_id)
-    if not ref:
-        return {"error": "no Source entry for this order: call "
-                         "pc_send_source first"}
     try:
-        _pcn, doc_id, _frag = pc.parse_ref(ref)
-        rows = pc.set_recipients("source", doc_id, order_id, agents,
-                                  ctx.get("producer", ""))
+        rows = entry.get("recipients", [])
+        if maps:
+            rows = pc.set_recipients(pcname, doc_id, order_id, maps,
+                                     producer, kind="map")
+        if fulls:
+            rows = pc.set_recipients(pcname, doc_id, order_id, fulls,
+                                     producer, kind="full")
     except (OSError, ValueError) as exc:
         return {"error": str(exc)}
-    return {"ref": ref,
+    return {"ref": entry.get("ref", ""),
             "recipients": [r for r in rows
                             if r.get("order_id") == order_id]}
 
@@ -1164,12 +1186,16 @@ TOOLS = {
     ),
     "pc_set_recipients": (
         pc_set_recipients,
-        "Set which crew members receive this order's Source entry "
-        "(merged). Sam only; send first.",
+        "Grant map/full rows on one entry (merged). You must hold a "
+        "row on it; only Sam grants full (on Source). ref defaults "
+        "to this order's Source entry.",
         {"type": "object",
-         "properties": {"agents": {"type": "array",
-                                   "items": {"type": "string"}}},
-         "required": ["agents"], "additionalProperties": False},
+         "properties": {"ref": {"type": "string"},
+                        "map": {"type": "array",
+                                "items": {"type": "string"}},
+                        "full": {"type": "array",
+                                 "items": {"type": "string"}}},
+         "additionalProperties": False},
     ),
     "open_ref": (
         open_ref,

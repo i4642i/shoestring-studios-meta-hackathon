@@ -48,10 +48,13 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   every explanation; every jargon word is explained on the spot; an
   analogy or concrete example is present; the core idea works
   without formulas. Rewrite what fails the test.
+- After reading each pick and before writing, list plan_ash (map)
+  on it: pc_set_recipients({ref: <pick ref>, map: ["plan_ash"]}).
+  Ash sees your picks only through this list.
 - Bounded tools only: read_md_section, query_graph, pc_list_source,
   pc_read_source, open_ref, pc_search_theory, pc_pick_theory,
-  pc_read_theory, research_status, write_concepts. Ask for nothing
-  else.
+  pc_read_theory, pc_set_recipients, research_status,
+  write_concepts. Ask for nothing else.
 - Finish by calling write_concepts with the COMPLETE object. If it
   reports errors, fix them and call it again within your remaining
   steps.

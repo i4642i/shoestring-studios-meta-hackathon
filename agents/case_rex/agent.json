@@ -58,6 +58,7 @@
   "pc_pick_article",
   "pc_read_article",
   "write_cases",
-  "research_status"
+  "research_status",
+  "pc_set_recipients"
  ]
 }
