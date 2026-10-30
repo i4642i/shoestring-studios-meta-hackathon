@@ -509,6 +509,15 @@ _QUOTE_RES = (re.compile(r'"([^"\n]{2,60})"'),
               re.compile("“([^”\n]{2,60})”"))
 _MD_BOLD_RE = re.compile(r"\*\*([^*][^*?\n]{1,59})\*\*")
 _SENT_END_RE = re.compile(r"[.!?\u2026]\s*$")
+_TERM_STOP = frozenset("""
+    a an the and or but for nor so yet with from by as at to of in on off
+    over under into out up down is are was were be been being have has had
+    do does did will would shall should can could may might must not no
+    if then else when while where which who whom whose what this that
+    these those i we you he she it they them him her us our your his its
+    their my mine yours most more less many much such other same one two
+    first second third
+    """.split())
 
 
 def _sentence_initial(text, pos):
@@ -559,9 +568,9 @@ def key_terms(section):
                 add(m.group(0), 2)
     keepers = [t for t, o in seen.items() if o < 2]
     return [t for t, o in seen.items()
-            if o < 2 or not any(
+            if o < 2 or (t.lower() not in _TERM_STOP and not any(
                 re.search(r"\b%s\b" % re.escape(t), k)
-                for k in keepers if k != t)]
+                for k in keepers if k != t))]
 
 
 # ---- see ranges (§10.2-10.3) ----

@@ -301,13 +301,15 @@ KT = {"paras": [
     {"text": "Market risk models use the “ETF trick” every day.",
      "bold": ["Inverse Variance"]},
     {"text": "Still, the Principal Component view wins. Risk parity "
-             "follows Value-at-Risk rules."}]}
+             "follows Value-at-Risk rules."},
+    {"text": "He told The Manager twice."}]}
 kts = pc.key_terms(KT)
 ok("ETF trick" in kts and "Inverse Variance" in kts
    and "Principal Component" in kts and "Value-at-Risk" in kts
+   and "The Manager" in kts and "Manager" not in kts
    and "Market" not in kts and "Still" not in kts
    and "Risk" not in kts and "Principal" not in kts
-   and "Component" not in kts,
+   and "Component" not in kts and "The" not in kts,
    "key terms: curly quotes, bold, phrases; initials dropped")
 
 # ---- see ranges ----
