@@ -521,14 +521,17 @@ def key_terms(section):
     """Real terms in first-seen order: quoted spans, bold spans,
     multi-word capitalized phrases, and single capitalized words that
     also occur mid-sentence. Sentence-initial-only words are not
-    terms and are dropped."""
-    out, seen = [], set()
+    terms and are dropped, as are singles already covered by a kept
+    phrase ("TYPES" inside "TYPES OF DATA")."""
+    seen = {}
 
-    def add(t):
+    def add(t, origin):
         t = " ".join((t or "").split())
-        if t and len(t) <= 60 and t not in seen:
-            seen.add(t)
-            out.append(t)
+        if not t or len(t) > 60:
+            return
+        prev = seen.get(t)
+        if prev is None or origin < prev:
+            seen[t] = origin
 
     paras = section.get("paras", [])
     mid = set()
@@ -543,18 +546,22 @@ def key_terms(section):
         text = p.get("text", "")
         for rx in _QUOTE_RES:
             for m in rx.findall(text):
-                add(m)
+                add(m, 0)
         for m in _MD_BOLD_RE.findall(text):
-            add(m)
+            add(m, 0)
         for b in p.get("bold", []):
-            add(b)
+            add(b, 0)
         for m in _PHRASE_RE.finditer(text):
             if len(m.group(1).split()) <= 6:
-                add(m.group(1))
+                add(m.group(1), 1)
         for m in re.finditer(r"[A-Za-z][A-Za-z\-']*", text):
             if m.group(0) in mid:
-                add(m.group(0))
-    return out
+                add(m.group(0), 2)
+    keepers = [t for t, o in seen.items() if o < 2]
+    return [t for t, o in seen.items()
+            if o < 2 or not any(
+                re.search(r"\b%s\b" % re.escape(t), k)
+                for k in keepers if k != t)]
 
 
 # ---- see ranges (§10.2-10.3) ----

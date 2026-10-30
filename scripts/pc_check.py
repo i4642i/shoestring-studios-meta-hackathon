@@ -306,7 +306,8 @@ kts = pc.key_terms(KT)
 ok("ETF trick" in kts and "Inverse Variance" in kts
    and "Principal Component" in kts and "Value-at-Risk" in kts
    and "Market" not in kts and "Still" not in kts
-   and "Risk" not in kts,
+   and "Risk" not in kts and "Principal" not in kts
+   and "Component" not in kts,
    "key terms: curly quotes, bold, phrases; initials dropped")
 
 # ---- see ranges ----
