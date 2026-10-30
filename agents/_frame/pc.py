@@ -434,7 +434,8 @@ def ingest_source(order_id, base, parsed_at, added_by, pages, images,
     text to an id, dedup, and write entries/<id>/{entry.json, map.json,
     figures/} plus the first log line. images: [(name, blob)] with
     names like p01-img02.png. Map/index are built by the worker.
-    Returns {"ref", "doc_id", "duplicate"}."""
+    Returns {"ref", "doc_id", "duplicate", "title", "sections",
+    "chars"}."""
     paras = clean_pages(pages)
     sections = split_sections(paras)
     fulltext = "\n\n".join(p["text"] for p in paras)
@@ -443,8 +444,12 @@ def ingest_source(order_id, base, parsed_at, added_by, pages, images,
     ep = os.path.join(edir, "entry.json")
     if os.path.isfile(ep):
         with open(ep, encoding="utf-8") as f:
-            ref = json.load(f).get("ref", entry_ref("source", doc_id))
-        return {"ref": ref, "doc_id": doc_id, "duplicate": True}
+            old = json.load(f)
+        return {"ref": old.get("ref", entry_ref("source", doc_id)),
+                "doc_id": doc_id, "duplicate": True,
+                "title": old.get("title", ""),
+                "sections": len(old.get("sections", [])),
+                "chars": old.get("chars", 0)}
     imgs = []
     for n, (name, _blob) in enumerate(images or []):
         m = re.match(r"^p(\d+)-img(\d+)\.png$", name or "")
@@ -470,7 +475,9 @@ def ingest_source(order_id, base, parsed_at, added_by, pages, images,
                            "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                              "order_id": order_id, "pages": len(pages),
                              "paras": len(entry["paragraphs"])}) + "\n")
-    return {"ref": entry["ref"], "doc_id": doc_id, "duplicate": False}
+    return {"ref": entry["ref"], "doc_id": doc_id, "duplicate": False,
+            "title": entry["title"], "sections": len(entry["sections"]),
+            "chars": entry["chars"]}
 
 
 # ---- map skeleton (§10.3/10.5) ----

@@ -318,6 +318,17 @@ def render_source_md(obj):
     return "\n".join(lines)
 
 
+def render_source_v2_md(obj):
+    """Source PC pointer (source v2) as markdown."""
+    lines = ["# Source — %s" % obj["title"], "",
+             "- Ref: [%s](api/ref?ref=%s)" % (obj["ref"], obj["ref"]),
+             "- Characters: %d" % obj["chars"],
+             "- Sections: %d" % obj["sections"], ""]
+    if obj.get("head"):
+        lines += ["## Opening excerpt", "", obj["head"], ""]
+    return "\n".join(lines)
+
+
 def render_structure_md(obj):
     """Structure map (structure v1) as markdown."""
     src = obj["source"]

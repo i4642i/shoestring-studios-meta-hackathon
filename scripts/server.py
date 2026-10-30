@@ -1122,6 +1122,9 @@ class Handler(BaseHTTPRequestHandler):
         else:
             meta["files"]["pc_ref"] = ing["ref"]
             meta["files"]["pc_duplicate"] = ing["duplicate"]
+            meta["files"]["pc_title"] = ing["title"]
+            meta["files"]["pc_sections"] = ing["sections"]
+            meta["files"]["pc_chars"] = ing["chars"]
             meta.pop("pc_error", None)
             self._order_save_meta(d, meta)
             print("order pc %s %s%s" % (oid, ing["ref"],

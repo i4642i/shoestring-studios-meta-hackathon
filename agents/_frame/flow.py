@@ -385,11 +385,19 @@ def _materialize_order(run_dir, order_id, emit):
     if missing:
         return {"ok": False,
                 "error": "order misses answers: %s" % ", ".join(missing)}
+    files = meta.get("files", {})
+    if not files.get("pc_ref"):
+        return {"ok": False,
+                "error": "order %r has no PC entry yet: re-upload its PDF"
+                         % order_id}
     odir = os.path.join(run_dir, ORDER_NODE)
     _write_json(os.path.join(odir, "brief.json"), brief)
     with open(os.path.join(odir, "source.md"), "w", encoding="utf-8") as f:
         f.write(text)
-    source = {"file": os.path.join(odir, "source.md"), "chars": len(text),
+    source = {"ref": files["pc_ref"], "title": files.get("pc_title", ""),
+              "chars": files.get("pc_chars", 0),
+              "sections": files.get("pc_sections", 0),
+              "file": os.path.join(odir, "source.md"),
               "head": text[:500]}
     res = results.make_result(ORDER_NODE, order_id, os.path.basename(run_dir),
                               {"brief": brief, "source": source})

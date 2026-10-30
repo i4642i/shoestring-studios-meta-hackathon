@@ -187,7 +187,10 @@ os.makedirs(od)
 with open(os.path.join(od, "meta.json"), "w", encoding="utf-8") as f:
     json.dump({"answers": {"audience": "a", "length": "b", "depth": "c",
                            "theme": "d"},
-               "files": {"source": "s.pdf"}}, f)
+               "files": {"source": "s.pdf",
+                         "pc_ref": "pc://source/abc123abc123",
+                         "pc_title": "s", "pc_sections": 2,
+                         "pc_chars": 24}}, f)
 with open(os.path.join(od, "parsed.md"), "w", encoding="utf-8") as f:
     f.write("# T\n\n## 1.1 A\n\ntext\n")
 real_orders = flow.ORDERS_DIR
@@ -207,6 +210,12 @@ ok(sam["status"] == "checked"
    and sam["categories"]["request"]["version"] == 1, "sam checked")
 mar = results.load_result(os.path.join(rdir, "pd_marty", "result.json"))
 ok(mar["status"] == "checked", "marty checked")
+ores = results.load_result(os.path.join(rdir, "order", "result.json"))
+osrc = ores["categories"]["source"]
+ok(osrc["version"] == 2
+   and osrc["data"]["ref"] == "pc://source/abc123abc123"
+   and osrc["data"]["sections"] == 2
+   and os.path.isfile(osrc["data"]["file"]), "order source is v2 pointer")
 fin = results.load_result(os.path.join(rdir, "final", "result.json"))
 ok(fin["producer"] == "postprocess" and fin["status"] == "checked"
    and fin["categories"] == {}, "final postprocess result")
@@ -237,6 +246,22 @@ finally:
     flow.ORDERS_DIR = real_orders
 ok(not out.get("ok") and "no such order" in out.get("error", ""),
    "missing order fails clean")
+npc = os.path.join(tmp, "orders", "o8")
+os.makedirs(npc)
+with open(os.path.join(npc, "meta.json"), "w", encoding="utf-8") as f:
+    json.dump({"answers": {"audience": "a", "length": "b", "depth": "c",
+                           "theme": "d"},
+               "files": {"source": "s.pdf"}}, f)
+with open(os.path.join(npc, "parsed.md"), "w", encoding="utf-8") as f:
+    f.write("# T\n\ntext\n")
+flow.ORDERS_DIR = os.path.join(tmp, "orders")
+try:
+    out = flow.run_flow(dflt, "o8", stub,
+                        runs_root=os.path.join(tmp, "runs"), run_id="rid0")
+finally:
+    flow.ORDERS_DIR = real_orders
+ok(not out.get("ok") and "no PC entry" in out.get("error", ""),
+   "order without PC entry fails fast")
 
 
 def boom(agent_dir, run_dir, brief, input_md):

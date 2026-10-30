@@ -42,7 +42,9 @@ REQ = {"order_id": "o1",
 reg = results.registry()
 ok(set(reg) == {"brief", "source", "request", "structure", "video"},
    "registry has 5 incl video")
-ok(all(reg[c]["version"] == 1 for c in reg), "all v1")
+ok(reg["source"]["version"] == 2
+   and all(reg[c]["version"] == 1 for c in reg if c != "source"),
+   "source v2, rest v1")
 
 r = results.make_result("sales_sam", "o1", "r1", {"request": dict(REQ)})
 ok(r["status"] == "unverified" and r["format_version"] == 1

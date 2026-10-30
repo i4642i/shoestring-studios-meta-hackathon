@@ -218,6 +218,7 @@ def save_result(run_dir, res):
 TEMPLATES = {
     ("brief", 1): schemas.render_brief_md,
     ("source", 1): schemas.render_source_md,
+    ("source", 2): schemas.render_source_v2_md,
     ("request", 1): schemas.render_request_md,
     ("structure", 1): schemas.render_structure_md,
     ("video", 1): schemas.render_video_md,

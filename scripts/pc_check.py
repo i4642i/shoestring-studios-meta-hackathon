@@ -203,6 +203,8 @@ try:
     ok(r1["ref"].startswith("pc://source/")
        and len(r1["doc_id"]) == 12 and r1["duplicate"] is False,
        "ingest returns ref + id")
+    ok(r1["title"] == "book" and r1["sections"] == 2
+       and r1["chars"] > 0, "ingest returns title/sections/chars")
     edir = pc.entry_dir("source", r1["doc_id"], root=tmp)
     with open(os.path.join(edir, "entry.json"),
               encoding="utf-8") as f:

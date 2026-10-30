@@ -166,21 +166,28 @@ are defined here with the same schema language.
 }
 ```
 
-`source` payload schema (small pointer; full text stays in the sidecar
-markdown file so envelopes never balloon to megabytes):
+`source` payload schema v2 (small pointer into the Source PC entry;
+full text stays in the PC so envelopes never balloon to megabytes):
 
 ```json
 {
   "type": "object",
-  "required": ["file", "chars"],
+  "required": ["ref", "title", "chars", "sections"],
   "properties": {
-    "file": {"type": "string"},
+    "ref": {"type": "string"},
+    "title": {"type": "string"},
     "chars": {"type": "integer"},
+    "sections": {"type": "integer"},
+    "file": {"type": "string"},
     "head": {"type": "string"}
   },
   "additionalProperties": true
 }
 ```
+
+`ref` is the entry address (`pc://source/<id>`, §9). `file`/`head`
+are transitional: the order node still ships the sidecar markdown
+until agents read via PC tools, then they drop out.
 
 ## 5. Crew plan (stages 0–7): who makes and takes what
 
