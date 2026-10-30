@@ -38,6 +38,7 @@ PC_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 MAX_PDF_BYTES = 25 * 1024 * 1024
 
 _INDEX_JOBS = {}  # (eid, profile) -> Popen of a running run_index.py build
+_PC_JOBS = {}  # doc_id -> Popen of a running pc_worker.py build
 _FLOW_JOBS = {}  # run_id -> live flow run status (threads share memory)
 
 # Served code: the version stamp tracks the last commit touching these.
@@ -219,6 +220,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_ref()
         if parts[:2] == ["api", "pcs"] and len(parts) == 2:
             return self._api_pcs_list()
+        if parts[:3] == ["api", "pcs", "source"] and len(parts) == 4 \
+                and parts[3] == "entries":
+            return self._api_pc_entries()
+        if parts[:3] == ["api", "pcs", "source"] and len(parts) == 5 \
+                and parts[3] == "entries":
+            return self._api_pc_entry(parts[4])
         if parts[:2] == ["api", "settings"] and len(parts) == 2:
             return self._api_settings_get()
         if parts[:2] == ["api", "version"] and len(parts) == 2:
@@ -270,6 +277,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_order_confirm(parts[2])
         if parts[:2] == ["api", "pcs"] and len(parts) == 2:
             return self._api_pcs_add()
+        if parts[:3] == ["api", "pcs", "source"] and len(parts) == 6 \
+                and parts[3] == "entries" and parts[5] == "build":
+            return self._api_pc_build(parts[4])
         if parts[:2] == ["api", "settings"] and len(parts) == 2:
             return self._api_settings_save()
         if parts[:2] == ["api", "settings"] and len(parts) == 3 \
@@ -1122,6 +1132,11 @@ class Handler(BaseHTTPRequestHandler):
                                         " (duplicate)"
                                         if ing["duplicate"] else ""),
                   flush=True)
+            try:
+                self._pc_maybe_build(ing["doc_id"])
+            except Exception as exc:  # noqa: BLE001 - spawn never breaks it
+                print("order pc spawn failed %s: %s" % (oid, exc),
+                      flush=True)
         print("order upload %s/%s (%d pages, %d chars, %d images)"
               % (oid, base, len(pages), len(text), len(images)), flush=True)
         return self._json(200, {"ok": True, "pages": len(pages),
@@ -1451,6 +1466,124 @@ class Handler(BaseHTTPRequestHandler):
             return (409, {"error": "intake incomplete", "missing": missing,
                           "tip": tip})
         return None
+
+    # ---- Source PC ----
+    def _pc_maybe_build(self, doc_id, force=False):
+        """Spawn the map/index worker unless the map is done or a
+        worker already runs for this entry. force rebuilds anyway."""
+        if not force:
+            try:
+                with open(os.path.join(pc.entry_dir("source", doc_id),
+                                       "map.json"),
+                          encoding="utf-8") as f:
+                    if json.load(f).get("status") == "done":
+                        return
+            except (OSError, ValueError):
+                pass
+        job = _PC_JOBS.get(doc_id)
+        if job is not None and job.poll() is None:
+            return
+        edir = pc.entry_dir("source", doc_id)
+        logf = open(os.path.join(edir, "worker.log"), "a",
+                    encoding="utf-8")
+        try:
+            _PC_JOBS[doc_id] = subprocess.Popen(
+                [sys.executable, os.path.join("scripts", "pc_worker.py"),
+                 doc_id], cwd=ROOT, stdout=logf,
+                stderr=subprocess.STDOUT)
+        except OSError:
+            logf.close()
+            raise
+        logf.close()
+        print("order pc worker %s" % doc_id, flush=True)
+
+    @staticmethod
+    def _pc_indexed(prof, doc_id):
+        try:
+            with open(os.path.join(pc.index_dir("source", prof),
+                                   "index.json"), encoding="utf-8") as f:
+                return doc_id in json.load(f).get("entries", [])
+        except (OSError, ValueError):
+            return False
+
+    def _api_pc_entries(self):
+        out = []
+        ed = os.path.join(pc.pc_dir("source"), "entries")
+        if os.path.isdir(ed):
+            for doc_id in sorted(os.listdir(ed)):
+                if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
+                    continue
+                try:
+                    with open(os.path.join(ed, doc_id, "entry.json"),
+                              encoding="utf-8") as f:
+                        e = json.load(f)
+                    with open(os.path.join(ed, doc_id, "map.json"),
+                              encoding="utf-8") as f:
+                        mstatus = json.load(f).get("status", "pending")
+                except (OSError, ValueError):
+                    continue
+                job = _PC_JOBS.get(doc_id)
+                out.append({"id": doc_id, "ref": e.get("ref", ""),
+                            "title": e.get("title", ""),
+                            "origin_file": e.get("origin_file", ""),
+                            "order_id": e.get("order_id", ""),
+                            "parsed_at": e.get("parsed_at", ""),
+                            "added_by": e.get("added_by", ""),
+                            "sections": len(e.get("sections", [])),
+                            "paras": len(e.get("paragraphs", [])),
+                            "chars": e.get("chars", 0),
+                            "images": len(e.get("images", [])),
+                            "map": mstatus,
+                            "building": job is not None
+                            and job.poll() is None,
+                            "index": {
+                                p: self._pc_indexed(p, doc_id)
+                                for p in ("local", "jetson")}})
+        out.sort(key=lambda r: r["parsed_at"], reverse=True)
+        return self._json(200, {"entries": out})
+
+    def _api_pc_entry(self, doc_id):
+        if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
+            return self._json(404, {"error": "no such PC entry"})
+        ed = pc.entry_dir("source", doc_id)
+        if not os.path.isfile(os.path.join(ed, "entry.json")):
+            return self._json(404, {"error": "no such PC entry"})
+        with open(os.path.join(ed, "entry.json"), encoding="utf-8") as f:
+            e = json.load(f)
+        try:
+            with open(os.path.join(ed, "map.json"), encoding="utf-8") as f:
+                m = json.load(f)
+        except (OSError, ValueError):
+            m = {"status": "pending", "sections": []}
+        entry = {k: e.get(k) for k in ("ref", "title", "origin_file",
+                                       "order_id", "parsed_at",
+                                       "added_by", "chars")}
+        entry["sections"] = [{"n": s["n"], "heading": s["heading"],
+                               "count": s["count"]}
+                              for s in e.get("sections", [])]
+        entry["images"] = e.get("images", [])
+        job = _PC_JOBS.get(doc_id)
+        entry["building"] = job is not None and job.poll() is None
+        entry["index"] = {p: self._pc_indexed(p, doc_id)
+                          for p in ("local", "jetson")}
+        return self._json(200, {"entry": entry, "map": m})
+
+    def _api_pc_build(self, doc_id):
+        if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
+            return self._json(404, {"error": "no such PC entry"})
+        if not os.path.isfile(os.path.join(pc.entry_dir("source", doc_id),
+                                            "entry.json")):
+            return self._json(404, {"error": "no such PC entry"})
+        job = _PC_JOBS.get(doc_id)
+        if job is not None and job.poll() is None:
+            return self._json(409, {"started": False,
+                                    "reason": "already building"})
+        try:
+            self._pc_maybe_build(doc_id, force=True)
+        except OSError as exc:
+            return self._json(200, {"started": False,
+                                    "reason": "spawn failed: %s" % exc})
+        return self._json(200, {"started": True})
 
     # ---- PC fleet registry ----
     def _pcs_path(self):

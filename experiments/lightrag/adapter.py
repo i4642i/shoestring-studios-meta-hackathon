@@ -253,8 +253,8 @@ def read_marker(agent_dir, profile):
         return None
 
 
-def _log_call(eid, profile, rec):
-    d = os.path.join(STORAGE, eid, profile)
+def _log_call(eid, profile, rec, wdir=None):
+    d = wdir or os.path.join(STORAGE, eid, profile)
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "llm_log.jsonl"), "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -317,10 +317,10 @@ def jetson_embed(base, token, texts):
     return np.asarray(all_vecs, dtype=float)
 
 
-def get_rag(eid, profile=None):
+def get_rag(eid, profile=None, working_dir=None):
     pcfg = profile_config(profile)
     prof = pcfg["profile"]
-    key = (eid, prof)
+    key = (eid, prof, working_dir or "")
     if key in _RAGS:
         return _RAGS[key]
     try:
@@ -333,7 +333,7 @@ def get_rag(eid, profile=None):
             "(installs LightRAG into .venv), then build the index." % e)
     lm = llm_settings()
     llm_key = load_key(lm["key_env"])
-    wdir = os.path.join(STORAGE, eid, prof)
+    wdir = working_dir or os.path.join(STORAGE, eid, prof)
     os.makedirs(wdir, exist_ok=True)
 
     async def llm_func(prompt, system_prompt=None, history_messages=None, **kw):
@@ -345,7 +345,8 @@ def get_rag(eid, profile=None):
         _log_call(eid, prof, {"t": time.strftime("%H:%M:%S"),
                               "prompt_chars": len(prompt or ""),
                               "reply_chars": len(out or ""),
-                              "seconds": round(time.time() - t0, 1)})
+                              "seconds": round(time.time() - t0, 1)},
+                  wdir if working_dir else None)
         return out
 
     if prof == "jetson":
@@ -426,6 +427,47 @@ def index_agent(agent_dir, profile=None):
             "model": pcfg["model"], "dim": pcfg["dim"],
             "files": len(files), "seconds": round(secs, 1),
             "llm_calls": calls}
+
+
+def index_texts(text, log_id, profile, working_dir, entry_id=""):
+    """Insert raw text into a LightRAG at an explicit working dir (PC
+    indexes). One ainsert for the whole text; writes the index.json
+    marker there, tracking indexed entry ids. Returns stats."""
+    pcfg = profile_config(profile)
+    prof = pcfg["profile"]
+    if prof == "jetson":
+        jetson_health()  # fail fast, never silently local
+    rag = get_rag(log_id, prof, working_dir)
+    t0 = time.time()
+    _run(rag.ainsert(text))
+    secs = time.time() - t0
+    os.makedirs(working_dir, exist_ok=True)
+    mp = os.path.join(working_dir, "index.json")
+    entries, chars = [], 0
+    if os.path.isfile(mp):
+        try:
+            with open(mp, encoding="utf-8") as f:
+                old = json.load(f)
+            entries = old.get("entries", [])
+            chars = old.get("chars", 0)
+        except ValueError:
+            pass
+    if entry_id and entry_id not in entries:
+        entries.append(entry_id)
+        chars += len(text)
+    lm = llm_settings()
+    with open(mp, "w", encoding="utf-8") as f:
+        json.dump({"backend": "lightrag", "profile": prof,
+                   "model": pcfg["model"], "dim": pcfg["dim"],
+                   "chunk_size": pcfg["chunk_size"], "entries": entries,
+                   "chars": chars, "seconds": round(secs, 1),
+                   "indexed_at": time.strftime("%Y-%m-%d %H:%M"),
+                   "llm_model": lm["model"],
+                   "llm_base_url": lm["base_url"]},
+                  f, ensure_ascii=False, indent=1)
+    return {"ok": True, "profile": prof, "model": pcfg["model"],
+            "dim": pcfg["dim"], "seconds": round(secs, 1),
+            "chars": len(text)}
 
 
 def query_agent(agent_dir, question, profile=None):
