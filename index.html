@@ -722,7 +722,7 @@
   /* Page build stamp: full hash of the last commit touching served code
      (see VERSION_PATHS in scripts/server.py). Bump on every commit that
      changes served code; flow_check.py enforces the stamp's ancestry. */
-  const PAGE_BUILD = "2401f912bdf01e8841a1335d4df7d2072668d9cc";
+  const PAGE_BUILD = "d985e8b683605f93c2a68872e96b7d8dd212e96d";
   (function vercheck() {
     const b = document.getElementById("ver-banner");
     if (!b) return;
@@ -2041,6 +2041,15 @@
         S.selNode = null;
         render();
       }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const t = e.target && e.target.tagName;
+      if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT") return;
+      if (!S.selNode || S.selNode === "order" || S.selNode === "final") return;
+      if (document.getElementById("p-flow").style.display === "none") return;
+      e.preventDefault();
+      delNode(S.selNode);
     });
 
     function scheduleValidate() {
