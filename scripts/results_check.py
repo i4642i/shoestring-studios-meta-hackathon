@@ -126,7 +126,9 @@ sent = _pc.ingest_source("o1", "s.pdf", "2026-10-30T00:00:00",
                          ["1.1 Alpha\nSource alpha text."], [], [], 0,
                          root=samroot)
 _pc.set_recipients("source", sent["doc_id"], "o1",
-                   ["sales_sam", "pd_marty"], "sales_sam", root=samroot)
+                   ["sales_sam"], "sales_sam", kind="full", root=samroot)
+_pc.set_recipients("source", sent["doc_id"], "o1",
+                   ["pd_marty"], "sales_sam", kind="full", root=samroot)
 sendp = os.path.join(wdir, "send.json")
 with open(sendp, "w", encoding="utf-8") as f:
     json.dump({"ref": sent["ref"], "doc_id": sent["doc_id"],
@@ -168,7 +170,9 @@ ok(no_rec.get("ok") is False
    and "pc_set_recipients" in " ".join(no_rec.get("errors", [])),
    "write_request without recipients refuses")
 _pc.set_recipients("source", sent["doc_id"], "o1",
-                   ["sales_sam", "pd_marty"], "sales_sam", root=samroot)
+                   ["sales_sam"], "sales_sam", kind="full", root=samroot)
+_pc.set_recipients("source", sent["doc_id"], "o1",
+                   ["pd_marty"], "sales_sam", kind="full", root=samroot)
 bad = dict(REQ)
 del bad["order_id"]
 ok(write_request(ctx, {"request": bad}).get("ok") is False,

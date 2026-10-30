@@ -1354,21 +1354,42 @@ def recipients_of(entry):
 
 
 def may_read(entry, agent_id, order_id):
-    """True when agent_id may read this entry for order_id. Legacy
+    """True when agent_id holds any row for this entry + order. Legacy
     entries without a recipients key stay open."""
-    rows = recipients_of(entry)
-    if rows is None:
-        return True
-    for r in rows:
+    return entry_access(entry, agent_id, order_id) is not None \
+        or recipients_of(entry) is None
+
+
+def row_kind(row):
+    """A row's kind ("map"/"full"). Rows written before kinds default
+    to full (behavior-preserving)."""
+    return (row or {}).get("kind") or "full"
+
+
+def row_parts(row):
+    """A row's listed parts (refs). Empty = the whole entry."""
+    parts = (row or {}).get("parts")
+    return list(parts) if isinstance(parts, list) else []
+
+
+def entry_access(entry, agent_id, order_id):
+    """The recipient row for (agent, order), or None. One row per
+    agent + order."""
+    for r in recipients_of(entry) or []:
         if isinstance(r, dict) and r.get("agent") == agent_id \
                 and r.get("order_id") == order_id:
-            return True
-    return False
+            return r
+    return None
 
 
-def set_recipients(pcname, doc_id, order_id, agents, set_by, root=None):
+def set_recipients(pcname, doc_id, order_id, agents, set_by, kind="map",
+                   parts=None, root=None):
     """Upsert recipients for one order (merge per agent; other orders'
-    rows are kept). Returns the full row list."""
+    rows are kept). kind is "map" or "full"; parts (refs, []) limits
+    the grant to those parts. Returns the full row list."""
+    if kind not in ("map", "full"):
+        raise ValueError("kind must be map or full")
+    parts = list(parts or [])
     p = os.path.join(entry_dir(pcname, doc_id, root), "entry.json")
     with open(p, encoding="utf-8") as f:
         entry = json.load(f)
@@ -1379,15 +1400,55 @@ def set_recipients(pcname, doc_id, order_id, agents, set_by, root=None):
     for a in agents or []:
         key = (a, order_id)
         if key in have:
+            have[key]["kind"] = kind
+            have[key]["parts"] = parts
             have[key]["set_by"] = set_by
             have[key]["at"] = now
         else:
             have[key] = {"agent": a, "order_id": order_id,
+                         "kind": kind, "parts": parts,
                          "set_by": set_by, "at": now}
     entry["recipients"] = [have[k] for k in sorted(have)]
     with open(p, "w", encoding="utf-8") as f:
         json.dump(entry, f, ensure_ascii=False, indent=2)
     return entry["recipients"]
+
+
+def _frag_within(rfrag, pfrag):
+    """True when requested fragment rfrag sits inside part pfrag:
+    exact match, or a paragraph/range under a listed section/group."""
+    if not pfrag:
+        return True
+    if rfrag == pfrag:
+        return True
+    return bool(rfrag) and rfrag.startswith(pfrag + "/")
+
+
+def ref_within(requested_ref, part_ref):
+    """True when requested_ref names the same entry as part_ref and
+    sits inside that part. A bare entry ref (whole text) is inside
+    nothing: parts-limited members read listed parts only."""
+    try:
+        rpc, rid, rfrag = parse_ref(requested_ref)
+        ppc, pid, pfrag = parse_ref(part_ref)
+    except ValueError:
+        return False
+    return rpc == ppc and rid == pid and _frag_within(rfrag, pfrag)
+
+
+def entry_parts_allow(entry, agent_id, order_id, target_ref):
+    """True when (agent, order) may open target_ref: a row exists and
+    (no parts limit, or the ref sits inside a listed part). Legacy
+    keyless entries stay open."""
+    if recipients_of(entry) is None:
+        return True
+    row = entry_access(entry, agent_id, order_id)
+    if row is None:
+        return False
+    parts = row_parts(row)
+    if not parts:
+        return True
+    return any(ref_within(target_ref, part) for part in parts)
 
 
 def entry_markdown(entry):

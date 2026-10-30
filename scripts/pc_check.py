@@ -540,7 +540,8 @@ try:
                             "meta.json"), "w", encoding="utf-8") as f:
         json.dump({"files": {"pc_ref": r3["ref"]}}, f)
     pc.set_recipients("source", r3["doc_id"], "ord-20261030-009",
-                        ["explain_cleo"], "sales_sam", root=tmp2)
+                        ["explain_cleo"], "sales_sam", kind="map",
+                        root=tmp2)
     cleo = {"agent_dir": os.path.join(tmp2, "agents", "explain_cleo"),
             "producer": "explain_cleo", "order_id": "ord-20261030-009"}
     sam = {"agent_dir": os.path.join(tmp2, "agents", "sales_sam"),
@@ -592,7 +593,8 @@ try:
     ok(pc.may_read(ent, "anyone", "ord-20261030-009"),
        "legacy entry without recipients stays open")
     rows = pc.set_recipients("source", r3["doc_id"], "ord-20261030-009",
-                             ["case_rex"], "sales_sam", root=tmp2)
+                             ["case_rex"], "sales_sam", kind="map",
+                             root=tmp2)
     ok(sorted(r["agent"] for r in rows
               if r["order_id"] == "ord-20261030-009")
        == ["case_rex", "explain_cleo"],
@@ -617,6 +619,39 @@ try:
                                       os.path.join(tmp2, "runs"))
     ok(meta3["included"] == [] and meta3["denied"] == [r3["ref"]],
        "non-listed entry contributes no chunk")
+    pcp = r3["ref"] + "#s1.1/p2"
+    pc.set_recipients("source", r3["doc_id"], "ord-20261030-009",
+                      ["board_penn"], "plan_ash", kind="map",
+                      parts=[pcp], root=tmp2)
+    penn = {"agent_dir": cleo["agent_dir"], "producer": "board_penn",
+            "order_id": "ord-20261030-009"}
+    ok(tmod.pc_read_source(penn, {"ref": pcp}).get("kind") == "paragraph",
+       "parts-listed member reads inside the part")
+    ok(tmod.pc_read_source(
+        penn, {"ref": r3["ref"] + "#s1.1/p1"}).get("error")
+       == "no access to this item",
+       "parts-listed member refused outside the part")
+    ok(tmod.pc_read_source(penn, {"section": "1.1"}).get("error")
+       == "no access to this item",
+       "parts-listed member refused the whole section")
+    ok(tmod.pc_read_source(penn, {"ref": r3["ref"]}).get("error")
+       == "no access to this item",
+       "parts-listed member refused the whole entry")
+    ok(pc.ref_within(r3["ref"] + "#s1.1/p2", r3["ref"] + "#s1.1")
+       and not pc.ref_within(r3["ref"] + "#s1.1",
+                             r3["ref"] + "#s1.1/p2")
+       and not pc.ref_within(r3["ref"] + "#s1.1/p1",
+                             "pc://source/deadbeefdead#s1.1")
+       and not pc.ref_within("nope", r3["ref"] + "#s1.1"),
+       "ref_within matches entry + containment")
+    ok(pc.row_kind({}) == "full"
+       and pc.row_kind({"kind": "map"}) == "map"
+       and pc.row_parts({}) == [],
+       "kindless rows default to full, parts to whole")
+    other = dict(cleo, order_id="ord-20261030-999")
+    ok(tmod.pc_list_source(other, {"ref": r3["ref"]}).get("error")
+       == "no access to this item",
+       "listing in order A gives nothing in order B")
 finally:
     pc.ROOT_OVERRIDE = None
     shutil.rmtree(tmp2, ignore_errors=True)

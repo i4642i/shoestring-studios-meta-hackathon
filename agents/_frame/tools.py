@@ -428,12 +428,17 @@ def _entry_for(ctx, ref):
         return None, {"error": "cannot load entry: %s" % exc}
 
 
-def _recipients_error(ctx, entry):
-    """None when ctx may read the entry; else the refusal dict."""
-    if pc.may_read(entry, (ctx or {}).get("producer", ""),
-                   (ctx or {}).get("order_id", "")):
-        return None
-    return {"error": "no access to this item"}
+def _recipients_error(ctx, entry, ref=None):
+    """None when ctx may read (ref None: list the entry); else the
+    refusal dict. Parts-limited rows open listed parts only."""
+    if ref is None:
+        ok = pc.may_read(entry, (ctx or {}).get("producer", ""),
+                         (ctx or {}).get("order_id", ""))
+    else:
+        ok = pc.entry_parts_allow(entry, (ctx or {}).get("producer",
+                                                         ""),
+                                  (ctx or {}).get("order_id", ""), ref)
+    return None if ok else {"error": "no access to this item"}
 
 
 def pc_list_source(ctx, args):
@@ -458,9 +463,6 @@ def pc_read_source(ctx, args):
     entry, err = _entry_for(ctx, args.get("ref"))
     if err:
         return err
-    err = _recipients_error(ctx, entry)
-    if err:
-        return err
     if args.get("ref"):
         try:
             pcname, _id, frag = pc.parse_ref(args["ref"])
@@ -469,13 +471,17 @@ def pc_read_source(ctx, args):
         if pcname != "source":
             return {"error": "pc_read_source reads Source only; "
                              "use open_ref"}
-        if not frag:
-            return _full_entry_text(entry, args)
         want = args["ref"]
     elif not args.get("section"):
         return {"error": "give section or ref"}
     else:
         want = entry["ref"] + "#s" + args["section"].strip()
+        frag = "s" + args["section"].strip()
+    err = _recipients_error(ctx, entry, want)
+    if err:
+        return err
+    if not frag:
+        return _full_entry_text(entry, args)
     try:
         out = pc.open_ref(entry, want)
     except (KeyError, ValueError) as exc:
@@ -543,7 +549,7 @@ def open_ref(ctx, args):
         entry = pc.load_entry_by_ref(ref)
     except (OSError, KeyError, ValueError) as exc:
         return {"error": str(exc)}
-    err = _recipients_error(ctx, entry)
+    err = _recipients_error(ctx, entry, ref)
     if err:
         return err
     try:
@@ -758,7 +764,8 @@ def _pc_pick(ctx, args, pcname):
         pc.set_recipients(pcname, r["doc_id"],
                            (ctx or {}).get("order_id", ""),
                            [(ctx or {}).get("producer", "")],
-                           (ctx or {}).get("producer", ""))
+                           (ctx or {}).get("producer", ""),
+                           kind="full")
     except (OSError, ValueError) as exc:
         rec_err = str(exc)
     out = {"ref": r["ref"], "doc_id": r["doc_id"],
@@ -804,7 +811,7 @@ def _pc_read_web(ctx, args, pcname):
         entry = pc.load_entry_by_ref(ref)
     except (OSError, KeyError, ValueError) as exc:
         return {"error": str(exc)}
-    err = _recipients_error(ctx, entry)
+    err = _recipients_error(ctx, entry, ref)
     if err:
         return err
     try:
@@ -916,7 +923,7 @@ def pc_send_source(ctx, args):
     try:
         pc.set_recipients("source", r["doc_id"], order_id,
                            [ctx.get("producer", "")],
-                           ctx.get("producer", ""))
+                           ctx.get("producer", ""), kind="full")
     except (OSError, ValueError) as exc:
         return {"error": "ingested %s but cannot list recipients: %s"
                          % (r["ref"], exc)}

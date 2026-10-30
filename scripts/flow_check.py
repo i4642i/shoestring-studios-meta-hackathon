@@ -368,7 +368,10 @@ try:
                            ["1.1 Getting started\nPreloaded text here."],
                            [], [], 0, root=tmp)
     _pc.set_recipients("source", rr["doc_id"], "o10",
-                       ["explain_cleo", "pd_marty"], "sales_sam",
+                       ["explain_cleo"], "sales_sam", kind="map",
+                       root=tmp)
+    _pc.set_recipients("source", rr["doc_id"], "o10",
+                       ["pd_marty"], "sales_sam", kind="full",
                        root=tmp)
     os.makedirs(os.path.join(tmp, "orders", "o10"))
     with open(os.path.join(tmp, "orders", "o10", "meta.json"), "w",
