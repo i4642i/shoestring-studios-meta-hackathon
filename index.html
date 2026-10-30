@@ -394,22 +394,35 @@
   <div class="card">
     <h2>PC — COMPANY COMPUTERS</h2>
     <p class="hint">Shared stores, not agents. Employees reach PC materials through a tool, never directly.</p>
-    <div id="pc-cards"></div>
-    <h3>SOURCE PC — ENTRIES</h3>
-    <table id="pc-table">
-      <thead><tr><th>TITLE</th><th>REF</th><th>ORDER</th><th>SECTIONS</th><th>FIG/TAB</th><th>MAP</th><th>INDEX</th></tr></thead>
-      <tbody id="pc-rows"><tr><td colspan="7">Loading…</td></tr></tbody>
-    </table>
-    <div id="pc-detail" style="display:none">
-      <h3 id="pc-dtitle"></h3>
-      <p id="pc-dmeta"></p>
-      <p><button id="pc-rebuild">REBUILD MAP + INDEX</button> <button id="pc-reindex">REBUILD INDEX</button> <span id="pc-dmsg"></span></p>
-      <p><button id="pc-pre-cleo">PREVIEW CLEO START PROMPT</button>
-      <button id="pc-pre-rex">PREVIEW REX START PROMPT</button></p>
-      <pre id="pc-dprompt" style="display:none"></pre>
-      <div id="pc-dmap"></div>
-      <h4>PASSAGE</h4>
-      <pre id="pc-dpass">Click a "see" link to open the passage here.</pre>
+    <p id="pc-crumbs" style="display:none"><a href="#/pc">← All PCs</a> <span id="pc-here"></span></p>
+    <div id="pc-overview">
+      <div id="pc-cards"></div>
+    </div>
+    <div id="pc-manage" style="display:none">
+      <h3 id="pc-mtitle"></h3>
+      <table id="pc-table">
+        <thead><tr><th>TITLE</th><th>REF</th><th>ORDER</th><th>SECTIONS</th><th>FIG/TAB</th><th>MAP</th><th>INDEX</th><th></th></tr></thead>
+        <tbody id="pc-rows"><tr><td colspan="8">Loading…</td></tr></tbody>
+      </table>
+      <div id="pc-detail" style="display:none">
+        <h3 id="pc-dtitle"></h3>
+        <p id="pc-dmeta"></p>
+        <p><button id="pc-rebuild">REBUILD MAP + INDEX</button> <button id="pc-reindex">REBUILD INDEX</button> <span id="pc-dmsg"></span></p>
+        <div class="subtabs" id="pc-dtabs">
+          <button data-pt="orig" class="active">ORIGINAL</button>
+          <button data-pt="agents">WHAT AGENTS RECEIVE</button>
+        </div>
+        <div id="pc-dorig"></div>
+        <div id="pc-dagents" style="display:none">
+          <p>View as <select id="pc-viewas" aria-label="View as agent"></select>
+          <button id="pc-viewgo">SHOW</button> <span id="pc-vanote" class="hint"></span></p>
+          <div id="pc-vapicks"></div>
+          <pre id="pc-dprompt" style="display:none"></pre>
+          <div id="pc-dmap"></div>
+        </div>
+        <h4>PASSAGE</h4>
+        <pre id="pc-dpass">Click a "see" link to open the passage here.</pre>
+      </div>
     </div>
     <p id="pcerr"></p>
   </div>
@@ -2424,12 +2437,15 @@
     load();
   })();
 
-  /* PC fleet registry. */
+    /* PC fleet: overview cards + per-PC management. */
   (function pcs() {
     const rows = document.getElementById("pc-rows");
     const errline = document.getElementById("pcerr");
     if (!rows) return;
-    let entryRef = "";
+    const PCS = ["source", "theory", "article"];
+    const PC_NAMES = { source: "Source PC", theory: "Theory PC",
+      article: "Article PC" };
+    let cur = { pc: "", id: "", ref: "", order: "" };
     function fail(e) { errline.textContent = "Error: " + e.message; }
     function fmtSize(n) {
       if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB";
@@ -2442,16 +2458,150 @@
         return p + " " + (v.built ? "built(" + v.entries + ")" : "—");
       }).join(" · ");
     }
-    function seeLink(secRef, see) {
-      const a = document.createElement("a");
-      a.href = "#";
-      a.textContent = see;
-      a.onclick = (e) => {
-        e.preventDefault();
-        const frag = see.indexOf("-") >= 0 ? secRef : secRef + "/" + see;
-        openPassage(entryRef + "#" + frag).catch(fail);
-      };
-      return a;
+    function showPcTab() {
+      document.querySelectorAll("nav button").forEach(x => x.classList.remove("active"));
+      document.querySelectorAll(".page").forEach(x => x.classList.remove("active"));
+      const b = document.querySelector('nav button[data-p="pc"]');
+      if (b) b.classList.add("active");
+      document.getElementById("p-pc").classList.add("active");
+    }
+    function route() {
+      const m = (location.hash || "").match(/^#\/pc(?:\/(\w+))?$/);
+      if (!m) return false;
+      showPcTab();
+      if (m[1] && PCS.indexOf(m[1]) >= 0) openManage(m[1]);
+      else openOverview();
+      return true;
+    }
+    window.addEventListener("hashchange", () => { route(); });
+
+    async function openOverview() {
+      cur = { pc: "", id: "", ref: "", order: "" };
+      errline.textContent = "";
+      document.getElementById("pc-crumbs").style.display = "none";
+      document.getElementById("pc-overview").style.display = "block";
+      document.getElementById("pc-manage").style.display = "none";
+      const cards = document.getElementById("pc-cards");
+      cards.innerHTML = "";
+      let r;
+      try {
+        r = await api.get("api/pcs");
+      } catch (e) {
+        cards.innerHTML = "<p>PC list unavailable (api/pcs failed: " +
+          e.message + ") — is the server running current code?</p>";
+        return;
+      }
+      (r.pcs || []).forEach((p) => {
+        const div = document.createElement("div");
+        const h = document.createElement("h3");
+        const a = document.createElement("a");
+        a.href = "#/pc/" + p.id;
+        a.textContent = p.name + " — " + p.state + " →";
+        h.appendChild(a);
+        div.appendChild(h);
+        const ul = document.createElement("ul");
+        [["Holds", p.holds], ["Add", p.add], ["Read", p.read],
+         ["Tools", (p.tools || []).join(", ")],
+         ["Entries", String(p.entries)],
+         ["Size", fmtSize(p.size_bytes || 0)],
+         ["Profile", p.profile || "?"],
+         ["Index", idxText(p.index)]].forEach((kv) => {
+          const li = document.createElement("li");
+          li.textContent = kv[0] + ": " + kv[1];
+          ul.appendChild(li);
+        });
+        div.appendChild(ul);
+        cards.appendChild(div);
+      });
+    }
+
+    async function openManage(pc) {
+      cur = { pc: pc, id: "", ref: "", order: "" };
+      errline.textContent = "";
+      document.getElementById("pc-crumbs").style.display = "block";
+      document.getElementById("pc-here").textContent = " / " + (PC_NAMES[pc] || pc);
+      document.getElementById("pc-overview").style.display = "none";
+      document.getElementById("pc-manage").style.display = "block";
+      document.getElementById("pc-mtitle").textContent =
+        (PC_NAMES[pc] || pc).toUpperCase() + " — ENTRIES";
+      document.getElementById("pc-detail").style.display = "none";
+      rows.innerHTML = "";
+      let e;
+      try {
+        e = await api.get("api/pcs/" + pc + "/entries");
+      } catch (err) {
+        rows.innerHTML = "<tr><td colspan=\"8\">" + pc +
+          " entries unavailable (api/pcs/" + pc + "/entries failed: " +
+          err.message + ") — is the server running current code?</td></tr>";
+        return;
+      }
+      (e.entries || []).forEach((e2) => {
+        const tr = document.createElement("tr");
+        const td0 = document.createElement("td");
+        const a = document.createElement("a");
+        a.href = "#";
+        a.textContent = e2.title || e2.id;
+        a.onclick = (ev) => { ev.preventDefault(); showDetail(pc, e2.id).catch(fail); };
+        td0.appendChild(a);
+        tr.appendChild(td0);
+        [[e2.ref], [(e2.order_id || e2.added_by || "—")],
+         [String(e2.sections)],
+         [String(e2.figures || 0) + "/" + String(e2.tables || 0)],
+         [e2.map + (e2.building ? " (building…)" : "")],
+         [idxText(e2.index)]].forEach((kv) => {
+          const td = document.createElement("td");
+          td.textContent = kv[0];
+          tr.appendChild(td);
+        });
+        const tdB = document.createElement("td");
+        const rb = document.createElement("button");
+        rb.textContent = "INDEX";
+        rb.title = "Rebuild index for this entry";
+        rb.onclick = async () => {
+          try {
+            rb.disabled = true;
+            await api.send("POST", "api/pcs/" + pc + "/entries/" +
+              encodeURIComponent(e2.id) + "/index", {});
+            openManage(pc).catch(fail);
+          } catch (err2) { fail(err2); rb.disabled = false; }
+        };
+        tdB.appendChild(rb);
+        tr.appendChild(tdB);
+        rows.appendChild(tr);
+      });
+      if (!(e.entries || []).length) {
+        rows.innerHTML = "<tr><td colspan=\"8\">" + (pc === "source"
+          ? "No entries yet — upload a PDF in an order."
+          : "No picks yet — " + (pc === "theory" ? "Cleo" : "Rex") +
+            " picks from web search.") + "</td></tr>";
+      }
+    }
+
+    function anchorOf(frag) {
+      if (frag.indexOf("/") < 0) {
+        const grp = frag.replace(/^[sg]/, "").replace(/[^a-zA-Z0-9]+/g, "-");
+        return "se-" + grp;
+      }
+      const addr = frag.replace(/^g[^/]*\//, "");
+      return "pa-" + addr.replace(/[^a-zA-Z0-9]+/g, "-");
+    }
+    function pcTab(which) {
+      document.querySelectorAll("#pc-dtabs [data-pt]").forEach(b => {
+        b.classList.toggle("active", b.dataset.pt === which);
+      });
+      document.getElementById("pc-dorig").style.display =
+        which === "orig" ? "block" : "none";
+      document.getElementById("pc-dagents").style.display =
+        which === "agents" ? "block" : "none";
+    }
+    function jumpTo(frag) {
+      pcTab("orig");
+      const el = document.getElementById(anchorOf(frag));
+      if (!el) return;
+      el.scrollIntoView({ block: "center" });
+      const old = el.style.outline;
+      el.style.outline = "2px solid var(--accent)";
+      setTimeout(() => { el.style.outline = old; }, 1600);
     }
     async function openPassage(ref) {
       const box = document.getElementById("pc-dpass");
@@ -2463,77 +2613,118 @@
         " · " + (prov.title || "") + " · order " + (prov.order_id || "") +
         (prov.pages ? " · p. " + prov.pages.join(",") : "");
     }
-    async function showDetail(id) {
-      const dmsg = document.getElementById("pc-dmsg");
-      dmsg.textContent = "";
-      const d = await api.get("api/pcs/source/entries/" + encodeURIComponent(id));
-      const box = document.getElementById("pc-detail");
-      box.style.display = "block";
-      entryRef = d.entry.ref;
-      document.getElementById("pc-dtitle").textContent = d.entry.title;
-      document.getElementById("pc-dmeta").textContent =
-        d.entry.ref + " · order " + d.entry.order_id +
-        " · " + d.entry.parsed_at + " · map " + d.map.status +
-        (d.entry.building ? " (building…)" : "") +
-        " · index " + idxText(d.entry.index);
-      const map = document.getElementById("pc-dmap");
-      map.innerHTML = "";
-      const secs = document.createElement("p");
-      secs.textContent = "Sections: ";
-      (d.entry.sections || []).forEach((s, i) => {
-        if (i) secs.appendChild(document.createTextNode(" · "));
-        const a = document.createElement("a");
-        a.href = "#";
-        a.textContent = "s" + s.n + (s.non_content ? " (non-content)" : "");
-        a.title = s.heading || "";
-        a.onclick = (e) => {
-          e.preventDefault();
-          openPassage(entryRef + "#s" + s.n).catch(fail);
-        };
-        secs.appendChild(a);
-      });
-      map.appendChild(secs);
-      (d.entry.figures || []).forEach((f) => {
+    function seeLink(secRef, see) {
+      const a = document.createElement("a");
+      a.href = "#";
+      a.textContent = see;
+      a.onclick = (e) => {
+        e.preventDefault();
+        const frag = see.indexOf("-") >= 0 ? secRef : secRef + "/" + see;
+        jumpTo(frag);
+        openPassage(cur.ref + "#" + frag).catch(fail);
+      };
+      return a;
+    }
+    function figBlock(d, pc, id, f) {
+      const box = document.createElement("div");
+      const h = document.createElement("h5");
+      h.textContent = f.addr + " — " + (f.caption || "(no caption)") +
+        " · p. " + f.page;
+      box.appendChild(h);
+      const a = document.createElement("a");
+      a.href = "api/pcs/" + pc + "/entries/" + encodeURIComponent(id) +
+        "/figures/" + encodeURIComponent(f.file);
+      a.target = "_blank";
+      a.rel = "noopener";
+      const img = document.createElement("img");
+      img.src = a.href + "?thumb=1";
+      img.alt = f.caption || f.addr;
+      img.style.maxWidth = "320px";
+      a.appendChild(img);
+      box.appendChild(a);
+      const dp = document.createElement("p");
+      dp.textContent = f.description || "(no AI description yet)";
+      box.appendChild(dp);
+      const np = document.createElement("p");
+      np.className = "hint";
+      np.textContent = "Kind: " + (f.kind || "—") +
+        " · Numbers: " + ((f.numbers || []).join(", ") || "—") +
+        (f.described_by ? " · described by " + f.described_by : "");
+      box.appendChild(np);
+      return box;
+    }
+    function tabBlock(t) {
+      const box = document.createElement("div");
+      const h = document.createElement("h5");
+      h.textContent = t.addr + " — " + (t.caption || "(no caption)") +
+        " · p. " + t.page;
+      box.appendChild(h);
+      const pre = document.createElement("pre");
+      pre.textContent = t.markdown || "(no rows)";
+      box.appendChild(pre);
+      return box;
+    }
+    function renderOrig(d, pc, id) {
+      const box = document.getElementById("pc-dorig");
+      box.innerHTML = "";
+      const paras = d.entry.paragraphs || [];
+      const placedFig = {}, placedTab = {};
+      (d.entry.sections || []).forEach((s) => {
         const h = document.createElement("h4");
-        h.textContent = f.addr + " — " + (f.caption || "(no caption)") +
-          " · p. " + f.page;
-        map.appendChild(h);
-        const a = document.createElement("a");
-        a.href = "api/pcs/source/entries/" + encodeURIComponent(id) +
-          "/figures/" + encodeURIComponent(f.file);
-        a.target = "_blank";
-        a.rel = "noopener";
-        const img = document.createElement("img");
-        img.src = a.href + "?thumb=1";
-        img.alt = f.caption || f.addr;
-        img.style.maxWidth = "320px";
-        a.appendChild(img);
-        map.appendChild(a);
-        const dp = document.createElement("p");
-        dp.textContent = f.description || "(no AI description yet)";
-        map.appendChild(dp);
-        const np = document.createElement("p");
-        np.className = "hint";
-        np.textContent = "Kind: " + (f.kind || "—") +
-          " · Numbers: " + ((f.numbers || []).join(", ") || "—") +
-          (f.described_by ? " · described by " + f.described_by : "");
-        map.appendChild(np);
+        h.id = anchorOf("s" + s.n);
+        h.textContent = "s" + s.n + " — " + (s.heading || "(preamble)") +
+          (s.non_content ? " (non-content)" : "");
+        box.appendChild(h);
+        const slice = paras.slice(s.start, s.start + s.count);
+        const pages = {};
+        slice.forEach((p) => {
+          (p.pages || []).forEach((pg) => { pages[pg] = 1; });
+          const line = document.createElement("p");
+          line.id = anchorOf(p.addr);
+          const rl = document.createElement("a");
+          rl.href = "#";
+          rl.className = "hint";
+          rl.textContent = "[" + p.addr + "] ";
+          rl.onclick = (ev) => {
+            ev.preventDefault();
+            openPassage(cur.ref + "#" + p.addr).catch(fail);
+          };
+          line.appendChild(rl);
+          line.appendChild(document.createTextNode(p.text));
+          box.appendChild(line);
+        });
+        (d.entry.figures || []).forEach((f, i) => {
+          if (!placedFig[i] && pages[f.page]) {
+            placedFig[i] = 1;
+            box.appendChild(figBlock(d, pc, id, f));
+          }
+        });
+        (d.entry.tables || []).forEach((t, i) => {
+          if (!placedTab[i] && pages[t.page]) {
+            placedTab[i] = 1;
+            box.appendChild(tabBlock(t));
+          }
+        });
       });
+      const restF = (d.entry.figures || []).filter((f, i) => !placedFig[i]);
+      const restT = (d.entry.tables || []).filter((t, i) => !placedTab[i]);
+      if (restF.length || restT.length) {
+        const h = document.createElement("h4");
+        h.textContent = "Unplaced figures/tables";
+        box.appendChild(h);
+        restF.forEach((f) => box.appendChild(figBlock(d, pc, id, f)));
+        restT.forEach((t) => box.appendChild(tabBlock(t)));
+      }
       if ((d.entry.figures || []).length) {
         const nh = document.createElement("p");
         nh.className = "hint";
         nh.textContent = "AI-made descriptions are navigation only, never evidence.";
-        map.appendChild(nh);
+        box.appendChild(nh);
       }
-      (d.entry.tables || []).forEach((t) => {
-        const h = document.createElement("h4");
-        h.textContent = t.addr + " — " + (t.caption || "(no caption)") +
-          " · p. " + t.page;
-        map.appendChild(h);
-        const pre = document.createElement("pre");
-        pre.textContent = t.markdown || "(no rows)";
-        map.appendChild(pre);
-      });
+    }
+    function renderMap(d) {
+      const map = document.getElementById("pc-dmap");
+      map.innerHTML = "";
       const mhead = document.createElement("p");
       mhead.textContent = "Map: " + d.map.status +
         (d.map.llm_model ? " · " + d.map.llm_model : "") +
@@ -2581,106 +2772,139 @@
         if ((s.has || []).length) {
           const hp = document.createElement("p");
           hp.appendChild(document.createTextNode("Has: "));
-          s.has.forEach((h, i) => {
+          s.has.forEach((hh, i) => {
             if (i) hp.appendChild(document.createTextNode(" · "));
             const a = document.createElement("a");
             a.href = "#";
-            a.textContent = (h.caption || h.ref) + " — " + (h.desc || "");
-            a.onclick = (e) => { e.preventDefault(); openPassage(h.ref).catch(fail); };
+            a.textContent = (hh.caption || hh.ref) + " — " + (hh.desc || "");
+            a.onclick = (e) => { e.preventDefault(); openPassage(hh.ref).catch(fail); };
             hp.appendChild(a);
           });
           map.appendChild(hp);
         }
       });
+    }
+    async function renderViewAs(pc, d) {
+      const sel = document.getElementById("pc-viewas");
+      const note = document.getElementById("pc-vanote");
       const dp = document.getElementById("pc-dprompt");
+      const picksBox = document.getElementById("pc-vapicks");
+      sel.innerHTML = "";
+      picksBox.innerHTML = "";
       dp.style.display = "none";
       dp.textContent = "";
-      [["pc-pre-cleo", "explain_cleo"], ["pc-pre-rex", "case_rex"]].forEach((pair) => {
-        document.getElementById(pair[0]).onclick = async () => {
-          try {
-            dp.style.display = "block";
-            dp.textContent = "Loading…";
-            const s = await api.get("api/crew/" + pair[1] +
-              "/start-prompt?order=" + encodeURIComponent(d.entry.order_id));
+      let agents, orderOf, note0;
+      if (pc === "source") {
+        agents = [["pd_marty", "Marty"], ["explain_cleo", "Cleo"],
+          ["case_rex", "Rex"]];
+        note0 = "Same text a real run receives.";
+        orderOf = () => d.entry.order_id || "";
+      } else {
+        agents = [["plan_ash", "Ash"]];
+        let info = { picks: [], latest_order: "" };
+        try {
+          const docId = d.entry.ref.split("/").pop();
+          info = await api.get("api/pcs/" + pc + "/entries/" +
+            encodeURIComponent(docId) + "/picks");
+        } catch (e) { note.textContent = "Picks lookup failed: " + e.message; }
+        if (!info.picks.length) {
+          note0 = "Not picked by any order yet.";
+        } else {
+          note0 = info.picks.length + " pick(s); latest order " +
+            info.latest_order + ".";
+          const ul = document.createElement("ul");
+          info.picks.forEach((pk) => {
+            const li = document.createElement("li");
+            li.textContent = pk.order_id + " · " + pk.picked_by +
+              " · " + pk.part_id + " · " + pk.why_important +
+              " / " + pk.how_to_use;
+            ul.appendChild(li);
+          });
+          picksBox.appendChild(ul);
+        }
+        orderOf = () => info.latest_order || "";
+      }
+      agents.forEach((a) => {
+        const o = document.createElement("option");
+        o.value = a[0];
+        o.textContent = a[1];
+        sel.appendChild(o);
+      });
+      note.textContent = note0;
+      document.getElementById("pc-viewgo").onclick = async () => {
+        try {
+          const oid = orderOf();
+          if (!oid) {
+            note.textContent = pc === "source"
+              ? "No order on this entry."
+              : "No picking order to show.";
+            return;
+          }
+          dp.style.display = "block";
+          dp.textContent = "Loading…";
+          const s = await api.get("api/crew/" + sel.value +
+            "/start-prompt?order=" + encodeURIComponent(oid));
+          if (s.picks !== undefined) {
+            dp.textContent = s.picks + " picks\n\n" + s.prompt;
+          } else if (s.chars !== undefined) {
+            dp.textContent = s.chars + " chars\n\n" + s.prompt;
+          } else {
             dp.textContent = "Run " + s.structure_run + " · " + s.parts +
               " parts" +
               (s.missing.length ? " · missing: " + s.missing.join(",") : "") +
               "\n\n" + s.prompt;
-          } catch (e) { dp.textContent = "Error: " + e.message; }
-        };
-      });
+          }
+          note.textContent = note0;
+        } catch (e) { dp.textContent = "Error: " + e.message; }
+      };
+    }
+    async function showDetail(pc, id) {
+      const dmsg = document.getElementById("pc-dmsg");
+      dmsg.textContent = "";
+      const d = await api.get("api/pcs/" + pc + "/entries/" +
+        encodeURIComponent(id));
+      const box = document.getElementById("pc-detail");
+      box.style.display = "block";
+      cur.id = id;
+      cur.ref = d.entry.ref;
+      cur.order = d.entry.order_id || "";
+      document.getElementById("pc-dtitle").textContent = d.entry.title;
+      let meta = d.entry.ref + " · order " + (d.entry.order_id || "—") +
+        " · " + d.entry.parsed_at + " · map " + d.map.status +
+        (d.entry.building ? " (building…)" : "") +
+        " · index " + idxText(d.entry.index);
+      if (d.entry.url) meta += " · " + d.entry.url;
+      document.getElementById("pc-dmeta").textContent = meta;
+      pcTab("orig");
+      renderOrig(d, pc, id);
+      renderMap(d);
+      await renderViewAs(pc, d);
       document.getElementById("pc-rebuild").onclick = async () => {
         try {
           dmsg.textContent = "Starting…";
-          await api.send("POST", "api/pcs/source/entries/" +
+          await api.send("POST", "api/pcs/" + pc + "/entries/" +
             encodeURIComponent(id) + "/build", {});
           dmsg.textContent = "Rebuilding in the background.";
-          load().catch(fail);
+          openManage(pc).catch(fail);
         } catch (e) { dmsg.textContent = "Error: " + e.message; }
       };
       document.getElementById("pc-reindex").onclick = async () => {
         try {
           dmsg.textContent = "Starting…";
-          await api.send("POST", "api/pcs/source/entries/" +
+          await api.send("POST", "api/pcs/" + pc + "/entries/" +
             encodeURIComponent(id) + "/index", {});
           dmsg.textContent = "Index rebuilding in the background.";
-          load().catch(fail);
+          openManage(pc).catch(fail);
         } catch (e) { dmsg.textContent = "Error: " + e.message; }
       };
+      box.scrollIntoView({ block: "start" });
     }
-    async function load() {
-      errline.textContent = "";
-      const cards = document.getElementById("pc-cards");
-      cards.innerHTML = "";
-      const r = await api.get("api/pcs");
-      (r.pcs || []).forEach((p) => {
-        const div = document.createElement("div");
-        const h = document.createElement("h3");
-        h.textContent = p.name + " — " + p.state;
-        div.appendChild(h);
-        const ul = document.createElement("ul");
-        [["Holds", p.holds], ["Add", p.add], ["Read", p.read],
-         ["Tools", (p.tools || []).join(", ")],
-         ["Entries", String(p.entries)],
-         ["Size", fmtSize(p.size_bytes || 0)],
-         ["Profile", p.profile || "?"],
-         ["Index", idxText(p.index)]].forEach((kv) => {
-          const li = document.createElement("li");
-          li.textContent = kv[0] + ": " + kv[1];
-          ul.appendChild(li);
-        });
-        div.appendChild(ul);
-        cards.appendChild(div);
-      });
-      rows.innerHTML = "";
-      const e = await api.get("api/pcs/source/entries");
-      (e.entries || []).forEach((e2) => {
-        const tr = document.createElement("tr");
-        const td0 = document.createElement("td");
-        const a = document.createElement("a");
-        a.href = "#";
-        a.textContent = e2.title || e2.id;
-        a.onclick = (ev) => { ev.preventDefault(); showDetail(e2.id).catch(fail); };
-        td0.appendChild(a);
-        tr.appendChild(td0);
-        [["ref", e2.ref], ["order", e2.order_id || "—"],
-         ["sections", String(e2.sections)],
-         ["figtab", String(e2.figures || 0) + "/" + String(e2.tables || 0)],
-         ["map", e2.map + (e2.building ? " (building…)" : "")],
-         ["index", idxText(e2.index)]].forEach((kv) => {
-          const td = document.createElement("td");
-          td.textContent = kv[1];
-          tr.appendChild(td);
-        });
-        rows.appendChild(tr);
-      });
-      if (!(e.entries || []).length) {
-        rows.innerHTML = "<tr><td colspan=\"7\">No entries yet — upload a PDF in an order.</td></tr>";
-      }
-    }
-    load().catch(() => {
-      rows.innerHTML = "<tr><td colspan=\"7\">PCs unavailable — is the server running?</td></tr>";
+    document.querySelectorAll("#pc-dtabs [data-pt]").forEach(b => {
+      b.onclick = () => pcTab(b.dataset.pt);
     });
+    if (!route()) {
+      openOverview().catch(fail);
+    }
   })();
 </script>
 <script type="module">

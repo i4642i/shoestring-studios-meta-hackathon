@@ -421,15 +421,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_ref()
         if parts[:2] == ["api", "pcs"] and len(parts) == 2:
             return self._api_pcs_list()
-        if parts[:3] == ["api", "pcs", "source"] and len(parts) == 4 \
+        if parts[:2] == ["api", "pcs"] and len(parts) == 4 \
                 and parts[3] == "entries":
-            return self._api_pc_entries()
-        if parts[:3] == ["api", "pcs", "source"] and len(parts) == 5 \
+            return self._api_pc_entries(parts[2])
+        if parts[:2] == ["api", "pcs"] and len(parts) == 5 \
                 and parts[3] == "entries":
-            return self._api_pc_entry(parts[4])
-        if parts[:3] == ["api", "pcs", "source"] and len(parts) == 7 \
+            return self._api_pc_entry(parts[2], parts[4])
+        if parts[:2] == ["api", "pcs"] and len(parts) == 7 \
                 and parts[3] == "entries" and parts[5] == "figures":
-            return self._api_pc_figure(parts[4], parts[6])
+            return self._api_pc_figure(parts[2], parts[4], parts[6])
+        if parts[:2] == ["api", "pcs"] and len(parts) == 6 \
+                and parts[3] == "entries" and parts[5] == "picks":
+            return self._api_pc_entry_picks(parts[2], parts[4])
         if parts[:2] == ["api", "settings"] and len(parts) == 2:
             return self._api_settings_get()
         if parts[:2] == ["api", "version"] and len(parts) == 2:
@@ -479,12 +482,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_order_start(parts[2])
         if parts[:2] == ["api", "orders"] and len(parts) == 4 and parts[3] == "confirm":
             return self._api_order_confirm(parts[2])
-        if parts[:3] == ["api", "pcs", "source"] and len(parts) == 6 \
+        if parts[:2] == ["api", "pcs"] and len(parts) == 6 \
                 and parts[3] == "entries" and parts[5] == "build":
-            return self._api_pc_build(parts[4])
-        if parts[:3] == ["api", "pcs", "source"] and len(parts) == 6 \
+            return self._api_pc_build(parts[2], parts[4])
+        if parts[:2] == ["api", "pcs"] and len(parts) == 6 \
                 and parts[3] == "entries" and parts[5] == "index":
-            return self._api_pc_index(parts[4])
+            return self._api_pc_index(parts[2], parts[4])
         if parts[:2] == ["api", "settings"] and len(parts) == 2:
             return self._api_settings_save()
         if parts[:2] == ["api", "settings"] and len(parts) == 3 \
@@ -860,9 +863,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api_start_prompt(self, eid):
         """Preview the Source-PC start prompt preloaded for Cleo/Rex."""
-        if eid not in ("explain_cleo", "case_rex", "plan_ash"):
+        if eid not in ("explain_cleo", "case_rex", "plan_ash",
+                       "pd_marty"):
             return self._json(404, {"error": "start prompts exist for "
-                                             "Cleo, Rex and Ash only"})
+                                             "Cleo, Rex, Marty and Ash only"})
         qs = unquote(self.path).split("?", 1)
         oid = dict(parse_qsl(qs[1])).get("order", "") if len(qs) > 1 else ""
         d = self._order_dir(oid)
@@ -882,6 +886,15 @@ class Handler(BaseHTTPRequestHandler):
         if not ref:
             return self._json(409, {"error": "order has no PC entry: "
                                              "upload its PDF first"})
+        if eid == "pd_marty":
+            try:
+                mtext = pc.marty_input_text(ref)
+            except (OSError, ValueError, KeyError) as exc:
+                return self._json(404, {"error": "PC entry missing: %s"
+                                                 % exc})
+            return self._json(200, {"prompt": mtext,
+                                    "chars": len(mtext),
+                                    "entry_ref": ref})
         best, best_t = None, -1.0
         rdir = flows.RUNS_DIR
         if os.path.isdir(rdir):
@@ -1751,13 +1764,14 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     # ---- Source PC ----
-    def _pc_maybe_build(self, doc_id, force=False, mode="all"):
+    def _pc_maybe_build(self, doc_id, force=False, mode="all",
+                        pcname="source"):
         """Spawn the map/index worker unless the map is done or a
         worker already runs for this entry. force rebuilds anyway.
         mode passes through to the worker (all/index)."""
         if not force:
             try:
-                with open(os.path.join(pc.entry_dir("source", doc_id),
+                with open(os.path.join(pc.entry_dir(pcname, doc_id),
                                        "map.json"),
                           encoding="utf-8") as f:
                     if json.load(f).get("status") == "done":
@@ -1767,13 +1781,11 @@ class Handler(BaseHTTPRequestHandler):
         job = _PC_JOBS.get(doc_id)
         if job is not None and job.poll() is None:
             return
-        edir = pc.entry_dir("source", doc_id)
+        edir = pc.entry_dir(pcname, doc_id)
         logf = open(os.path.join(edir, "worker.log"), "a",
                     encoding="utf-8")
         cmd = [sys.executable, os.path.join("scripts", "pc_worker.py"),
-               doc_id]
-        if mode != "all":
-            cmd.append(mode)
+               doc_id, mode, pcname]
         try:
             _PC_JOBS[doc_id] = subprocess.Popen(
                 cmd, cwd=ROOT, stdout=logf, stderr=subprocess.STDOUT)
@@ -1781,7 +1793,7 @@ class Handler(BaseHTTPRequestHandler):
             logf.close()
             raise
         logf.close()
-        print("order pc worker %s" % doc_id, flush=True)
+        print("order pc worker %s/%s" % (pcname, doc_id), flush=True)
 
     @staticmethod
     def _pc_reap_finished():
@@ -1791,7 +1803,10 @@ class Handler(BaseHTTPRequestHandler):
             if job.poll() is None:
                 continue
             try:
-                with open(os.path.join(pc.entry_dir("source", doc_id),
+                _pcn = next((p for p in ("source", "theory", "article")
+                             if os.path.isfile(os.path.join(pc.entry_dir(p, doc_id), "log.jsonl"))),
+                            "source")
+                with open(os.path.join(pc.entry_dir(_pcn, doc_id),
                                        "log.jsonl"), encoding="utf-8") as f:
                     evs = [json.loads(ln) for ln in f.read().splitlines()]
             except (OSError, ValueError):
@@ -1825,18 +1840,21 @@ class Handler(BaseHTTPRequestHandler):
             del _PC_JOBS[doc_id]
 
     @staticmethod
-    def _pc_indexed(prof, doc_id):
+    def _pc_indexed(prof, pcname, doc_id):
         try:
-            with open(os.path.join(pc.index_dir("source", prof),
+            with open(os.path.join(pc.index_dir(pcname, prof),
                                    "index.json"), encoding="utf-8") as f:
                 return doc_id in json.load(f).get("entries", [])
         except (OSError, ValueError):
             return False
 
-    def _api_pc_entries(self):
+    def _api_pc_entries(self, pcname):
+        if pcname not in ("source", "theory", "article"):
+            return self._json(404, {"error": "no such PC"})
+
         self._pc_reap_finished()
         out = []
-        ed = os.path.join(pc.pc_dir("source"), "entries")
+        ed = os.path.join(pc.pc_dir(pcname), "entries")
         if os.path.isdir(ed):
             for doc_id in sorted(os.listdir(ed)):
                 if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
@@ -1854,6 +1872,7 @@ class Handler(BaseHTTPRequestHandler):
                 out.append({"id": doc_id, "ref": e.get("ref", ""),
                             "title": e.get("title", ""),
                             "origin_file": e.get("origin_file", ""),
+                            "url": e.get("url", ""),
                             "order_id": e.get("order_id", ""),
                             "parsed_at": e.get("parsed_at", ""),
                             "added_by": e.get("added_by", ""),
@@ -1866,16 +1885,18 @@ class Handler(BaseHTTPRequestHandler):
                             "building": job is not None
                             and job.poll() is None,
                             "index": {
-                                p: self._pc_indexed(p, doc_id)
+                                p: self._pc_indexed(p, pcname, doc_id)
                                 for p in ("local", "jetson")}})
         out.sort(key=lambda r: r["parsed_at"], reverse=True)
         return self._json(200, {"entries": out})
 
-    def _api_pc_entry(self, doc_id):
+    def _api_pc_entry(self, pcname, doc_id):
         self._pc_reap_finished()
         if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
             return self._json(404, {"error": "no such PC entry"})
-        ed = pc.entry_dir("source", doc_id)
+        if pcname not in ("source", "theory", "article"):
+            return self._json(404, {"error": "no such PC"})
+        ed = pc.entry_dir(pcname, doc_id)
         if not os.path.isfile(os.path.join(ed, "entry.json")):
             return self._json(404, {"error": "no such PC entry"})
         with open(os.path.join(ed, "entry.json"), encoding="utf-8") as f:
@@ -1887,24 +1908,42 @@ class Handler(BaseHTTPRequestHandler):
             m = {"status": "pending", "sections": []}
         entry = {k: e.get(k) for k in ("ref", "title", "origin_file",
                                        "order_id", "parsed_at",
-                                       "added_by", "chars")}
+                                       "added_by", "chars", "url",
+                                       "publisher", "date", "fetched_at")}
         entry["sections"] = [{"n": s["n"], "heading": s["heading"],
-                               "count": s["count"]}
+                               "count": s["count"], "start": s["start"],
+                               "non_content": bool(s.get("non_content"))}
                               for s in e.get("sections", [])]
+        entry["paragraphs"] = [{"addr": p["addr"], "text": p["text"],
+                                "pages": p.get("pages", [])}
+                               for p in e.get("paragraphs", [])]
         entry["figures"] = e.get("figures", [])
         entry["tables"] = e.get("tables", [])
         job = _PC_JOBS.get(doc_id)
         entry["building"] = job is not None and job.poll() is None
-        entry["index"] = {p: self._pc_indexed(p, doc_id)
+        entry["index"] = {p: self._pc_indexed(p, pcname, doc_id)
                           for p in ("local", "jetson")}
         return self._json(200, {"entry": entry, "map": m})
 
-    def _api_pc_figure(self, doc_id, file):
+    def _api_pc_entry_picks(self, pcname, doc_id):
+        if pcname not in ("theory", "article"):
+            return self._json(404, {"error": "picks exist for theory/article only"})
+        if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
+            return self._json(404, {"error": "no such PC entry"})
+        ref = pc.entry_ref(pcname, doc_id)
+        picks = pc.pick_orders(ref, flows.RUNS_DIR)
+        return self._json(200, {"ref": ref, "picks": picks,
+                                "latest_order": picks[0]["order_id"]
+                                if picks else ""})
+
+    def _api_pc_figure(self, pcname, doc_id, file):
+        if pcname not in ("source", "theory", "article"):
+            return self._json(404, {"error": "no such PC"})
         if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
             return self._json(404, {"error": "no such PC entry"})
         if not re.fullmatch(r"fig\d+\.png", file or ""):
             return self._json(404, {"error": "no such figure"})
-        full = os.path.join(pc.entry_dir("source", doc_id), "figures",
+        full = os.path.join(pc.entry_dir(pcname, doc_id), "figures",
                             file)
         if not os.path.isfile(full):
             return self._json(404, {"error": "no such figure"})
@@ -1929,16 +1968,18 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _api_pc_build(self, doc_id):
-        return self._api_pc_spawn(doc_id, "all")
+    def _api_pc_build(self, pcname, doc_id):
+        return self._api_pc_spawn(pcname, doc_id, "all")
 
-    def _api_pc_index(self, doc_id):
-        return self._api_pc_spawn(doc_id, "index")
+    def _api_pc_index(self, pcname, doc_id):
+        return self._api_pc_spawn(pcname, doc_id, "index")
 
-    def _api_pc_spawn(self, doc_id, mode):
+    def _api_pc_spawn(self, pcname, doc_id, mode):
+        if pcname not in ("source", "theory", "article"):
+            return self._json(404, {"error": "no such PC"})
         if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
             return self._json(404, {"error": "no such PC entry"})
-        if not os.path.isfile(os.path.join(pc.entry_dir("source", doc_id),
+        if not os.path.isfile(os.path.join(pc.entry_dir(pcname, doc_id),
                                             "entry.json")):
             return self._json(404, {"error": "no such PC entry"})
         job = _PC_JOBS.get(doc_id)
@@ -1946,7 +1987,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(409, {"started": False,
                                     "reason": "already building"})
         try:
-            self._pc_maybe_build(doc_id, force=True, mode=mode)
+            self._pc_maybe_build(doc_id, force=True, mode=mode,
+                                     pcname=pcname)
         except OSError as exc:
             return self._json(200, {"started": False,
                                     "reason": "spawn failed: %s" % exc})
@@ -1954,25 +1996,51 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- company PCs (designed stores, draft §8) ----
     _PC_INFO = (
-        {"id": "source", "name": "Source PC", "state": "active",
+        {"id": "source", "name": "Source PC",
          "holds": "Parsed client documents: markdown, images, section list.",
          "add": "intake only (Sam's parser step)",
-         "read": "section list: all crew; full text: Marty, Cleo, Rex",
-         "tools": ["pc_list_source", "pc_read_source", "pc_add_source",
-                   "open_ref"]},
-        {"id": "theory", "name": "Theory PC", "state": "not built yet",
+         "tools": ["pc_list_source", "pc_read_source", "open_ref"]},
+        {"id": "theory", "name": "Theory PC",
          "holds": "Concept explanations, lectures, papers.",
-         "add": "Cleo (concept explainer) only",
-         "read": "Cleo, Ash, Vera, Iris",
-         "tools": ["pc_search_theory", "pc_read_theory", "pc_add_theory",
+         "add": "Cleo (concept explainer) picks only",
+         "tools": ["pc_search_theory", "pc_pick_theory", "pc_read_theory",
                    "open_ref"]},
-        {"id": "article", "name": "Article PC", "state": "not built yet",
+        {"id": "article", "name": "Article PC",
          "holds": "Cases: events, companies, people, films.",
-         "add": "Rex (case researcher) only",
-         "read": "Rex, Ash, Vera, Iris",
-         "tools": ["pc_search_articles", "pc_read_article",
-                   "pc_add_article", "open_ref"]},
+         "add": "Rex (case researcher) picks only",
+         "tools": ["pc_search_articles", "pc_pick_article",
+                   "pc_read_article", "open_ref"]},
     )
+    _PC_TOOLS = {"source": {"list": "pc_list_source",
+                             "read": "pc_read_source"},
+                 "theory": {"search": "pc_search_theory",
+                            "pick": "pc_pick_theory",
+                            "read": "pc_read_theory"},
+                 "article": {"search": "pc_search_articles",
+                             "pick": "pc_pick_article",
+                             "read": "pc_read_article"}}
+
+    @staticmethod
+    def _pc_grants(pcname):
+        """Agents holding each PC tool, by name: {list, read} or {search, pick, read}."""
+        out = {k: [] for k in Handler._PC_TOOLS.get(pcname, {})}
+        adir = os.path.join(ROOT, "agents")
+        try:
+            eids = sorted(os.listdir(adir))
+        except OSError:
+            return out
+        for eid in eids:
+            jp = os.path.join(adir, eid, "agent.json")
+            try:
+                with open(jp, encoding="utf-8") as f:
+                    agent = json.load(f)
+            except (OSError, ValueError):
+                continue
+            held = agent.get("tools", []) or []
+            for kind, tool in Handler._PC_TOOLS[pcname].items():
+                if tool in held:
+                    out[kind].append(agent.get("name", eid))
+        return out
 
     @staticmethod
     def _pc_size(pcname):
@@ -2014,6 +2082,13 @@ class Handler(BaseHTTPRequestHandler):
                                                        "entry.json")))
             row = dict(info)
             row["entries"] = n
+            row["state"] = ("active" if n else
+                            ("empty" if os.path.isdir(ed)
+                             else "not built yet"))
+            row["grants"] = self._pc_grants(pid)
+            readers = row["grants"].get("read", [])
+            row["read"] = ("Full text: " + ", ".join(readers)
+                           if readers else "Full text: —")
             row["size_bytes"] = self._pc_size(pid)
             row["profile"] = prof
             row["index"] = {p: self._pc_index_info(pid, p)

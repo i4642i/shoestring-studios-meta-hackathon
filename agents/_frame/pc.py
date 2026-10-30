@@ -1078,6 +1078,60 @@ def order_picks_with_reasons(order_id, runs_root):
     return out
 
 
+def pick_orders(ref, runs_root):
+    """Orders that picked this entry, newest first: [{order_id,
+    run_id, picked_by, part_id, why_important, how_to_use}]. Matches
+    by entry, so a passage ref finds its entry's picks."""
+    try:
+        rpc, rid, _frag = parse_ref(ref)
+        want = entry_ref(rpc, rid)
+    except ValueError:
+        return []
+    found = []
+    if runs_root and os.path.isdir(runs_root):
+        for r in sorted(os.listdir(runs_root)):
+            rd = os.path.join(runs_root, r)
+            try:
+                with open(os.path.join(rd, "STATUS.json"),
+                          encoding="utf-8") as f:
+                    oid = json.load(f).get("order_id", "")
+                stamp = os.path.getmtime(os.path.join(rd, "STATUS.json"))
+            except (OSError, ValueError):
+                continue
+            if not oid:
+                continue
+            for ag, cat in (("explain_cleo", "concepts"),
+                            ("case_rex", "cases")):
+                try:
+                    with open(os.path.join(rd, ag, "result.json"),
+                              encoding="utf-8") as f:
+                        res = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                data = ((res.get("categories") or {}).get(cat)
+                        or {}).get("data", {})
+                for part in data.get("parts", []) or []:
+                    for pk in (part or {}).get("picks", []) or []:
+                        try:
+                            prpc, prid, _f = parse_ref(
+                                (pk or {}).get("ref", ""))
+                        except ValueError:
+                            continue
+                        if entry_ref(prpc, prid) != want:
+                            continue
+                        found.append((stamp,
+                                      {"order_id": oid, "run_id": r,
+                                       "picked_by": ag,
+                                       "part_id": (part or {}).get(
+                                           "part_id", ""),
+                                       "why_important": (pk or {}).get(
+                                           "why_important", ""),
+                                       "how_to_use": (pk or {}).get(
+                                           "how_to_use", "")}))
+    found.sort(key=lambda t: t[0], reverse=True)
+    return [item for _, item in found]
+
+
 def picks_preview_for(name, order_id, runs_root):
     """Start-prompt material for a later agent: ONLY this order's
     picks — each pick's map + refs + Cleo/Rex reasons. Returns
