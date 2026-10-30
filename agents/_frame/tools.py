@@ -17,8 +17,10 @@ from . import pc
 from . import pdfingest
 from . import results
 from .schemas import (list_headings, validate_cases, validate_concept,
-                      validate_concepts, validate_draft, validate_request,
-                      validate_structure)
+                      validate_concepts, validate_draft,
+                      validate_narration, validate_request,
+                      validate_storyboard,
+                      validate_storyboard_draft, validate_structure)
 
 
 def read_md_section(ctx, args):
@@ -81,13 +83,13 @@ def _save_category(ctx, category, obj):
     return _save_categories(ctx, {category: obj})
 
 
-def _received_refs(ctx, category):
-    """Entry refs received for a category in this run (flow lines)."""
-    out = set()
+def _received_data(ctx, category):
+    """First received payload for a category in this run (flow
+    lines), or {} when nothing arrived (ad-hoc runs)."""
     d = (ctx or {}).get("run_dir", "")
     if not d or not os.path.isdir(d):
-        return out
-    for fn in os.listdir(d):
+        return {}
+    for fn in sorted(os.listdir(d)):
         if not (fn.startswith("received.") and fn.endswith(
                 ".%s.json" % category)):
             continue
@@ -96,9 +98,29 @@ def _received_refs(ctx, category):
                 data = json.load(f).get("data", {})
         except (OSError, ValueError):
             continue
-        if isinstance(data, dict) and data.get("ref"):
-            out.add(data["ref"])
-    return out
+        if isinstance(data, dict):
+            return data
+    return {}
+
+
+def _readable_ref(errors, ref, producer, order_id, where):
+    """A material ref opens only for a listed member (parts-aware)."""
+    if not isinstance(ref, str) or not ref.strip():
+        errors.append("%s: missing ref" % where)
+        return
+    try:
+        rpc, rid, _frag = pc.parse_ref(ref)
+    except ValueError:
+        errors.append("%s: bad ref %r" % (where, ref))
+        return
+    try:
+        entry = pc.load_entry_by_ref(pc.entry_ref(rpc, rid))
+    except (OSError, ValueError, KeyError) as exc:
+        errors.append("%s: unknown entry for %r (%s)"
+                      % (where, ref, exc))
+        return
+    if not pc.entry_parts_allow(entry, producer, order_id, ref):
+        errors.append("%s: %r is not listed for you" % (where, ref))
 
 
 def write_structure(ctx, args):
@@ -111,12 +133,14 @@ def write_structure(ctx, args):
     sref = (bundle.get("structure") or {}).get("source_ref", "")
     if isinstance(sref, str) and sref.startswith("pc://source/"):
         try:
-            check = pc.entry_markdown(pc.load_entry_by_ref(sref))
+            entry = pc.load_entry_by_ref(sref)
+            check = pc.entry_markdown(entry)
+            if not pc.may_read(entry, ctx.get("producer", ""),
+                               ctx.get("order_id", "")):
+                errors.append("source_ref %r is not listed for this "
+                              "run" % (sref,))
         except (OSError, ValueError, KeyError):
             pass
-    pointed = _received_refs(ctx, "source")
-    if pointed and sref not in pointed:
-        errors.append("source_ref %r was not sent to this run" % (sref,))
     errors += validate_structure(bundle.get("structure"), check)
     if errors:
         return {"ok": False, "errors": errors}
@@ -392,6 +416,155 @@ def research_status(ctx, args):
             % (searches, hits, picks, cites))
     return {"searches": searches, "hits_seen": hits, "picks": picks,
             "citations": cites, "parts": parts, "line": line}
+
+
+def write_storyboard_draft(ctx, args):
+    """Ash's scene plan: shape + times vs the received structure,
+    verbatim citations, readable materials, every pick used or
+    explained, then the handoff lists are applied."""
+    obj = (args or {}).get("storyboard_draft")
+    if not isinstance(obj, dict):
+        return {"ok": False, "errors": [
+            "call with {storyboard_draft: {...}}"]}
+    struct = _received_data(ctx, "structure")
+    if not struct:
+        return {"ok": False, "errors": [
+            "no structure received in this run"]}
+    errors = validate_storyboard_draft(obj, struct)
+    if errors:
+        return {"ok": False, "errors": errors}
+    producer = (ctx or {}).get("producer", "")
+    order_id = (ctx or {}).get("order_id", "")
+    for i, sc in enumerate(obj["scenes"]):
+        where = "scenes[%d]" % i
+        for j, npt in enumerate(sc.get("narration_points", [])):
+            for n, cit in enumerate((npt or {}).get("citations",
+                                                    []) or []):
+                if not isinstance(cit, dict):
+                    continue
+                _check_quote(errors, cit.get("ref"),
+                             cit.get("quote"),
+                             "%s.narration_points[%d].citations[%d]"
+                             % (where, j, n))
+        for j, m in enumerate(sc.get("materials", [])):
+            if not isinstance(m, dict):
+                continue
+            _readable_ref(errors, m.get("ref"), producer, order_id,
+                          "%s.materials[%d]" % (where, j))
+            try:
+                rpc, _rid, _frag = pc.parse_ref(m.get("ref", ""))
+                if rpc != m.get("from"):
+                    errors.append("%s.materials[%d].from %r != ref "
+                                  "PC %r" % (where, j, m.get("from"),
+                                             rpc))
+            except ValueError:
+                pass
+    if errors:
+        return {"ok": False, "errors": errors}
+    picks = _report_pick_refs(_received_data(ctx, "concepts")) \
+        | _report_pick_refs(_received_data(ctx, "cases"))
+    if picks:
+        used = set()
+        for sc in obj["scenes"]:
+            for key in ("materials", "handoff"):
+                for it in sc.get(key, []) or []:
+                    if not isinstance(it, dict):
+                        continue
+                    try:
+                        rpc, rid, _frag = pc.parse_ref(
+                            it.get("ref", ""))
+                        used.add(pc.entry_ref(rpc, rid))
+                    except ValueError:
+                        continue
+        explained = set()
+        for j, u in enumerate(obj.get("unused_picks", []) or []):
+            if not isinstance(u, dict):
+                continue
+            try:
+                rpc, rid, _frag = pc.parse_ref(u.get("ref", ""))
+                eref = pc.entry_ref(rpc, rid)
+            except ValueError:
+                errors.append("unused_picks[%d]: bad ref" % j)
+                continue
+            if eref not in picks:
+                errors.append("unused_picks[%d] %s is not a pick of "
+                              "this order" % (j, eref))
+            else:
+                explained.add(eref)
+        for ref in sorted(picks - used - explained):
+            errors.append("pick %s is neither used nor explained"
+                          % ref)
+    if errors:
+        return {"ok": False, "errors": errors}
+    applied = pc.apply_handoff(order_id, obj, set_by=producer or
+                               "plan_ash")
+    if "error" in applied:
+        return {"ok": False, "errors": [applied["error"]]}
+    return _save_category(ctx, "storyboard_draft", obj)
+
+
+def write_storyboard(ctx, args):
+    """Penn's composition: exact scene match vs the received draft,
+    every material ref readable by Penn."""
+    obj = (args or {}).get("storyboard")
+    if not isinstance(obj, dict):
+        return {"ok": False, "errors": ["call with {storyboard: {...}}"]}
+    draft = _received_data(ctx, "storyboard_draft")
+    if not draft:
+        return {"ok": False, "errors": [
+            "no storyboard_draft received in this run"]}
+    errors = validate_storyboard(obj, draft)
+    if errors:
+        return {"ok": False, "errors": errors}
+    producer = (ctx or {}).get("producer", "")
+    order_id = (ctx or {}).get("order_id", "")
+    for i, sc in enumerate(obj["scenes"]):
+        for j, m in enumerate(sc.get("materials", [])):
+            if not isinstance(m, dict):
+                continue
+            _readable_ref(errors, m.get("ref"), producer, order_id,
+                          "scenes[%d].materials[%d]" % (i, j))
+    if errors:
+        return {"ok": False, "errors": errors}
+    return _save_category(ctx, "storyboard", obj)
+
+
+def write_narration(ctx, args):
+    """Wren's lines: scene match + fit math, digit lines cited,
+    every citation verbatim and readable by Wren."""
+    obj = (args or {}).get("narration")
+    if not isinstance(obj, dict):
+        return {"ok": False, "errors": ["call with {narration: {...}}"]}
+    draft = _received_data(ctx, "storyboard_draft")
+    if not draft:
+        return {"ok": False, "errors": [
+            "no storyboard_draft received in this run"]}
+    errors = validate_narration(obj, draft)
+    if errors:
+        return {"ok": False, "errors": errors}
+    producer = (ctx or {}).get("producer", "")
+    order_id = (ctx or {}).get("order_id", "")
+    for i, sc in enumerate(obj["scenes"]):
+        for j, ln in enumerate(sc.get("lines", [])):
+            if not isinstance(ln, dict):
+                continue
+            where = "scenes[%d].lines[%d]" % (i, j)
+            cits = ln.get("citations", []) or []
+            if any(ch.isdigit() for ch in str(ln.get("text", ""))) \
+                    and not cits:
+                errors.append("%s: a line with a number needs >=1 "
+                              "citation" % where)
+            for n, cit in enumerate(cits):
+                if not isinstance(cit, dict):
+                    continue
+                _check_quote(errors, cit.get("ref"), cit.get("quote"),
+                             "%s.citations[%d]" % (where, n))
+                _readable_ref(errors, cit.get("ref"), producer,
+                              order_id,
+                              "%s.citations[%d]" % (where, n))
+    if errors:
+        return {"ok": False, "errors": errors}
+    return _save_category(ctx, "narration", obj)
 
 
 def write_concepts(ctx, args):
@@ -1025,6 +1198,9 @@ OUTPUTS = {
     "write_draft": "draft.json",
     "write_structure": "result.json",
     "write_request": "result.json",
+    "write_storyboard_draft": "result.json",
+    "write_storyboard": "result.json",
+    "write_narration": "result.json",
 }
 
 TOOLS = {
@@ -1080,6 +1256,35 @@ TOOLS = {
         {"type": "object",
          "properties": {"cases": {"type": "object"}},
          "required": ["cases"], "additionalProperties": False},
+    ),
+    "write_storyboard_draft": (
+        write_storyboard_draft,
+        "Save Ash's scene plan as this run's result.json "
+        "(storyboard_draft category). Fails unless scenes match "
+        "Marty's plan, citations are verbatim, materials open, "
+        "every pick is used or explained; then applies handoff.",
+        {"type": "object",
+         "properties": {"storyboard_draft": {"type": "object"}},
+         "required": ["storyboard_draft"],
+         "additionalProperties": False},
+    ),
+    "write_storyboard": (
+        write_storyboard,
+        "Save Penn's composition as this run's result.json "
+        "(storyboard category). Fails unless scenes match Ash's "
+        "draft exactly and every material ref opens for Penn.",
+        {"type": "object",
+         "properties": {"storyboard": {"type": "object"}},
+         "required": ["storyboard"], "additionalProperties": False},
+    ),
+    "write_narration": (
+        write_narration,
+        "Save Wren's lines as this run's result.json (narration "
+        "category). Fails unless scenes match, lines fit the time, "
+        "number lines are cited, and citations are verbatim.",
+        {"type": "object",
+         "properties": {"narration": {"type": "object"}},
+         "required": ["narration"], "additionalProperties": False},
     ),
     "research_status": (
         research_status,

@@ -344,6 +344,14 @@ def _pc_chunks(order_brief, received, run_dir, dest_id):
     order_id = (order_brief or {}).get("order_id", "")
     refs = _received_source_refs(received, run_dir, dest_id)
     try:
+        with open(os.path.join(ORDERS_DIR, order_id or "",
+                               "meta.json"), encoding="utf-8") as f:
+            sent = (json.load(f).get("files") or {}).get("pc_ref", "")
+        if sent and sent not in refs:
+            refs.append(sent)
+    except (OSError, ValueError):
+        pass
+    try:
         text, _meta = pc.prompt_chunks_for(dest_id, order_id, refs,
                                             RUNS_DIR)
     except (OSError, ValueError):

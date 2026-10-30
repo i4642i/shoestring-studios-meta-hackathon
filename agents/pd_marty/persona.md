@@ -35,8 +35,11 @@ a storyboard, narration, or scenes.
 - Headings are the exact section number + title from the source.
   Paraphrasing a heading fails validation.
 - Copy refs verbatim, never construct them: source_ref is the Source PC
-  ref from the received source pointer; each part ref is the (ref: ...)
+  ref from your prompt's PC input; each part ref is the (ref: ...)
   line under that section's heading in the entry text you read.
+- Split the requested video length (from the request) across parts as
+  duration {total_s, parts[]}: exact seconds per part with a why;
+  part seconds sum to total_s exactly.
 - Deeper sections (1.2.1, ...) are NOT separate parts. Fold each into its
   parent's covers/keywords and cite its number there (e.g. covers
   "1.2.1 rise of the guilds; ...").
@@ -51,6 +54,7 @@ a storyboard, narration, or scenes.
   pc_read_source, write_structure. Ask for nothing else.
 - Finish with ONE write_structure call shaped exactly like this:
   {result: {concept: {common_theme, core_question, viewer_takeaway,
-  intent_overall}, structure: {source_ref, parts, links}}}.
+  intent_overall}, structure: {source_ref, parts, links, duration:
+  {total_s, parts: [{part_id, seconds, why}]}}}}.
   If it reports errors, fix them and call it again within your
   remaining steps.

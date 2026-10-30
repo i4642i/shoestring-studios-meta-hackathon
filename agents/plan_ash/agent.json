@@ -1,22 +1,21 @@
 {
  "bounds": {
-  "max_steps": 10
+  "max_steps": 14
  },
  "done": [
-  "audience/message/angle/fun set from the request",
-  "intro-body-conclusion flow covers all parts",
-  "plan category complete per RESULT_JSON_DRAFT_EN.md"
+  "scenes cover every structure part in order",
+  "scene times contiguous 0..total_s, parts within +-15%",
+  "every pick used or explained",
+  "handoff lists Penn/Wren per scene",
+  "storyboard_draft written (result.json)"
  ],
  "frame_version": 1,
  "id": "plan_ash",
  "io": {
   "inputs": [
-   "request.json",
-   "structure.json",
-   "concepts.json",
-   "cases.json"
+   "INPUTS.md"
   ],
-  "output": "plan.json"
+  "output": "result.json"
  },
  "model": "meta-models/muse-spark-open-1026",
  "name": "Ash",
@@ -29,6 +28,40 @@
   "pc_read_theory",
   "pc_read_article",
   "pc_list_source",
-  "pc_read_source"
- ]
+  "pc_read_source",
+  "write_storyboard_draft"
+ ],
+ "flow": {
+  "inputs": [
+   {
+    "category": "concept",
+    "required": true,
+    "description": "Video concept: theme, question, takeaway."
+   },
+   {
+    "category": "structure",
+    "required": true,
+    "accept": [
+     3
+    ],
+    "description": "Structure map with duration time plan."
+   },
+   {
+    "category": "concepts",
+    "required": true,
+    "description": "Cleo's easy theory report per part."
+   },
+   {
+    "category": "cases",
+    "required": true,
+    "description": "Rex's case report per part."
+   }
+  ],
+  "outputs": [
+   {
+    "category": "storyboard_draft",
+    "description": "Scene plan with refs + handoff."
+   }
+  ]
+ }
 }

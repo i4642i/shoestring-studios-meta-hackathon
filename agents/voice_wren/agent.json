@@ -3,18 +3,18 @@
   "max_steps": 10
  },
  "done": [
-  "lines for every page in intro/body/outro voice",
-  "every fact and number has evidence",
-  "narration category complete per RESULT_JSON_DRAFT_EN.md"
+  "scene set equals the draft exactly",
+  "lines fit the scene time",
+  "number lines cited, quotes verbatim",
+  "narration written (result.json)"
  ],
  "frame_version": 1,
  "id": "voice_wren",
  "io": {
   "inputs": [
-   "storyboard_checked.json",
-   "plan.json"
+   "INPUTS.md"
   ],
-  "output": "narration.json"
+  "output": "result.json"
  },
  "model": "meta-models/muse-spark-open-1026",
  "name": "Wren",
@@ -27,6 +27,22 @@
   "pc_read_theory",
   "pc_read_article",
   "pc_list_source",
-  "pc_read_source"
- ]
+  "pc_read_source",
+  "write_narration"
+ ],
+ "flow": {
+  "inputs": [
+   {
+    "category": "storyboard_draft",
+    "required": true,
+    "description": "Ash's scene plan to voice."
+   }
+  ],
+  "outputs": [
+   {
+    "category": "narration",
+    "description": "Per-scene narration report."
+   }
+  ]
+ }
 }

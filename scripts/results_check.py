@@ -13,7 +13,10 @@ tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import results
 from agents._frame.schemas import render_cite_md
 from agents._frame.tools import (write_cases, write_concepts,
-                                    write_request, write_structure)
+                                    write_narration, write_request,
+                                    write_storyboard,
+                                    write_storyboard_draft,
+                                    write_structure)
 
 fails = 0
 
@@ -43,12 +46,13 @@ REQ = {"order_id": "o1",
 reg = results.registry()
 ok(set(reg) == {"brief", "cases", "concept", "concepts", "source",
                 "request", "structure",
-                "video"},
-   "registry has 8 incl concepts+cases")
-ok(reg["source"]["version"] == 3 and reg["structure"]["version"] == 2
+                "video", "storyboard_draft", "storyboard",
+                "narration"},
+   "registry has 11 incl stage-3 cats")
+ok(reg["source"]["version"] == 3 and reg["structure"]["version"] == 3
    and all(reg[c]["version"] == 1 for c in reg
            if c not in ("source", "structure")),
-   "source v3 + structure v2, rest v1")
+   "source v3 + structure v3, rest v1")
 
 r = results.make_result("sales_sam", "o1", "r1", {"request": dict(REQ)})
 ok(r["status"] == "unverified" and r["format_version"] == 1
@@ -192,7 +196,12 @@ struct = {"source_ref": SREF,
                     {"id": "p2", "heading": "1.2 Beta",
                      "ref": SREF + "#s1.2", "covers": "y",
                      "keywords": ["k"]}],
-          "links": [{"from": "p1", "to": "p2", "why": "w"}]}
+          "links": [{"from": "p1", "to": "p2", "why": "w"}],
+          "duration": {"total_s": 60,
+                       "parts": [{"part_id": "p1", "seconds": 30,
+                                  "why": "w"},
+                                 {"part_id": "p2", "seconds": 30,
+                                  "why": "w"}]}}
 
 ctx2 = dict(ctx, input_md=mdp, producer="pd_marty", run_id="r10")
 out2 = write_structure(ctx2, {"result": {"concept": dict(CONCEPT),
@@ -216,6 +225,17 @@ ok(write_structure(ctx2, {"result": {"concept": dict(CONCEPT),
    is False, "write_structure foreign ref refuses")
 ok(write_structure(ctx2, {"structure": struct}).get("ok") is False,
    "write_structure old shape refuses")
+badd = json.loads(json.dumps(struct))
+del badd["duration"]
+ok(write_structure(ctx2, {"result": {"concept": dict(CONCEPT),
+                                    "structure": badd}}).get("ok")
+   is False, "write_structure duration missing refuses")
+badd = json.loads(json.dumps(struct))
+badd["duration"]["parts"][0]["seconds"] = 31
+ok("sum to 61" in " ".join(write_structure(
+    ctx2, {"result": {"concept": dict(CONCEPT),
+                     "structure": badd}}).get("errors", [])),
+   "write_structure duration sum enforced")
 men = _pc.ingest_source("o1", "m.pdf", "2026-10-30T00:00:00",
                         "sales_sam",
                         ["1.1 Alpha\nAlpha body.",
@@ -228,7 +248,25 @@ mstruct = {"source_ref": men["ref"],
                      {"id": "p2", "heading": "1.2 Beta",
                       "ref": men["ref"] + "#s1.2", "covers": "y",
                       "keywords": ["k"]}],
-           "links": [{"from": "p1", "to": "p2", "why": "w"}]}
+           "links": [{"from": "p1", "to": "p2", "why": "w"}],
+           "duration": {"total_s": 60,
+                        "parts": [{"part_id": "p1", "seconds": 30,
+                                   "why": "w"},
+                                  {"part_id": "p2", "seconds": 30,
+                                   "why": "w"}]}}
+_pc.set_recipients("source", men["doc_id"], "o1", ["pd_marty"],
+                   "sales_sam", kind="full", root=samroot)
+uen = _pc.ingest_source("o1", "u.pdf", "2026-10-30T00:00:00",
+                        "sales_sam", ["1.1 Gamma\nGamma body."],
+                        [], [], 0, root=samroot)
+ustruct = {"source_ref": uen["ref"],
+           "parts": [{"id": "p1", "heading": "1.1 Gamma",
+                      "ref": uen["ref"] + "#s1.1", "covers": "x",
+                      "keywords": ["k"]}],
+           "links": [],
+           "duration": {"total_s": 10,
+                        "parts": [{"part_id": "p1", "seconds": 10,
+                                   "why": "w"}]}}
 mdp2 = os.path.join(wdir, "other.md")
 with open(mdp2, "w", encoding="utf-8") as f:
     f.write("# T\n\n## 9.9 Else\n\ntext\n")
@@ -242,6 +280,10 @@ del mshort["parts"][1]
 ok(write_structure(ctx3, {"result": {"concept": dict(CONCEPT),
                                     "structure": mshort}}).get("ok")
    is False, "entry coverage enforced (missing part)")
+ok("not listed" in " ".join(write_structure(
+    ctx3, {"result": {"concept": dict(CONCEPT),
+                     "structure": ustruct}}).get("errors", [])),
+   "unlisted source_ref refuses")
 _pc.ROOT_OVERRIDE = None
 ok(os.path.isfile(os.path.join(wdir, "report.md")),
    "writers also write report.md")
@@ -251,8 +293,9 @@ ok("generated from r9, do not edit" in rep
    and "## request (v1)" in rep and "Client answers" in rep,
    "request report renders with stamp")
 rep2 = results.render_report(saved2)
-ok("## structure (v2)" in rep2 and "1.1 Alpha" in rep2
-   and "p1 -> p2" in rep2 and "## concept (v1)" in rep2,
+ok("## structure (v3)" in rep2 and "1.1 Alpha" in rep2
+   and "p1 -> p2" in rep2 and "## concept (v1)" in rep2
+   and "Time plan" in rep2,
    "structure+concept report renders")
 ok(render_cite_md("pc://article/ab12#p3", "quoted")
    == "[quoted](api/ref?ref=pc%3A%2F%2Farticle%2Fab12%23p3)",
@@ -459,6 +502,208 @@ try:
     ok("too thin" in " ".join(write_cases(
         rctx, {"cases": bad}).get("errors", [])),
        "write_cases thin summary refuses")
+finally:
+    _pc.ROOT_OVERRIDE = None
+
+# ---- stage 3 writers: Ash/Penn/Wren (offline fixtures) ----
+stud = tempfile.mkdtemp(prefix="studio_")
+_pc.ROOT_OVERRIDE = stud
+try:
+    sent = _pc.ingest_source("o7", "s.pdf", "2026-10-30T00:00:00",
+                             "sales_sam",
+                             ["2.1 Motivation\nWhy it matters.",
+                              "2.2 Data\nData body here."], [], [], 0,
+                             root=stud)
+    tpick = _pc.ingest_theory("https://example.com/t1", "T1", "", "",
+                              "2026-10-30T00:00:00", "explain_cleo",
+                              "Theory core idea.\n\nMore detail.",
+                              root=stud)
+    _pc.set_recipients("source", sent["doc_id"], "o7", ["plan_ash"],
+                       "sales_sam", kind="map", root=stud)
+    _pc.set_recipients("theory", tpick["doc_id"], "o7", ["plan_ash"],
+                       "explain_cleo", kind="map", root=stud)
+    sref, tref = sent["ref"], tpick["ref"]
+    STRUCT3 = {"source_ref": sref,
+               "parts": [{"id": "p1", "heading": "2.1 Motivation",
+                          "ref": sref + "#s2.1", "covers": "x",
+                          "keywords": ["k"]},
+                         {"id": "p2", "heading": "2.2 Data",
+                          "ref": sref + "#s2.2", "covers": "y",
+                          "keywords": ["k"]}],
+               "links": [{"from": "p1", "to": "p2", "why": "w"}],
+               "duration": {"total_s": 100,
+                            "parts": [{"part_id": "p1", "seconds": 40,
+                                       "why": "w"},
+                                      {"part_id": "p2", "seconds": 60,
+                                       "why": "w"}]}}
+    CONC7 = {"parts": [{"part_id": "p1", "picks": [
+        {"ref": tref, "title": "T1", "why_important": "w",
+         "how_to_use": "h"}]}]}
+    CASES7 = {"parts": []}
+    adir = os.path.join(stud, "rundir", "plan_ash")
+    os.makedirs(adir)
+    for sender, cat, data in (
+            ("pd_marty", "structure", STRUCT3),
+            ("explain_cleo", "concepts", CONC7),
+            ("case_rex", "cases", CASES7)):
+        with open(os.path.join(
+                adir, "received.%s.%s.json" % (sender, cat)),
+                "w", encoding="utf-8") as f:
+            json.dump({"sender": sender, "category": cat,
+                       "version": 1, "data": data}, f)
+    actx = {"run_dir": adir,
+            "agent_dir": os.path.join(ROOT, "agents", "plan_ash"),
+            "producer": "plan_ash", "order_id": "o7", "run_id": "r7"}
+    D = {"total_s": 100, "scenes": [
+        {"n": 1, "start_s": 0, "end_s": 40, "part_id": "p1",
+         "role": "hook", "viewer_learns": "v", "screen_idea": "s",
+         "narration_points": [{"text": "t", "citations": [
+             {"ref": sref + "#s2.1/p2",
+              "quote": "Why it matters."}]}],
+         "materials": [{"ref": sref + "#s2.1", "from": "source",
+                        "how_used": "h"}],
+         "handoff": [{"ref": sref + "#s2.1/p2", "to": ["board_penn"],
+                      "why": "w", "how_to_use": "h"}],
+         "next_link": "n"},
+        {"n": 2, "start_s": 40, "end_s": 100, "part_id": "p2",
+         "role": "explain", "viewer_learns": "v", "screen_idea": "s",
+         "narration_points": [{"text": "t", "citations": [
+             {"ref": tref + "#p1",
+              "quote": "Theory core idea."}]}],
+         "materials": [{"ref": tref + "#p1", "from": "theory",
+                        "how_used": "h"}],
+         "handoff": [{"ref": tref + "#p1", "to": ["voice_wren"],
+                      "why": "w", "how_to_use": "h"}],
+         "next_link": "end"}],
+        "unused_picks": []}
+    out7 = write_storyboard_draft(actx, {"storyboard_draft": D})
+    ok(out7.get("ok") is True, "ash draft accepts")
+    saved7 = results.load_result(os.path.join(adir, "result.json"))
+    ok(results.check_result(saved7) == []
+       and saved7["categories"]["storyboard_draft"]["version"] == 1,
+       "draft envelope validates")
+    ok("## storyboard_draft (v1)" in results.render_report(saved7)
+       and "Scene 1" in results.render_report(saved7),
+       "draft report renders")
+    prow = _pc.entry_access(_pc.load_entry_by_ref(sref),
+                            "board_penn", "o7")
+    ok(prow is not None and prow.get("kind") == "map"
+       and prow.get("parts") == [sref + "#s2.1/p2"],
+       "draft handoff lists penn with parts")
+    bad = json.loads(json.dumps(D))
+    bad["scenes"][0]["end_s"] = 39
+    ok("contiguity" in " ".join(write_storyboard_draft(
+        actx, {"storyboard_draft": bad}).get("errors", [])),
+       "draft scene gap refuses")
+    bad = json.loads(json.dumps(D))
+    bad["scenes"][0]["end_s"] = 20
+    bad["scenes"][1]["start_s"] = 20
+    ok("15%" in " ".join(write_storyboard_draft(
+        actx, {"storyboard_draft": bad}).get("errors", [])),
+       "draft part skew refuses")
+    bad = json.loads(json.dumps(D))
+    bad["scenes"][0]["narration_points"][0]["citations"][0][
+        "quote"] = "invented words"
+    ok(write_storyboard_draft(
+        actx, {"storyboard_draft": bad}).get("ok") is False,
+       "draft invented quote refuses")
+    bad = json.loads(json.dumps(D))
+    bad["scenes"][1]["materials"] = []
+    bad["scenes"][1]["handoff"] = []
+    ok("neither used nor explained" in " ".join(
+        write_storyboard_draft(
+            actx, {"storyboard_draft": bad}).get("errors", [])),
+       "draft dropped pick refuses")
+    bad = json.loads(json.dumps(D))
+    bad["scenes"][0]["materials"][0]["from"] = "theory"
+    ok("!= ref PC" in " ".join(write_storyboard_draft(
+        actx, {"storyboard_draft": bad}).get("errors", [])),
+       "draft material from-mismatch refuses")
+    bare = dict(actx, run_dir=os.path.join(stud, "rundir", "empty"))
+    os.makedirs(bare["run_dir"])
+    ok("no structure received" in " ".join(write_storyboard_draft(
+        bare, {"storyboard_draft": D}).get("errors", [])),
+       "draft without structure refuses")
+    pdir = os.path.join(stud, "rundir", "board_penn")
+    os.makedirs(pdir)
+    with open(os.path.join(pdir,
+                           "received.plan_ash.storyboard_draft.json"),
+              "w", encoding="utf-8") as f:
+        json.dump({"sender": "plan_ash", "category": "storyboard_draft",
+                   "version": 1, "data": D}, f)
+    pctx = {"run_dir": pdir,
+            "agent_dir": os.path.join(ROOT, "agents", "board_penn"),
+            "producer": "board_penn", "order_id": "o7", "run_id": "r7"}
+    SB = {"scenes": [
+        {"scene_n": 1, "start_s": 0, "end_s": 40, "layout": "L",
+         "on_screen_text": "T", "visuals": ["V"],
+         "materials": [{"ref": sref + "#s2.1/p2", "how_used": "h"}],
+         "notes_for_wren": "N"},
+        {"scene_n": 2, "start_s": 40, "end_s": 100, "layout": "L",
+         "on_screen_text": "", "visuals": ["V"], "materials": [],
+         "notes_for_wren": "N"}]}
+    ok(write_storyboard(pctx, {"storyboard": SB}).get("ok") is True,
+       "penn storyboard accepts")
+    savedp = results.load_result(os.path.join(pdir, "result.json"))
+    ok(results.check_result(savedp) == []
+       and "## storyboard (v1)" in results.render_report(savedp),
+       "storyboard envelope + report")
+    bad = json.loads(json.dumps(SB))
+    bad["scenes"][1]["end_s"] = 99
+    ok("!= draft" in " ".join(write_storyboard(
+        pctx, {"storyboard": bad}).get("errors", [])),
+       "storyboard time mismatch refuses")
+    bad = json.loads(json.dumps(SB))
+    bad["scenes"][0]["materials"][0]["ref"] = sref + "#s2.2/p2"
+    ok("not listed" in " ".join(write_storyboard(
+        pctx, {"storyboard": bad}).get("errors", [])),
+       "storyboard unreadable ref refuses")
+    wdir = os.path.join(stud, "rundir", "voice_wren")
+    os.makedirs(wdir)
+    with open(os.path.join(wdir,
+                           "received.plan_ash.storyboard_draft.json"),
+              "w", encoding="utf-8") as f:
+        json.dump({"sender": "plan_ash", "category": "storyboard_draft",
+                   "version": 1, "data": D}, f)
+    wctx = {"run_dir": wdir,
+            "agent_dir": os.path.join(ROOT, "agents", "voice_wren"),
+            "producer": "voice_wren", "order_id": "o7", "run_id": "r7"}
+    WN = {"scenes": [
+        {"scene_n": 1, "start_s": 0, "end_s": 40,
+         "lines": [{"text": "Two plus two is 4.",
+                    "citations": [{"ref": tref + "#p1",
+                                   "quote": "Theory core idea."}]}],
+         "words": 5, "est_seconds": 2},
+        {"scene_n": 2, "start_s": 40, "end_s": 100,
+         "lines": [{"text": "Data flows onward today fast.",
+                    "citations": []}],
+         "words": 5, "est_seconds": 2}]}
+    ok(write_narration(wctx, {"narration": WN}).get("ok") is True,
+       "wren narration accepts")
+    savedw = results.load_result(os.path.join(wdir, "result.json"))
+    ok(results.check_result(savedw) == []
+       and "## narration (v1)" in results.render_report(savedw),
+       "narration envelope + report")
+    bad = json.loads(json.dumps(WN))
+    bad["scenes"][0]["lines"][0]["citations"] = []
+    ok("needs >=1 citation" in " ".join(write_narration(
+        wctx, {"narration": bad}).get("errors", [])),
+       "wren digit line without citation refuses")
+    bad = json.loads(json.dumps(WN))
+    bad["scenes"][0]["words"] = 4
+    ok("counted 5" in " ".join(write_narration(
+        wctx, {"narration": bad}).get("errors", [])),
+       "wren word miscount refuses")
+    bad = json.loads(json.dumps(WN))
+    bad["scenes"][0]["est_seconds"] = 3
+    ok("strays" in " ".join(write_narration(
+        wctx, {"narration": bad}).get("errors", [])),
+       "wren est_seconds stray refuses")
+    bad = json.loads(json.dumps(WN))
+    bad["scenes"][0]["lines"][0]["citations"][0][
+        "quote"] = "invented words"
+    ok(write_narration(wctx, {"narration": bad}).get("ok") is False,
+       "wren invented quote refuses")
 finally:
     _pc.ROOT_OVERRIDE = None
 

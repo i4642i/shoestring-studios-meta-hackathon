@@ -18,14 +18,10 @@
     "category": "structure",
     "required": true,
     "accept": [
-     2
+     2,
+     3
     ],
     "description": "Structure map: parts to explain, in order."
-   },
-   {
-    "category": "source",
-    "required": true,
-    "description": "Source PC pointer for the entry to explain."
    }
   ],
   "outputs": [

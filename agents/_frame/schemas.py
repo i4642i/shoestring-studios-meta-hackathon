@@ -115,7 +115,7 @@ def validate_draft(obj):
 
 REQUIRED_CONCEPT_TOP = ("common_theme", "core_question",
                           "viewer_takeaway", "intent_overall")
-REQUIRED_STRUCT_TOP = ("source_ref", "parts", "links")
+REQUIRED_STRUCT_TOP = ("source_ref", "parts", "links", "duration")
 
 
 def validate_concept(obj):
@@ -238,6 +238,49 @@ def validate_structure(obj, input_md_path):
                 errors.append("missing neighbour link %s->%s" % pair)
     elif "links" in obj:
         errors.append("links must be a list")
+    dur = obj.get("duration")
+    if isinstance(dur, dict):
+        total = dur.get("total_s")
+        dparts = dur.get("parts")
+        if not isinstance(total, int) or isinstance(total, bool) \
+                or total <= 0:
+            errors.append("duration.total_s must be a positive integer")
+        if not isinstance(dparts, list) or not dparts:
+            errors.append("duration.parts must be a non-empty list")
+        else:
+            dsum, dids = 0, []
+            for j, dp in enumerate(dparts):
+                if not isinstance(dp, dict):
+                    errors.append("duration.parts[%d] must be an object"
+                                  % j)
+                    continue
+                pid = dp.get("part_id")
+                sec = dp.get("seconds")
+                if pid not in ids:
+                    errors.append("duration.parts[%d].part_id unknown "
+                                  "part: %r" % (j, pid))
+                elif pid in dids:
+                    errors.append("duration.parts repeats %r" % (pid,))
+                else:
+                    dids.append(pid)
+                if not isinstance(sec, int) or isinstance(sec, bool) \
+                        or sec <= 0:
+                    errors.append("duration.parts[%d].seconds must be "
+                                  "a positive integer" % j)
+                else:
+                    dsum += sec
+                if not isinstance(dp.get("why"), str) \
+                        or not dp["why"].strip():
+                    errors.append("duration.parts[%d] needs non-empty "
+                                  "why" % j)
+            if sorted(dids) != sorted(ids):
+                errors.append("duration.parts must cover every part "
+                              "exactly once")
+            if isinstance(total, int) and dsum != total:
+                errors.append("duration seconds sum to %d, not total_s "
+                              "%d" % (dsum, total))
+    elif "duration" in obj:
+        errors.append("duration must be an object")
     return errors
 
 
@@ -483,6 +526,282 @@ def render_cite_md(ref, quote):
     return "[%s](api/ref?ref=%s)" % (quote, _urlquote(ref, safe=""))
 
 
+def validate_storyboard_draft(obj, struct):
+    """Ash's scene plan: shape + times vs Marty's structure (with
+    duration). PC-side rules (verbatim, readability, pick coverage)
+    live in write_storyboard_draft. Returns [errors]."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["storyboard_draft must be an object"]
+    for k in ("total_s", "scenes", "unused_picks"):
+        if k not in obj:
+            errors.append("missing: %s" % k)
+    total = obj.get("total_s")
+    if not isinstance(total, int) or isinstance(total, bool) \
+            or total <= 0:
+        errors.append("total_s must be a positive integer")
+    dur = (struct or {}).get("duration", {}) or {}
+    if dur.get("total_s") != total:
+        errors.append("total_s %r != structure plan %r"
+                      % (total, dur.get("total_s")))
+    plan = {p.get("part_id"): p.get("seconds")
+            for p in dur.get("parts", []) or []
+            if isinstance(p, dict)}
+    scenes = obj.get("scenes")
+    used = {}
+    if isinstance(scenes, list):
+        if not scenes:
+            errors.append("scenes must be non-empty")
+        prev_end = 0
+        for i, sc in enumerate(scenes):
+            where = "scenes[%d]" % i
+            if not isinstance(sc, dict):
+                errors.append("%s must be an object" % where)
+                continue
+            for k in ("n", "start_s", "end_s", "part_id", "role",
+                      "viewer_learns", "screen_idea", "narration_points",
+                      "materials", "handoff", "next_link"):
+                if k not in sc:
+                    errors.append("%s missing: %s" % (where, k))
+            if sc.get("n") != i + 1:
+                errors.append("%s.n must be %d" % (where, i + 1))
+            st, en = sc.get("start_s"), sc.get("end_s")
+            if st != prev_end:
+                errors.append("%s.start_s %r breaks contiguity "
+                              "(want %d)" % (where, st, prev_end))
+            if not isinstance(en, int) or en <= (st or 0):
+                errors.append("%s needs end_s > start_s" % where)
+                continue
+            prev_end = en
+            pid = sc.get("part_id")
+            if pid not in plan:
+                errors.append("%s.part_id unknown part: %r"
+                              % (where, pid))
+            else:
+                used[pid] = used.get(pid, 0) + (en - st)
+            if sc.get("role") not in ("hook", "explain", "case",
+                                      "recap", "other"):
+                errors.append("%s.role must be hook|explain|case|"
+                              "recap|other" % where)
+            for key in ("viewer_learns", "screen_idea", "next_link"):
+                _nonempty(errors, sc, key, where)
+            nps = sc.get("narration_points")
+            if not isinstance(nps, list) or not nps:
+                errors.append("%s.narration_points must be non-empty"
+                              % where)
+            else:
+                for j, np in enumerate(nps):
+                    if not isinstance(np, dict):
+                        errors.append("%s.narration_points[%d] must be "
+                                      "an object" % (where, j))
+                        continue
+                    _nonempty(errors, np, "text",
+                              "%s.narration_points[%d]" % (where, j))
+                    cits = np.get("citations")
+                    if not isinstance(cits, list):
+                        errors.append("%s.narration_points[%d]."
+                                      "citations must be a list"
+                                      % (where, j))
+                    else:
+                        for c in cits:
+                            if not isinstance(c, dict) \
+                                    or not c.get("ref") \
+                                    or "quote" not in c:
+                                errors.append("%s.narration_points[%d] "
+                                              "citations need "
+                                              "{ref, quote}"
+                                              % (where, j))
+                                break
+            for key, need in (("materials", ("ref", "from",
+                                             "how_used")),
+                              ("handoff", ("ref", "to", "why",
+                                           "how_to_use"))):
+                items = sc.get(key)
+                if not isinstance(items, list):
+                    errors.append("%s.%s must be a list"
+                                  % (where, key))
+                    continue
+                for j, it in enumerate(items):
+                    if not isinstance(it, dict) \
+                            or any(k not in it for k in need):
+                        errors.append("%s.%s[%d] needs %s"
+                                      % (where, key, j,
+                                         "/".join(need)))
+                    elif key == "materials" and it.get("from") \
+                            not in ("source", "theory", "article"):
+                        errors.append("%s.materials[%d].from must be "
+                                      "source|theory|article"
+                                      % (where, j))
+                    elif key == "handoff":
+                        tos = it.get("to")
+                        if not isinstance(tos, list) or not tos \
+                                or any(t not in ("board_penn",
+                                                 "voice_wren")
+                                       for t in tos):
+                            errors.append("%s.handoff[%d].to names "
+                                          "Penn and/or Wren only"
+                                          % (where, j))
+        if isinstance(total, int) and prev_end != total:
+            errors.append("scenes end at %d, not total_s %d"
+                          % (prev_end, total))
+        for pid, psecs in plan.items():
+            got = used.get(pid, 0)
+            if not used or pid not in used:
+                errors.append("part %r has no scene" % (pid,))
+            elif abs(got - psecs) > psecs * 0.15:
+                errors.append("part %r scenes sum to %ds, plan says "
+                              "%ds (±15%%)" % (pid, got, psecs))
+    elif "scenes" in obj:
+        errors.append("scenes must be a list")
+    ups = obj.get("unused_picks")
+    if isinstance(ups, list):
+        for j, u in enumerate(ups):
+            if not isinstance(u, dict) or "ref" not in u \
+                    or not u.get("why_not_used"):
+                errors.append("unused_picks[%d] needs {ref, "
+                              "why_not_used}" % j)
+    elif "unused_picks" in obj:
+        errors.append("unused_picks must be a list")
+    return errors
+
+
+def _draft_scene_map(draft):
+    """{scene_n: (start_s, end_s)} from a storyboard_draft data."""
+    out = {}
+    for sc in ((draft or {}).get("scenes") or []):
+        if isinstance(sc, dict) and isinstance(sc.get("n"), int):
+            out[sc["n"]] = (sc.get("start_s"), sc.get("end_s"))
+    return out
+
+
+def validate_storyboard(obj, draft):
+    """Penn's composition: shape + exact scene match vs the draft.
+    Ref readability lives in write_storyboard. Returns [errors]."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["storyboard must be an object"]
+    want = _draft_scene_map(draft)
+    scenes = obj.get("scenes")
+    if isinstance(scenes, list):
+        got = []
+        for i, sc in enumerate(scenes):
+            where = "scenes[%d]" % i
+            if not isinstance(sc, dict):
+                errors.append("%s must be an object" % where)
+                continue
+            for k in ("scene_n", "start_s", "end_s", "layout",
+                      "on_screen_text", "visuals", "materials",
+                      "notes_for_wren"):
+                if k not in sc:
+                    errors.append("%s missing: %s" % (where, k))
+            n = sc.get("scene_n")
+            got.append(n)
+            if n not in want:
+                errors.append("%s.scene_n %r is not in the draft"
+                              % (where, n))
+            elif (sc.get("start_s"), sc.get("end_s")) != want[n]:
+                errors.append("%s times %r != draft %r"
+                              % (where, (sc.get("start_s"),
+                                         sc.get("end_s")), want[n]))
+            _nonempty(errors, sc, "layout", where)
+            if not isinstance(sc.get("on_screen_text"), str):
+                errors.append("%s.on_screen_text must be a string"
+                              % where)
+            vis = sc.get("visuals")
+            if not isinstance(vis, list) or not vis \
+                    or any(not isinstance(v, str) or not v.strip()
+                           for v in vis):
+                errors.append("%s.visuals must be a non-empty string "
+                              "list" % where)
+            mats = sc.get("materials")
+            if not isinstance(mats, list):
+                errors.append("%s.materials must be a list" % where)
+            else:
+                for j, m in enumerate(mats):
+                    if not isinstance(m, dict) or "ref" not in m \
+                            or not m.get("how_used"):
+                        errors.append("%s.materials[%d] needs "
+                                      "{ref, how_used}" % (where, j))
+            _nonempty(errors, sc, "notes_for_wren", where)
+        if sorted(g for g in got if isinstance(g, int)) \
+                != sorted(want):
+            errors.append("scene set must equal the draft's: %r"
+                          % (sorted(want),))
+    elif "scenes" in obj:
+        errors.append("scenes must be a list")
+    return errors
+
+
+def validate_narration(obj, draft):
+    """Wren's lines: shape + scene match + fit math. Citation rules
+    live in write_narration. Returns [errors]."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["narration must be an object"]
+    want = _draft_scene_map(draft)
+    scenes = obj.get("scenes")
+    if isinstance(scenes, list):
+        got = []
+        for i, sc in enumerate(scenes):
+            where = "scenes[%d]" % i
+            if not isinstance(sc, dict):
+                errors.append("%s must be an object" % where)
+                continue
+            for k in ("scene_n", "start_s", "end_s", "lines",
+                      "words", "est_seconds"):
+                if k not in sc:
+                    errors.append("%s missing: %s" % (where, k))
+            n = sc.get("scene_n")
+            got.append(n)
+            dur = None
+            if n not in want:
+                errors.append("%s.scene_n %r is not in the draft"
+                              % (where, n))
+            elif (sc.get("start_s"), sc.get("end_s")) != want[n]:
+                errors.append("%s times %r != draft %r"
+                              % (where, (sc.get("start_s"),
+                                         sc.get("end_s")), want[n]))
+            else:
+                dur = want[n][1] - want[n][0]
+            lines = sc.get("lines")
+            words = 0
+            if not isinstance(lines, list) or not lines:
+                errors.append("%s.lines must be non-empty" % where)
+            else:
+                for j, ln in enumerate(lines):
+                    if not isinstance(ln, dict):
+                        errors.append("%s.lines[%d] must be an object"
+                                      % (where, j))
+                        continue
+                    _nonempty(errors, ln, "text",
+                              "%s.lines[%d]" % (where, j))
+                    words += len(str(ln.get("text", "")).split())
+                    if not isinstance(ln.get("citations"), list):
+                        errors.append("%s.lines[%d].citations must be "
+                                      "a list" % (where, j))
+            if sc.get("words") != words:
+                errors.append("%s.words %r != counted %d"
+                              % (where, sc.get("words"), words))
+            est = sc.get("est_seconds")
+            if not isinstance(est, int) or isinstance(est, bool) \
+                    or est <= 0:
+                errors.append("%s.est_seconds must be a positive "
+                              "integer" % where)
+            elif words and abs(est - words / 2.5) > words / 2.5 * 0.15:
+                errors.append("%s.est_seconds %d strays from "
+                              "words/2.5 (±15%%)" % (where, est))
+            elif isinstance(dur, int) and est > dur:
+                errors.append("%s.est_seconds %d exceeds scene "
+                              "seconds %d" % (where, est, dur))
+        if sorted(g for g in got if isinstance(g, int)) \
+                != sorted(want):
+            errors.append("scene set must equal the draft's: %r"
+                          % (sorted(want),))
+    elif "scenes" in obj:
+        errors.append("scenes must be a list")
+    return errors
+
+
 def render_brief_md(obj):
     """Order intake (brief v1) as markdown."""
     ans = obj["answers"]
@@ -512,6 +831,82 @@ def render_source_v2_md(obj):
              "- Sections: %d" % obj["sections"], ""]
     if obj.get("head"):
         lines += ["## Opening excerpt", "", obj["head"], ""]
+    return "\n".join(lines)
+
+
+def render_storyboard_draft_md(obj):
+    """Ash's scene plan (storyboard_draft v1) as markdown."""
+    lines = ["# Scene plan — %d scenes, %ds total"
+             % (len(obj.get("scenes", [])), obj.get("total_s", 0)),
+             ""]
+    for sc in obj.get("scenes", []):
+        lines += ["## Scene %s (%ds-%ds, %s)" % (sc.get("n"),
+                                                 sc.get("start_s"),
+                                                 sc.get("end_s"),
+                                                 sc.get("part_id")),
+                  "", "- Role: %s" % sc.get("role"),
+                  "- Viewer learns: %s" % sc.get("viewer_learns"),
+                  "- Screen: %s" % sc.get("screen_idea"),
+                  "- Materials: %s"
+                  % (", ".join("[%s](api/ref?ref=%s)"
+                               % (m.get("ref"), m.get("ref"))
+                               for m in sc.get("materials", []))
+                     or "—"),
+                  "- Handoff: %s"
+                  % (", ".join("%s -> %s"
+                               % (h.get("ref"),
+                                  ",".join(h.get("to", [])))
+                               for h in sc.get("handoff", []))
+                     or "—"),
+                  "- Next: %s" % sc.get("next_link"), ""]
+    if obj.get("unused_picks"):
+        lines += ["## Unused picks", ""]
+        for u in obj["unused_picks"]:
+            lines.append("- [%s](api/ref?ref=%s): %s"
+                         % (u.get("ref"), u.get("ref"),
+                            u.get("why_not_used")))
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_storyboard_md(obj):
+    """Penn's composition (storyboard v1) as markdown."""
+    lines = ["# Storyboard — %d scenes" % len(obj.get("scenes", [])),
+             ""]
+    for sc in obj.get("scenes", []):
+        lines += ["## Scene %s (%ds-%ds)" % (sc.get("scene_n"),
+                                             sc.get("start_s"),
+                                             sc.get("end_s")),
+                  "", "- Layout: %s" % sc.get("layout"),
+                  "- On screen: %s"
+                  % (sc.get("on_screen_text") or "—"),
+                  "- Visuals: %s" % "; ".join(sc.get("visuals", [])),
+                  "- Materials: %s"
+                  % (", ".join("[%s](api/ref?ref=%s)"
+                               % (m.get("ref"), m.get("ref"))
+                               for m in sc.get("materials", []))
+                     or "—"),
+                  "- Notes for Wren: %s" % sc.get("notes_for_wren"),
+                  ""]
+    return "\n".join(lines)
+
+
+def render_narration_md(obj):
+    """Wren's lines (narration v1) as markdown."""
+    lines = ["# Narration — %d scenes" % len(obj.get("scenes", [])),
+             ""]
+    for sc in obj.get("scenes", []):
+        lines += ["## Scene %s (%ds-%ds, %dw ~%ds)"
+                  % (sc.get("scene_n"), sc.get("start_s"),
+                     sc.get("end_s"), sc.get("words"),
+                     sc.get("est_seconds")), ""]
+        for ln in sc.get("lines", []):
+            lines.append("- %s" % ln.get("text"))
+            for c in ln.get("citations", []):
+                lines.append("  [%s](api/ref?ref=%s): %s"
+                             % (c.get("ref"), c.get("ref"),
+                                (c.get("quote", "") or "")[:120]))
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -555,7 +950,7 @@ def render_concept_md(obj):
 
 
 def render_structure_v2_md(obj):
-    """Structure map (structure v2) as markdown."""
+    """Structure map (structure v2/v3) as markdown."""
     lines = ["# Structure map — %s" % obj["source_ref"], "",
              "## Parts", ""]
     for p in obj["parts"]:
@@ -566,6 +961,14 @@ def render_structure_v2_md(obj):
     for link in obj["links"]:
         lines.append("- %s -> %s: %s"
                      % (link["from"], link["to"], link["why"]))
+    if isinstance(obj.get("duration"), dict):
+        dur = obj["duration"]
+        lines += ["", "## Time plan (%ds total)" % dur.get("total_s"),
+                  ""]
+        for dp in dur.get("parts", []) or []:
+            lines.append("- %s: %ds (%s)"
+                         % (dp.get("part_id"), dp.get("seconds"),
+                            dp.get("why")))
     lines.append("")
     return "\n".join(lines)
 

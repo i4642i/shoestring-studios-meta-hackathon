@@ -14,11 +14,6 @@
     "category": "request",
     "required": true,
     "description": "Production request: what to map and why."
-   },
-   {
-    "category": "source",
-    "required": true,
-    "description": "Source PC pointer: which entry to map (map chunk in prompt, full text via PC tools)."
    }
   ],
   "outputs": [

@@ -465,14 +465,15 @@
   "version": 3
  },
  "structure": {
-  "version": 2,
-  "description": "Structure map Marty writes: parts in source order with Source PC refs, plus top-level author-intent links. Static shape only; input-relative rules are enforced by write_structure. (The duration time plan of §3 is designed but not built yet.)",
+  "version": 3,
+  "description": "Structure map Marty writes: parts in source order with Source PC refs, top-level author-intent links, and the duration time plan. Static shape only; input-relative rules are enforced by write_structure.",
   "schema": {
    "type": "object",
    "required": [
     "source_ref",
     "parts",
-    "links"
+    "links",
+    "duration"
    ],
    "properties": {
     "source_ref": {
@@ -481,54 +482,45 @@
     "parts": {
      "type": "array",
      "items": {
-      "type": "object",
-      "required": [
-       "id",
-       "heading",
-       "ref",
-       "covers",
-       "keywords"
-      ],
-      "properties": {
-       "id": {
-        "type": "string"
-       },
-       "heading": {
-        "type": "string"
-       },
-       "ref": {
-        "type": "string"
-       },
-       "covers": {
-        "type": "string"
-       },
-       "keywords": {
-        "type": "array",
-        "items": {
-         "type": "string"
-        }
-       }
-      }
+      "type": "object"
      }
     },
     "links": {
      "type": "array",
      "items": {
-      "type": "object",
-      "required": [
-       "from",
-       "to",
-       "why"
-      ],
-      "properties": {
-       "from": {
-        "type": "string"
-       },
-       "to": {
-        "type": "string"
-       },
-       "why": {
-        "type": "string"
+      "type": "object"
+     }
+    },
+    "duration": {
+     "type": "object",
+     "required": [
+      "total_s",
+      "parts"
+     ],
+     "properties": {
+      "total_s": {
+       "type": "integer"
+      },
+      "parts": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "part_id",
+         "seconds",
+         "why"
+        ],
+        "properties": {
+         "part_id": {
+          "type": "string"
+         },
+         "seconds": {
+          "type": "integer"
+         },
+         "why": {
+          "type": "string"
+         }
+        }
        }
       }
      }
@@ -643,5 +635,333 @@
    "type": "object"
   },
   "version": 1
+ },
+ "storyboard_draft": {
+  "version": 1,
+  "description": "Ash's scene plan: timed scenes from Marty's structure filled with Cleo/Rex material, refs per scene, and the Penn/Wren handoff lists.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "total_s",
+    "scenes",
+    "unused_picks"
+   ],
+   "properties": {
+    "total_s": {
+     "type": "integer"
+    },
+    "scenes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "n",
+       "start_s",
+       "end_s",
+       "part_id",
+       "role",
+       "viewer_learns",
+       "screen_idea",
+       "narration_points",
+       "materials",
+       "handoff",
+       "next_link"
+      ],
+      "properties": {
+       "n": {
+        "type": "integer"
+       },
+       "start_s": {
+        "type": "integer"
+       },
+       "end_s": {
+        "type": "integer"
+       },
+       "part_id": {
+        "type": "string"
+       },
+       "role": {
+        "type": "string",
+        "enum": [
+         "hook",
+         "explain",
+         "case",
+         "recap",
+         "other"
+        ]
+       },
+       "viewer_learns": {
+        "type": "string"
+       },
+       "screen_idea": {
+        "type": "string"
+       },
+       "narration_points": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "text",
+          "citations"
+         ],
+         "properties": {
+          "text": {
+           "type": "string"
+          },
+          "citations": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "ref",
+             "quote"
+            ],
+            "properties": {
+             "ref": {
+              "type": "string"
+             },
+             "quote": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       },
+       "materials": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "ref",
+          "from",
+          "how_used"
+         ],
+         "properties": {
+          "ref": {
+           "type": "string"
+          },
+          "from": {
+           "type": "string",
+           "enum": [
+            "source",
+            "theory",
+            "article"
+           ]
+          },
+          "how_used": {
+           "type": "string"
+          }
+         }
+        }
+       },
+       "handoff": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "ref",
+          "to",
+          "why",
+          "how_to_use"
+         ],
+         "properties": {
+          "ref": {
+           "type": "string"
+          },
+          "to": {
+           "type": "array",
+           "items": {
+            "type": "string",
+            "enum": [
+             "board_penn",
+             "voice_wren"
+            ]
+           }
+          },
+          "why": {
+           "type": "string"
+          },
+          "how_to_use": {
+           "type": "string"
+          }
+         }
+        }
+       },
+       "next_link": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "unused_picks": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "ref",
+       "why_not_used"
+      ],
+      "properties": {
+       "ref": {
+        "type": "string"
+       },
+       "why_not_used": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "storyboard": {
+  "version": 1,
+  "description": "Penn's per-scene composition: layout, on-screen text, visuals, materials, notes for Wren.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "scenes"
+   ],
+   "properties": {
+    "scenes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "scene_n",
+       "start_s",
+       "end_s",
+       "layout",
+       "on_screen_text",
+       "visuals",
+       "materials",
+       "notes_for_wren"
+      ],
+      "properties": {
+       "scene_n": {
+        "type": "integer"
+       },
+       "start_s": {
+        "type": "integer"
+       },
+       "end_s": {
+        "type": "integer"
+       },
+       "layout": {
+        "type": "string"
+       },
+       "on_screen_text": {
+        "type": "string"
+       },
+       "visuals": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "materials": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "ref",
+          "how_used"
+         ],
+         "properties": {
+          "ref": {
+           "type": "string"
+          },
+          "how_used": {
+           "type": "string"
+          }
+         }
+        }
+       },
+       "notes_for_wren": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "narration": {
+  "version": 1,
+  "description": "Wren's per-scene spoken lines with citations, word counts and fit estimates.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "scenes"
+   ],
+   "properties": {
+    "scenes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "scene_n",
+       "start_s",
+       "end_s",
+       "lines",
+       "words",
+       "est_seconds"
+      ],
+      "properties": {
+       "scene_n": {
+        "type": "integer"
+       },
+       "start_s": {
+        "type": "integer"
+       },
+       "end_s": {
+        "type": "integer"
+       },
+       "lines": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "text",
+          "citations"
+         ],
+         "properties": {
+          "text": {
+           "type": "string"
+          },
+          "citations": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "ref",
+             "quote"
+            ],
+            "properties": {
+             "ref": {
+              "type": "string"
+             },
+             "quote": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       },
+       "words": {
+        "type": "integer"
+       },
+       "est_seconds": {
+        "type": "integer"
+       }
+      }
+     }
+    }
+   }
+  }
  }
 }

@@ -32,14 +32,14 @@ def msgs(errs):
 cat = flow.load_catalog()
 ok(len(cat["agents"]) >= 9, "catalog lists 9 agents")
 drafts = sorted(a["id"] for a in cat["agents"] if a.get("draft"))
-ok(drafts == ["board_penn", "board_vera", "plan_ash",
-              "voice_iris", "voice_wren"], "5 drafts flagged")
+ok(drafts == ["board_vera", "voice_iris"], "2 drafts flagged")
 ok("sales_sam" in [a["id"] for a in cat["agents"] if a.get("flow")],
    "workers declare flow I/O")
 ok(sorted(c["name"] for c in cat["categories"])
-   == ["brief", "cases", "concept", "concepts", "request", "source",
-       "structure", "video"],
-   "catalog has 8 categories")
+   == ["brief", "cases", "concept", "concepts", "narration", "request",
+       "source", "storyboard", "storyboard_draft", "structure",
+       "video"],
+   "catalog has 11 categories")
 ok(all((a.get("color") or "").startswith("#") for a in cat["agents"]),
    "catalog colors")
 ok(all(isinstance(a.get("tools"), list) and a["tools"]
@@ -134,12 +134,12 @@ cyc = {"nodes": [{"id": "sales_sam"},
 ok(any(e["message"].startswith("cycle:")
        for e in flow.validate_flow(cyc)), "cycle caught")
 bad = json.loads(json.dumps(dflt))
-bad["nodes"].append({"id": "plan_ash"})
-bad["lines"].append({"id": "ld", "from": "sales_sam", "to": "plan_ash",
+bad["nodes"].append({"id": "board_vera"})
+bad["lines"].append({"id": "ld", "from": "sales_sam", "to": "board_vera",
                       "categories": ["request"]})
 errs = flow.validate_flow(bad)
 ok(any("is a draft" in e["message"] for e in errs)
-   and any(e.get("node") == "plan_ash" for e in errs),
+   and any(e.get("node") == "board_vera" for e in errs),
    "connected draft rejected")
 old = {"nodes": [{"id": "order"}, {"id": "sales_sam"},
                  {"id": "final"}],
@@ -205,7 +205,10 @@ STRUCT = {"source_ref": "pc://source/abc123abc123",
           "parts": [{"id": "p1", "heading": "h",
                      "ref": "pc://source/abc123abc123#s1",
                      "covers": "x", "keywords": ["k"]}],
-          "links": []}
+          "links": [],
+          "duration": {"total_s": 60,
+                       "parts": [{"part_id": "p1", "seconds": 60,
+                                  "why": "w"}]}}
 CONCEPTS = {"parts": [{"part_id": "p1", "concept_name": "c",
                        "easy_explanation": "e",
                        "why_it_came_about": "w",
@@ -260,7 +263,7 @@ ok(sam["status"] == "checked"
 mar = results.load_result(os.path.join(rdir, "pd_marty", "result.json"))
 ok(mar["status"] == "checked"
    and mar["categories"]["concept"]["version"] == 1
-   and mar["categories"]["structure"]["version"] == 2, "marty checked")
+   and mar["categories"]["structure"]["version"] == 3, "marty checked")
 cleo = results.load_result(os.path.join(rdir, "explain_cleo",
                                         "result.json"))
 ok(cleo["status"] == "checked"
@@ -296,7 +299,7 @@ cmani = json.load(open(os.path.join(rdir, "explain_cleo", "INPUTS.json"),
                       encoding="utf-8"))
 ok([(r["sender"], r["category"], r["version"]) for r in
     cmani["received"]] == [("pd_marty", "concept", 1),
-                           ("pd_marty", "structure", 2),
+                           ("pd_marty", "structure", 3),
                            ("sales_sam", "source", 3)],
    "cleo manifest has concept + structure + source")
 evs = [json.loads(ln) for ln in
@@ -362,6 +365,8 @@ os.makedirs(mp_)
 rx = os.path.join(tmp, "runs", "rid9", "case_rex")
 os.makedirs(rx)
 _pc.ROOT_OVERRIDE = tmp
+_real_orders = flow.ORDERS_DIR
+flow.ORDERS_DIR = os.path.join(tmp, "orders")
 try:
     rr = _pc.ingest_source("o10", "s.pdf", "2026-10-30T07:00:00",
                            "sales_sam",
@@ -401,7 +406,12 @@ try:
     md2 = flow._render_inputs_md(
         {"order_id": "o10", "answers": {"audience": "a"}}, [],
         os.path.join(tmp, "runs", "rid9"), "explain_cleo")
-    ok("0 item(s)" in md2, "no source means empty PC input")
+    ok("1.1 Getting started" in md2,
+       "order meta discovers the source entry")
+    md2b = flow._render_inputs_md(
+        {"order_id": "o10x", "answers": {"audience": "a"}}, [],
+        os.path.join(tmp, "runs", "rid9"), "explain_cleo")
+    ok("0 item(s)" in md2b, "no source means empty PC input")
     md3 = flow._render_inputs_md(
         {"order_id": "o10", "answers": {"audience": "a"}}, rcv,
         os.path.join(tmp, "runs", "rid9"), "sales_sam")
@@ -457,6 +467,7 @@ try:
         ok(True, "picks preview without picks raises")
 finally:
     _pc.ROOT_OVERRIDE = None
+    flow.ORDERS_DIR = _real_orders
 
 
 def boom(agent_dir, run_dir, brief, input_md):
