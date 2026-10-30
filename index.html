@@ -445,39 +445,60 @@
 </div>
 
 <style>
+#p-flow { max-width: 1240px; }
 #fl-canvas { position: relative; width: 1160px; height: 480px; overflow: hidden;
-  border: 1px solid var(--line); background: #0d1526; }
+  border: 1px solid var(--line); background: #f7f9fc; border-radius: 12px; }
 #fl-scroll { overflow: auto; }
 #fl-svg { position: absolute; left: 0; top: 0; }
-.fl-node { position: absolute; width: 184px; background: #131f38;
-  border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
-  font-size: 12px; cursor: move; user-select: none; touch-action: none; }
-.fl-node.sel { border-color: #ffb224; }
-.fl-node.bad { border-color: #e5484d; }
-.fl-node h4 { margin: 0 0 2px; font-size: 13px; }
-.fl-node .sub { color: #8fa0c0; font-size: 11px; margin-bottom: 2px; }
-.fl-node .req { color: #bcd; font-size: 11px; }
-.fl-node .del { float: right; cursor: pointer; color: #ffb4b8; }
+.fl-node { position: absolute; width: 184px; background: #fff;
+  border: 1px solid #c9d2e0; border-radius: 8px; padding: 8px 10px;
+  font-size: 12px; color: var(--ink); cursor: move; user-select: none;
+  touch-action: none; box-shadow: 0 1px 3px rgba(17,24,39,.12); }
+.fl-node.sel { border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0,100,224,.25); }
+.fl-node.bad { border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220,38,38,.2); }
+.fl-node.draft { border-style: dashed; border-color: #9ca3af;
+  background: #f3f4f6; }
+.fl-node h4 { margin: 0 0 2px; font-size: 15px; font-weight: 700;
+  color: var(--ink); }
+.fl-node .sub { color: #4b5563; font-size: 12px; margin-bottom: 2px; }
+.fl-node .req { color: #374151; font-size: 11px; }
+.fl-node .dtag { display: inline-block; font-size: 10px; font-weight: 800;
+  letter-spacing: 1px; color: #4b5563; background: #e5e7eb;
+  border-radius: 4px; padding: 1px 6px; margin: 3px 4px 0 0; }
+.fl-node .del { float: right; cursor: pointer; color: #9ca3af;
+  font-weight: 700; }
+.fl-node .del:hover { color: #dc2626; }
 .fl-port { position: absolute; top: 50%; width: 14px; height: 14px;
   border-radius: 50%; transform: translateY(-50%); }
-.fl-port.in { left: -8px; background: #4da3ff; cursor: crosshair; }
+.fl-port.in { left: -8px; background: var(--accent); cursor: crosshair;
+  border: 2px solid #fff; box-shadow: 0 0 0 1px var(--accent); }
 .fl-out { position: absolute; right: -8px; width: 14px; height: 14px;
-  border-radius: 50%; background: #51cf66; cursor: crosshair;
-  transform: translateY(-50%); }
+  border-radius: 50%; background: #16a34a; cursor: crosshair;
+  transform: translateY(-50%); border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #16a34a; }
 .fl-out span { position: absolute; right: 17px; top: 50%;
-  transform: translateY(-50%); font-size: 10px; white-space: nowrap;
-  color: #bcd; }
-.fl-line { fill: none; stroke: #8fa0c0; stroke-width: 2; }
-.fl-line.bad { stroke: #e5484d; }
-.fl-line.sel { stroke: #ffb224; }
+  transform: translateY(-50%); font-size: 11px; font-weight: 600;
+  white-space: nowrap; color: #1f2937; background: rgba(255,255,255,.92);
+  padding: 0 4px; border-radius: 4px; }
+.fl-line { fill: none; stroke: #6b7280; stroke-width: 2; }
+.fl-line.bad { stroke: #dc2626; }
+.fl-line.sel { stroke: var(--accent); }
 .fl-hit { fill: none; stroke: rgba(0,0,0,0); stroke-width: 16; cursor: pointer; }
-.fl-label { font-size: 11px; fill: #dfe7f5; pointer-events: none; }
-.fl-tmp { fill: none; stroke: #51cf66; stroke-width: 2; stroke-dasharray: 6 4; }
-#fl-linepop { position: absolute; z-index: 5; background: #131f38;
-  border: 1px solid #ffb224; border-radius: 8px; padding: 8px 10px;
-  font-size: 12px; display: none; }
+.fl-label { font-size: 12px; font-weight: 600; fill: #1f2937;
+  pointer-events: none; paint-order: stroke; stroke: #f7f9fc;
+  stroke-width: 4px; }
+.fl-tmp { fill: none; stroke: #16a34a; stroke-width: 2;
+  stroke-dasharray: 6 4; }
+#fl-linepop { position: absolute; z-index: 5; background: #fff;
+  color: var(--ink); border: 1px solid var(--accent); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; display: none;
+  box-shadow: 0 4px 14px rgba(17,24,39,.18); }
 #fl-log { max-height: 220px; overflow: auto; white-space: pre-wrap; }
-#fl-problems { color: #ffb4b8; }
+#fl-problems { color: #b91c1c; }
+#fl-err { color: #b91c1c; font-weight: 600; }
+#fl-status { color: var(--dim); font-size: 12px; margin-left: 8px; }
 </style>
 <div class="page" id="p-flow">
   <div class="card">
@@ -489,6 +510,7 @@
       <input id="fl-name" maxlength="48" placeholder="Flow name" aria-label="Flow name">
       <button class="cta" id="fl-save">SAVE</button>
       <button id="fl-new">NEW</button>
+      <span id="fl-status"></span>
     </div>
     <div class="addform" id="fl-palette"></div>
     <div id="fl-scroll"><div id="fl-canvas">
@@ -1586,7 +1608,8 @@
         const div = document.createElement("div");
         div.className = "fl-node" +
           (S.selNode === n.id ? " sel" : "") +
-          (S.badNodes[n.id] ? " bad" : "");
+          (S.badNodes[n.id] ? " bad" : "") +
+          ((agentOf(n.id) || {}).draft ? " draft" : "");
         div.style.left = p.x + "px";
         div.style.top = p.y + "px";
         div.dataset.n = n.id;
@@ -1601,7 +1624,7 @@
             .map(i => esc(i.category) + (i.required ? "*" : "")).join(", ");
           inner += '<div class="req">needs: ' + (reqs || "—") + "</div>";
           if (a && a.draft)
-            inner += '<div class="req">DRAFT — cannot run yet</div>';
+            inner += '<div class="req"><span class="dtag">DRAFT</span>cannot run yet</div>';
         }
         if (n.id !== "order")
           inner += '<div class="fl-port in" data-in="' + esc(n.id) + '"></div>';
@@ -1910,7 +1933,8 @@
         hidePop();
         render();
         scheduleValidate();
-      } catch (e) { fail(e); }
+        return true;
+      } catch (e) { fail(e); return false; }
     }
     async function doSave() {
       try {
@@ -2023,19 +2047,36 @@
         pollRun(r.run_id);
       } catch (e) { fail(e); }
     };
+    function status(t) {
+      document.getElementById("fl-status").textContent = t || "";
+    }
     S.catalog = { agents: [], order: { outputs: [] } };
     S.flow = blankFlow();
     render();
     try {
+      status("Loading catalog\u2026");
       S.catalog = await api.get("api/flows/catalog");
-    } catch (e) { fail(e); return; }
+    } catch (e) { status(""); fail(e); return; }
+    status("Loading flows\u2026");
     await loadList();
+    if (!S.flows.length) {
+      status("");
+      fail(new Error("No flows found on the server " +
+        "(is data/flows/default.json present?)."));
+      return;
+    }
     const first = S.flows.some(f => f.id === "default") ? "default"
       : (S.flows[0] && S.flows[0].id);
-    if (first) await loadFlow(first);
-    else {
+    if (first) {
+      status("Loading '" + first + "'\u2026");
+      if (await loadFlow(first))
+        status("Loaded '" + S.flow.name + "' (" + S.flow.nodes.length +
+          " nodes, " + S.flow.lines.length + " lines).");
+      else status("");
+    } else {
       S.flow = blankFlow();
       render();
+      status("");
     }
     loadRuns();
   })();
