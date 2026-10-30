@@ -99,6 +99,9 @@ def parse_multipart(handler):
     return fields, files
 
 
+XTOL = 1  # inter-word gaps in our PDFs sit under the default 3
+
+
 def pdf_to_text(raw):
     try:
         import pdfplumber
@@ -107,7 +110,8 @@ def pdf_to_text(raw):
             "pdfplumber not installed (pip install -r requirements.txt)")
     import io
     with pdfplumber.open(io.BytesIO(raw)) as pdf:
-        return "\n\n".join((page.extract_text() or "") for page in pdf.pages)
+        return "\n\n".join((page.extract_text(x_tolerance=XTOL) or "")
+                            for page in pdf.pages)
 
 
 def _rows_to_md(rows):
@@ -121,24 +125,30 @@ def _rows_to_md(rows):
     return "\n".join(out)
 
 
+def _text_rows(page):
+    """Char-grouped text lines: [(top, text, x0, x1, bottom)] sorted
+    top-down. Gap-joined, so no crop edge ever clips glyphs away."""
+    rows = {}
+    for ch in page.chars:
+        rows.setdefault(round(ch["top"]), []).append(ch)
+    out = []
+    for y in sorted(rows):
+        cs = sorted(rows[y], key=lambda c: c["x0"])
+        out.append((y, _join_chars(cs),
+                    min(c["x0"] for c in cs),
+                    max(c["x1"] for c in cs),
+                    max(c["bottom"] for c in cs)))
+    return out
+
+
 def _near_caption(page, box):
     """Nearest printed caption line below a figure/table box, else
     nearest above (within half/quarter page). Lines come from char
     tops, not crops, so band edges never clip glyphs away. Returns
     (caption_line, number) or ("", "")."""
     bottom, top = box[3], box[1]
-    rows = {}
-    for ch in page.chars:
-        rows.setdefault(round(ch["top"]), []).append(ch)
     cands = []
-    for y in sorted(rows):
-        cs = sorted(rows[y], key=lambda c: c["x0"])
-        parts = [cs[0]["text"]]
-        for a, b in zip(cs, cs[1:]):
-            if b["x0"] - a["x1"] > 1.5:
-                parts.append(" ")
-            parts.append(b["text"])
-        txt = "".join(parts)
+    for y, txt, _x0, _x1, _bot in _text_rows(page):
         if pc.parse_caption(txt):
             cands.append((y, txt.strip()))
     below = [(y, t) for y, t in cands
@@ -154,11 +164,106 @@ def _near_caption(page, box):
     return "", ""
 
 
+def _is_table_row(text):
+    s = (text or "").strip()
+    return bool(s) and (s.startswith("(cid:") or s.startswith("\u2022"))
+
+
+def _table_images(page, skip):
+    """Borderless tables find_tables() misses: a Table/Tab caption plus
+    the bullet-led rows below it, cropped as a PNG (table-image).
+    skip holds bboxes of tables already found. Returns table dicts
+    with rows None, blob set, and the row texts for search."""
+    import io
+    out = []
+    rows = _text_rows(page)
+    for ci, (cy, ctxt, _cx0, _cx1, _cb) in enumerate(rows):
+        hit = pc.parse_caption(ctxt)
+        if not hit or not hit["label"].lower().startswith(
+                ("table", "tab")):
+            continue
+        body = []
+        prev = cy
+        for y, txt, x0, x1, bot in rows[ci + 1:]:
+            if y > cy + 600 or y - prev > 30:
+                break
+            prev = y
+            s = txt.strip()
+            if not s:
+                continue
+            if not body:
+                if pc.parse_caption(txt) or re.match(r"^\d", s):
+                    break
+                body.append((y, txt.strip(), x0, x1, bot))
+            elif _is_table_row(txt):
+                body.append((y, txt.strip(), x0, x1, bot))
+            else:
+                break
+        if len(body) < 2:
+            continue
+        bbox = [min(b[2] for b in body) - 4, body[0][0] - 2,
+                max(b[3] for b in body) + 4, body[-1][4] + 2]
+        if any(not (bbox[2] < s[0] or s[2] < bbox[0]
+                    or bbox[3] < s[1] or s[3] < bbox[1]) for s in skip):
+            continue
+        try:
+            buf = io.BytesIO()
+            page.crop(bbox).to_image(
+                resolution=150).original.save(buf, format="PNG")
+        except Exception:  # noqa: BLE001 - crop failed, drop it
+            continue
+        out.append({"top": bbox[1], "caption": ctxt.strip(),
+                    "number": hit["number"], "bbox": bbox, "rows": None,
+                    "markdown": "", "blob": buf.getvalue(),
+                    "text": "\n".join(b[1] for b in body)})
+    return out
+
+
+def _page_marks(page):
+    """Per-page typography marks: bold phrases (font name carries it),
+    grouped within a row, for key terms."""
+    rows = {}
+    for ch in page.chars:
+        rows.setdefault(round(ch["top"]), []).append(ch)
+    out = []
+    for y in sorted(rows):
+        cs = sorted(rows[y], key=lambda c: c["x0"])
+        cur = []
+        for c in cs:
+            if "bold" in (c.get("fontname") or "").lower():
+                if cur and c["x0"] - cur[-1]["x1"] > 6:
+                    out.append(_join_chars(cur))
+                    cur = []
+                cur.append(c)
+            elif cur:
+                out.append(_join_chars(cur))
+                cur = []
+        if cur:
+            out.append(_join_chars(cur))
+    seen, ded = set(), []
+    for p in out:
+        if len(p) >= 2 and not re.fullmatch(r"[\d.]+", p) \
+                and p not in seen:
+            seen.add(p)
+            ded.append(p)
+    return {"bold": ded}
+
+
+def _join_chars(cs):
+    parts = [cs[0]["text"]]
+    for a, b in zip(cs, cs[1:]):
+        if b["x0"] - a["x1"] > 1.5:
+            parts.append(" ")
+        parts.append(b["text"])
+    return " ".join("".join(parts).split())
+
+
 def pdf_parse(raw):
     """Split a PDF into per-page texts + figure/table records.
 
-    Returns (pages, images, tables, skipped): images and tables carry
-    page/bbox/caption for the PC; skipped counts tiny decor images.
+    Returns (pages, images, tables, skipped, marks): images and tables
+    carry page/bbox/caption for the PC; skipped counts tiny decor
+    images; marks holds per-page typography (bold phrases).
     """
     try:
         import pdfplumber
@@ -166,11 +271,12 @@ def pdf_parse(raw):
         raise RuntimeError(
             "pdfplumber not installed (pip install -r requirements.txt)")
     import io
-    pages, images, tables = [], [], []
+    pages, images, tables, marks = [], [], [], []
     skipped = 0
     with pdfplumber.open(io.BytesIO(raw)) as pdf:
         for i, page in enumerate(pdf.pages):
-            pages.append(page.extract_text() or "")
+            pages.append(page.extract_text(x_tolerance=XTOL) or "")
+            marks.append(_page_marks(page))
             for img in page.images:
                 w, h = img["x1"] - img["x0"], img["bottom"] - img["top"]
                 if w < pc.MIN_FIG_PT and h < pc.MIN_FIG_PT:
@@ -199,7 +305,7 @@ def pdf_parse(raw):
             for tab in found:
                 bbox = list(tab.bbox)
                 try:
-                    rows = tab.extract()
+                    rows = tab.extract(x_tolerance=XTOL)
                 except Exception:  # noqa: BLE001 - extraction failed
                     rows = None
                 if not rows or not any(
@@ -220,7 +326,12 @@ def pdf_parse(raw):
                 tables.append({"page": i + 1, "top": bbox[1],
                                "caption": cap, "number": num, "bbox": bbox,
                                "rows": rows, "markdown": md, "blob": blob})
-    return pages, images, tables, skipped
+            for ti in _table_images(
+                    page, [t["bbox"] for t in tables
+                           if t.get("page") == i + 1]):
+                ti["page"] = i + 1
+                tables.append(ti)
+    return pages, images, tables, skipped, marks
 
 
 def load_dotenv(path):
@@ -371,6 +482,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:3] == ["api", "pcs", "source"] and len(parts) == 6 \
                 and parts[3] == "entries" and parts[5] == "build":
             return self._api_pc_build(parts[4])
+        if parts[:3] == ["api", "pcs", "source"] and len(parts) == 6 \
+                and parts[3] == "entries" and parts[5] == "index":
+            return self._api_pc_index(parts[4])
         if parts[:2] == ["api", "settings"] and len(parts) == 2:
             return self._api_settings_save()
         if parts[:2] == ["api", "settings"] and len(parts) == 3 \
@@ -1230,7 +1344,7 @@ class Handler(BaseHTTPRequestHandler):
         with open(os.path.join(d, "source.pdf"), "wb") as f:
             f.write(raw)
         try:
-            pages, images, tables, skipped = pdf_parse(raw)
+            pages, images, tables, skipped, marks = pdf_parse(raw)
         except RuntimeError as e:
             return self._json(500, {"error": str(e)})
         except Exception as exc:  # noqa: BLE001 - broken PDF, reported
@@ -1261,7 +1375,7 @@ class Handler(BaseHTTPRequestHandler):
             ing = pc.ingest_source(oid, base,
                                    time.strftime("%Y-%m-%dT%H:%M:%S"),
                                    meta["assignee"], pages, images, tables,
-                                   skipped)
+                                   skipped, marks=marks)
         except Exception as exc:  # noqa: BLE001 - ingest never breaks upload
             print("order pc ingest failed %s: %s" % (oid, exc), flush=True)
             meta["pc_error"] = str(exc)[:200]
@@ -1626,9 +1740,10 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     # ---- Source PC ----
-    def _pc_maybe_build(self, doc_id, force=False):
+    def _pc_maybe_build(self, doc_id, force=False, mode="all"):
         """Spawn the map/index worker unless the map is done or a
-        worker already runs for this entry. force rebuilds anyway."""
+        worker already runs for this entry. force rebuilds anyway.
+        mode passes through to the worker (all/index)."""
         if not force:
             try:
                 with open(os.path.join(pc.entry_dir("source", doc_id),
@@ -1644,11 +1759,13 @@ class Handler(BaseHTTPRequestHandler):
         edir = pc.entry_dir("source", doc_id)
         logf = open(os.path.join(edir, "worker.log"), "a",
                     encoding="utf-8")
+        cmd = [sys.executable, os.path.join("scripts", "pc_worker.py"),
+               doc_id]
+        if mode != "all":
+            cmd.append(mode)
         try:
             _PC_JOBS[doc_id] = subprocess.Popen(
-                [sys.executable, os.path.join("scripts", "pc_worker.py"),
-                 doc_id], cwd=ROOT, stdout=logf,
-                stderr=subprocess.STDOUT)
+                cmd, cwd=ROOT, stdout=logf, stderr=subprocess.STDOUT)
         except OSError:
             logf.close()
             raise
@@ -1802,6 +1919,12 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _api_pc_build(self, doc_id):
+        return self._api_pc_spawn(doc_id, "all")
+
+    def _api_pc_index(self, doc_id):
+        return self._api_pc_spawn(doc_id, "index")
+
+    def _api_pc_spawn(self, doc_id, mode):
         if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
             return self._json(404, {"error": "no such PC entry"})
         if not os.path.isfile(os.path.join(pc.entry_dir("source", doc_id),
@@ -1812,7 +1935,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(409, {"started": False,
                                     "reason": "already building"})
         try:
-            self._pc_maybe_build(doc_id, force=True)
+            self._pc_maybe_build(doc_id, force=True, mode=mode)
         except OSError as exc:
             return self._json(200, {"started": False,
                                     "reason": "spawn failed: %s" % exc})
