@@ -43,6 +43,7 @@
     "pc_search_theory",
     "pc_pick_theory",
     "pc_read_theory",
-    "write_concepts"
+    "write_concepts",
+    "research_status"
   ]
 }

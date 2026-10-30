@@ -209,14 +209,18 @@ def _write_report(ctx, args, category, validator):
     errors = validator(obj)
     if errors:
         return {"ok": False, "errors": errors}
+    cited = {}
     for i, p in enumerate(obj["parts"]):
         where = "%s.parts[%d]" % (category, i)
+        pid = p.get("part_id", "p%d" % (i + 1))
         for cw, cl in _claims_of(category, p):
             for n, cit in enumerate((cl or {}).get("citations") or []):
                 if not isinstance(cit, dict):
                     continue
                 _check_quote(errors, cit.get("ref"), cit.get("quote"),
                              "%s.%s.citations[%d]" % (where, cw, n))
+                if isinstance(cit.get("ref"), str):
+                    cited.setdefault(pid, []).append(cit["ref"])
         for m, pk in enumerate(p.get("picks") or []):
             if not isinstance(pk, dict):
                 continue
@@ -224,6 +228,8 @@ def _write_report(ctx, args, category, validator):
             if isinstance(ev, dict):
                 _check_quote(errors, ev.get("ref"), ev.get("quote"),
                              "%s.picks[%d].evidence" % (where, m))
+                if isinstance(ev.get("ref"), str):
+                    cited.setdefault(pid, []).append(ev["ref"])
     if errors:
         return {"ok": False, "errors": errors}
     got = _report_pick_refs(obj)
@@ -234,7 +240,50 @@ def _write_report(ctx, args, category, validator):
         errors.append("picked %s is missing from the report" % ref)
     if errors:
         return {"ok": False, "errors": errors}
-    return _save_category(ctx, category, obj)
+    saved = _save_category(ctx, category, obj)
+    if saved.get("ok"):
+        for pid in sorted(cited):
+            _log_research(ctx, {"ev": "citations", "part_id": pid,
+                                "refs": sorted(set(cited[pid]))})
+    return saved
+
+
+def research_status(ctx, args):
+    """One-line retrieval status from this run's research log:
+    searches run, hits seen, picks made, citations written."""
+    d = (ctx or {}).get("run_dir", "")
+    log = os.path.join(d, "research.jsonl") if d else ""
+    searches = hits = picks = cites = 0
+    parts = {}
+    if log and os.path.isfile(log):
+        with open(log, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        for ln in lines:
+            try:
+                ev = json.loads(ln)
+            except ValueError:
+                continue
+            kind = ev.get("ev")
+            if kind == "search":
+                searches += 1
+                hits += len(ev.get("hits") or [])
+            elif kind == "pick":
+                picks += 1
+                pid = ev.get("part_id") or "?"
+                slot = parts.setdefault(pid, {"picks": [],
+                                              "citations": 0})
+                slot["picks"].append(ev.get("ref", ""))
+            elif kind == "citations":
+                refs = ev.get("refs") or []
+                cites += len(refs)
+                pid = ev.get("part_id") or "?"
+                slot = parts.setdefault(pid, {"picks": [],
+                                              "citations": 0})
+                slot["citations"] += len(refs)
+    line = ("STATUS searches=%d hits_seen=%d picks=%d citations=%d"
+            % (searches, hits, picks, cites))
+    return {"searches": searches, "hits_seen": hits, "picks": picks,
+            "citations": cites, "parts": parts, "line": line}
 
 
 def write_concepts(ctx, args):
@@ -679,6 +728,13 @@ TOOLS = {
         {"type": "object",
          "properties": {"cases": {"type": "object"}},
          "required": ["cases"], "additionalProperties": False},
+    ),
+    "research_status": (
+        research_status,
+        "Show this run's retrieval status: searches, hits seen, picks "
+        "made, citations written, per part. Call it before writing.",
+        {"type": "object", "properties": {},
+         "additionalProperties": False},
     ),
     "query_graph": (
         query_graph,

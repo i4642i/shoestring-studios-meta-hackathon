@@ -90,6 +90,19 @@ try:
     ok("part_id" in miss.get("error", "")
        and "why_important" in miss.get("error", ""),
        "pick names missing args")
+    st = tmod.research_status(c, {})
+    ok(st["searches"] == 1 and st["hits_seen"] == 1
+       and st["picks"] == 2 and st["citations"] == 0
+       and st["line"] == "STATUS searches=1 hits_seen=1 picks=2 "
+                         "citations=0",
+       "status counts searches, hits, picks")
+    ok(st["parts"]["p1"]["picks"] == [p["ref"]]
+       and st["parts"]["p2"]["citations"] == 0,
+       "status breaks down per part")
+    fresh = ctx("explain_cleo", producer="nobody", order="ord-x")
+    st0 = tmod.research_status(fresh, {})
+    ok(st0["searches"] == 0 and st0["line"].endswith("citations=0"),
+       "status with no log is zeros")
 
     r = tmod.pc_read_theory(c, {"ref": p["ref"] + "#p2"})
     ok(r.get("text", "").startswith("It suits patient traders"),

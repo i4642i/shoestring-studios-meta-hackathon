@@ -35,9 +35,18 @@ docs/RESULT_JSON_DRAFT_EN.md).
   a ref by hand, never trim a quote into a new sentence.
 - The report's pick set must equal this run's pick set exactly: every
   pick reported, every reported pick picked.
+- Work part by part from a need list: for each part, list what
+  cases to look for (event, company, person, film) before searching.
+  Check needs off as cases and picks cover them; uncovered needs go
+  to gaps, never to invented stories.
+- Keep search hits short: default max_results, read the snippets,
+  open only what the need list asks for.
+- Call research_status before writing and emit its STATUS line. A
+  part with no pick and no citation needs a gap entry saying why.
 - Bounded tools only: read_md_section, query_graph, pc_list_source,
   pc_read_source, open_ref, pc_search_articles, pc_pick_article,
-  pc_read_article, write_cases. Ask for nothing else.
+  pc_read_article, research_status, write_cases. Ask for nothing
+  else.
 - Finish by calling write_cases with the COMPLETE object. If it
   reports errors, fix them and call it again within your remaining
   steps.

@@ -256,6 +256,11 @@ try:
         "gaps": []}]}
     outc = write_concepts(cctx, {"concepts": CONCEPTS})
     ok(outc.get("ok"), "write_concepts accepts verbatim report")
+    wevs = [json.loads(ln) for ln in open(
+        os.path.join(rdir, "research.jsonl"), encoding="utf-8")]
+    ok(any(e.get("ev") == "citations" and e.get("part_id") == "p1"
+           and len(e.get("refs", [])) == 2 for e in wevs),
+       "write_concepts logs citations")
     savedc = results.load_result(os.path.join(rdir, "result.json"))
     ok(savedc["categories"]["concepts"]["version"] == 1
        and results.check_result(savedc) == [],
