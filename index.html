@@ -392,22 +392,23 @@
 
 <div class="page" id="p-pc">
   <div class="card">
-    <h2>PC — COMPANY FLEET</h2>
-    <p class="hint">Registry of company PCs and the materials each holds. Employees reach PC materials through a tool, never directly.</p>
+    <h2>PC — COMPANY COMPUTERS</h2>
+    <p class="hint">Shared stores, not agents. Employees reach PC materials through a tool, never directly.</p>
+    <div id="pc-cards"></div>
+    <h3>SOURCE PC — ENTRIES</h3>
     <table id="pc-table">
-      <thead><tr><th>NAME</th><th>MATERIALS</th><th>OWNER</th><th>CAPABILITY</th><th>TOOL</th><th>STATE</th><th></th></tr></thead>
-      <tbody id="pc-rows"><tr><td colspan="7">Loading…</td></tr></tbody>
+      <thead><tr><th>TITLE</th><th>REF</th><th>ORDER</th><th>SECTIONS</th><th>MAP</th><th>INDEX</th></tr></thead>
+      <tbody id="pc-rows"><tr><td colspan="6">Loading…</td></tr></tbody>
     </table>
-    <p id="pcerr"></p>
-    <h3>ADD PC</h3>
-    <div class="addform">
-      <input id="p-name" maxlength="64" placeholder="Name (e.g. Shared PC 2)" aria-label="PC name">
-      <input id="p-materials" maxlength="200" placeholder="Materials, comma separated" aria-label="Materials">
-      <input id="p-owner" maxlength="32" placeholder="Owner" aria-label="Owner">
-      <input id="p-cap" maxlength="32" placeholder="Capability (lightrag/embedding)" aria-label="Capability">
-      <input id="p-tool" maxlength="32" placeholder="Tool (e.g. query_pc)" aria-label="Tool">
-      <button class="cta" id="p-add">ADD</button>
+    <div id="pc-detail" style="display:none">
+      <h3 id="pc-dtitle"></h3>
+      <p id="pc-dmeta"></p>
+      <p><button id="pc-rebuild">REBUILD MAP + INDEX</button> <span id="pc-dmsg"></span></p>
+      <div id="pc-dmap"></div>
+      <h4>PASSAGE</h4>
+      <pre id="pc-dpass">Click a "see" link to open the passage here.</pre>
     </div>
+    <p id="pcerr"></p>
   </div>
 </div>
 
@@ -2334,56 +2335,162 @@
     const rows = document.getElementById("pc-rows");
     const errline = document.getElementById("pcerr");
     if (!rows) return;
+    let entryRef = "";
     function fail(e) { errline.textContent = "Error: " + e.message; }
-    async function load() {
-      try {
-        errline.textContent = "";
-        const r = await api.get("api/pcs");
-        rows.innerHTML = "";
-        (r.pcs || []).forEach((p) => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = "<td>" + esc(p.name) + "</td><td>" + esc((p.materials || []).join(", ") || "—") +
-            "</td><td>" + esc(p.owner || "—") + "</td><td>" + esc(p.capability || "—") +
-            "</td><td>" + esc(p.tool || "—") + "</td><td>" + esc(p.state || "—") + "</td>";
-          const td = document.createElement("td");
-          const b = document.createElement("button");
-          b.textContent = "delete";
-          b.setAttribute("data-del", p.id);
-          b.onclick = async () => {
-            try {
-              if (!confirm("Remove PC " + p.id + " from the registry?")) return;
-              await api.send("DELETE", "api/pcs/" + encodeURIComponent(p.id));
-              load().catch(fail);
-            } catch (e) { fail(e); }
-          };
-          td.appendChild(b);
-          tr.appendChild(td);
-          rows.appendChild(tr);
+    function fmtSize(n) {
+      if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB";
+      if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
+      return n + " B";
+    }
+    function idxText(ix) {
+      return ["local", "jetson"].map((p) => {
+        const v = (ix || {})[p] || {};
+        return p + " " + (v.built ? "built(" + v.entries + ")" : "—");
+      }).join(" · ");
+    }
+    function seeLink(secRef, see) {
+      const a = document.createElement("a");
+      a.href = "#";
+      a.textContent = see;
+      a.onclick = (e) => {
+        e.preventDefault();
+        const frag = see.indexOf("-") >= 0 ? secRef : secRef + "/" + see;
+        openPassage(entryRef + "#" + frag).catch(fail);
+      };
+      return a;
+    }
+    async function openPassage(ref) {
+      const box = document.getElementById("pc-dpass");
+      box.textContent = "Opening " + ref + "…";
+      const p = await api.get("api/ref?ref=" + encodeURIComponent(ref));
+      const prov = p.provenance || {};
+      const head = (p.kind === "figure" ? "Figure file: " + p.file : p.text) || "";
+      box.textContent = head + "\n\n— " + (p.ref || ref) +
+        " · " + (prov.title || "") + " · order " + (prov.order_id || "") +
+        (prov.pages ? " · p. " + prov.pages.join(",") : "");
+    }
+    async function showDetail(id) {
+      const dmsg = document.getElementById("pc-dmsg");
+      dmsg.textContent = "";
+      const d = await api.get("api/pcs/source/entries/" + encodeURIComponent(id));
+      const box = document.getElementById("pc-detail");
+      box.style.display = "block";
+      entryRef = d.entry.ref;
+      document.getElementById("pc-dtitle").textContent = d.entry.title;
+      document.getElementById("pc-dmeta").textContent =
+        d.entry.ref + " · order " + d.entry.order_id +
+        " · " + d.entry.parsed_at + " · map " + d.map.status +
+        (d.entry.building ? " (building…)" : "") +
+        " · index " + idxText(d.entry.index);
+      const map = document.getElementById("pc-dmap");
+      map.innerHTML = "";
+      const mhead = document.createElement("p");
+      mhead.textContent = "Map: " + d.map.status +
+        (d.map.llm_model ? " · " + d.map.llm_model : "") +
+        (d.map.built_at ? " · built " + d.map.built_at : "");
+      map.appendChild(mhead);
+      if (d.map.entry_summary) {
+        const es = document.createElement("p");
+        es.textContent = d.map.entry_summary;
+        map.appendChild(es);
+      }
+      (d.map.sections || []).forEach((s) => {
+        const h = document.createElement("h4");
+        h.textContent = s.ref + " — " + (s.heading || "(preamble)") +
+          " · " + s.chars + " chars" +
+          (s.summary_missing ? " · SUMMARY MISSING" : "");
+        map.appendChild(h);
+        const ul = document.createElement("ul");
+        (s.summary || []).forEach((b) => {
+          const li = document.createElement("li");
+          li.appendChild(document.createTextNode(b.text + " ["));
+          li.appendChild(seeLink(s.ref, b.see));
+          li.appendChild(document.createTextNode("]"));
+          ul.appendChild(li);
         });
-        if (!(r.pcs || []).length) rows.innerHTML = '<tr><td colspan="7">No PCs registered.</td></tr>';
-      } catch (e) {
-        rows.innerHTML = '<tr><td colspan="7">Registry unavailable — is the server running?</td></tr>';
+        map.appendChild(ul);
+        if ((s.omitted || []).length) {
+          const oh = document.createElement("p");
+          oh.textContent = "Omitted:";
+          map.appendChild(oh);
+          const ol = document.createElement("ul");
+          s.omitted.forEach((o) => {
+            const li = document.createElement("li");
+            li.appendChild(document.createTextNode(o.what + " ["));
+            li.appendChild(seeLink(s.ref, o.see));
+            li.appendChild(document.createTextNode("]"));
+            ol.appendChild(li);
+          });
+          map.appendChild(ol);
+        }
+        const foot = document.createElement("p");
+        foot.className = "hint";
+        foot.textContent = "Terms: " + ((s.key_terms || []).join(", ") || "—") +
+          " · Has: " + ((s.has || []).join(", ") || "—");
+        map.appendChild(foot);
+      });
+      document.getElementById("pc-rebuild").onclick = async () => {
+        try {
+          dmsg.textContent = "Starting…";
+          await api.send("POST", "api/pcs/source/entries/" +
+            encodeURIComponent(id) + "/build", {});
+          dmsg.textContent = "Rebuilding in the background.";
+          load().catch(fail);
+        } catch (e) { dmsg.textContent = "Error: " + e.message; }
+      };
+    }
+    async function load() {
+      errline.textContent = "";
+      const cards = document.getElementById("pc-cards");
+      cards.innerHTML = "";
+      const r = await api.get("api/pcs");
+      (r.pcs || []).forEach((p) => {
+        const div = document.createElement("div");
+        const h = document.createElement("h3");
+        h.textContent = p.name + " — " + p.state;
+        div.appendChild(h);
+        const ul = document.createElement("ul");
+        [["Holds", p.holds], ["Add", p.add], ["Read", p.read],
+         ["Tools", (p.tools || []).join(", ")],
+         ["Entries", String(p.entries)],
+         ["Size", fmtSize(p.size_bytes || 0)],
+         ["Profile", p.profile || "?"],
+         ["Index", idxText(p.index)]].forEach((kv) => {
+          const li = document.createElement("li");
+          li.textContent = kv[0] + ": " + kv[1];
+          ul.appendChild(li);
+        });
+        div.appendChild(ul);
+        cards.appendChild(div);
+      });
+      rows.innerHTML = "";
+      const e = await api.get("api/pcs/source/entries");
+      (e.entries || []).forEach((e2) => {
+        const tr = document.createElement("tr");
+        const td0 = document.createElement("td");
+        const a = document.createElement("a");
+        a.href = "#";
+        a.textContent = e2.title || e2.id;
+        a.onclick = (ev) => { ev.preventDefault(); showDetail(e2.id).catch(fail); };
+        td0.appendChild(a);
+        tr.appendChild(td0);
+        [["ref", e2.ref], ["order", e2.order_id || "—"],
+         ["sections", String(e2.sections)],
+         ["map", e2.map + (e2.building ? " (building…)" : "")],
+         ["index", idxText(e2.index)]].forEach((kv) => {
+          const td = document.createElement("td");
+          td.textContent = kv[1];
+          tr.appendChild(td);
+        });
+        rows.appendChild(tr);
+      });
+      if (!(e.entries || []).length) {
+        rows.innerHTML = "<tr><td colspan=\"6\">No entries yet — upload a PDF in an order.</td></tr>";
       }
     }
-    document.getElementById("p-add").onclick = async () => {
-      try {
-        errline.textContent = "";
-        const mats = document.getElementById("p-materials").value.split(",")
-          .map((s) => s.trim()).filter((s) => s);
-        const r = await api.send("POST", "api/pcs", {
-          name: document.getElementById("p-name").value.trim(),
-          materials: mats,
-          owner: document.getElementById("p-owner").value.trim(),
-          capability: document.getElementById("p-cap").value.trim(),
-          tool: document.getElementById("p-tool").value.trim(),
-        });
-        errline.textContent = "Added " + r.id + ".";
-        document.getElementById("p-name").value = "";
-        document.getElementById("p-materials").value = "";
-        load().catch(fail);
-      } catch (e) { fail(e); }
-    };
-    load().catch(fail);
+    load().catch(() => {
+      rows.innerHTML = "<tr><td colspan=\"6\">PCs unavailable — is the server running?</td></tr>";
+    });
   })();
 </script>
 <script type="module">

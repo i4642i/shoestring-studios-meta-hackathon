@@ -275,8 +275,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_order_start(parts[2])
         if parts[:2] == ["api", "orders"] and len(parts) == 4 and parts[3] == "confirm":
             return self._api_order_confirm(parts[2])
-        if parts[:2] == ["api", "pcs"] and len(parts) == 2:
-            return self._api_pcs_add()
         if parts[:3] == ["api", "pcs", "source"] and len(parts) == 6 \
                 and parts[3] == "entries" and parts[5] == "build":
             return self._api_pc_build(parts[4])
@@ -303,8 +301,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_crew_delete(parts[2])
         if parts[:2] == ["api", "crew"] and len(parts) == 5 and parts[3] == "handbook":
             return self._api_handbook_delete(parts[2], parts[4])
-        if parts[:2] == ["api", "pcs"] and len(parts) == 3:
-            return self._api_pcs_delete(parts[2])
         return self._json(404, {"error": "not found"})
 
     def _api_crew_list(self):
@@ -1585,63 +1581,74 @@ class Handler(BaseHTTPRequestHandler):
                                     "reason": "spawn failed: %s" % exc})
         return self._json(200, {"started": True})
 
-    # ---- PC fleet registry ----
-    def _pcs_path(self):
-        p = os.path.join(ROOT, "data", "pcs.json")
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        if not os.path.isfile(p):
-            with open(p, "w", encoding="utf-8") as f:
-                json.dump({"pcs": []}, f, ensure_ascii=False, indent=2)
-        return p
+    # ---- company PCs (designed stores, draft §8) ----
+    _PC_INFO = (
+        {"id": "source", "name": "Source PC", "state": "active",
+         "holds": "Parsed client documents: markdown, images, section list.",
+         "add": "intake only (Sam's parser step)",
+         "read": "section list: all crew; full text: Marty, Cleo, Rex",
+         "tools": ["pc_list_source", "pc_read_source", "pc_add_source",
+                   "open_ref"]},
+        {"id": "theory", "name": "Theory PC", "state": "not built yet",
+         "holds": "Concept explanations, lectures, papers.",
+         "add": "Cleo (concept explainer) only",
+         "read": "Cleo, Ash, Vera, Iris",
+         "tools": ["pc_search_theory", "pc_read_theory", "pc_add_theory",
+                   "open_ref"]},
+        {"id": "article", "name": "Article PC", "state": "not built yet",
+         "holds": "Cases: events, companies, people, films.",
+         "add": "Rex (case researcher) only",
+         "read": "Rex, Ash, Vera, Iris",
+         "tools": ["pc_search_articles", "pc_read_article",
+                   "pc_add_article", "open_ref"]},
+    )
 
-    def _pcs_load(self):
-        with open(self._pcs_path(), encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("pcs", []) if isinstance(data, dict) else []
+    @staticmethod
+    def _pc_size(pcname):
+        total = 0
+        for dp, _dn, fn in os.walk(pc.pc_dir(pcname)):
+            for f in fn:
+                try:
+                    total += os.path.getsize(os.path.join(dp, f))
+                except OSError:
+                    pass
+        return total
+
+    @staticmethod
+    def _pc_index_info(pcname, prof):
+        try:
+            with open(os.path.join(pc.index_dir(pcname, prof),
+                                   "index.json"), encoding="utf-8") as f:
+                m = json.load(f)
+            return {"built": True,
+                    "entries": len(m.get("entries", [])),
+                    "model": m.get("model", ""),
+                    "dim": m.get("dim", 0)}
+        except (OSError, ValueError):
+            return {"built": False, "entries": 0}
 
     def _api_pcs_list(self):
-        return self._json(200, {"pcs": self._pcs_load()})
-
-    def _api_pcs_add(self):
-        body = self._read_json()
-        if not isinstance(body, dict):
-            return self._json(400, {"error": "need JSON object"})
-        name = (body.get("name") or "").strip()
-        if not name or len(name) > 64:
-            return self._json(400, {"error": "name must be 1-64 chars"})
-        pid = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-        if not PC_ID_RE.match(pid or ""):
-            return self._json(400, {"error": "name yields no valid id"})
-        pcs = self._pcs_load()
-        if any(p.get("id") == pid for p in pcs):
-            return self._json(409, {"error": "PC exists: " + pid})
-        mats = body.get("materials") or []
-        if (not isinstance(mats, list)
-                or any(not isinstance(m, str) for m in mats)):
-            return self._json(400, {"error": "materials must be a string list"})
-        pc = {"id": pid, "name": name,
-              "materials": [m.strip() for m in mats if m.strip()],
-              "owner": (body.get("owner") or "studio").strip() or "studio",
-              "capability": (body.get("capability") or "").strip(),
-              "tool": (body.get("tool") or "").strip(),
-              "state": "planned"}
-        pcs.append(pc)
-        with open(self._pcs_path(), "w", encoding="utf-8") as f:
-            json.dump({"pcs": pcs}, f, ensure_ascii=False, indent=2)
-        print("pc add %s" % pid, flush=True)
-        return self._json(201, {"ok": True, "id": pid})
-
-    def _api_pcs_delete(self, pid):
-        if not PC_ID_RE.match(pid or ""):
-            return self._json(404, {"error": "no such PC"})
-        pcs = self._pcs_load()
-        keep = [p for p in pcs if p.get("id") != pid]
-        if len(keep) == len(pcs):
-            return self._json(404, {"error": "no such PC"})
-        with open(self._pcs_path(), "w", encoding="utf-8") as f:
-            json.dump({"pcs": keep}, f, ensure_ascii=False, indent=2)
-        print("pc delete %s" % pid, flush=True)
-        return self._json(200, {"ok": True, "deleted": pid})
+        try:
+            prof = graph._adapter().embed_settings()["profile"]
+        except RuntimeError:
+            prof = "?"
+        out = []
+        for info in self._PC_INFO:
+            pid = info["id"]
+            ed = os.path.join(pc.pc_dir(pid), "entries")
+            n = 0
+            if os.path.isdir(ed):
+                n = sum(1 for d in os.listdir(ed)
+                        if os.path.isfile(os.path.join(ed, d,
+                                                       "entry.json")))
+            row = dict(info)
+            row["entries"] = n
+            row["size_bytes"] = self._pc_size(pid)
+            row["profile"] = prof
+            row["index"] = {p: self._pc_index_info(pid, p)
+                            for p in ("local", "jetson")}
+            out.append(row)
+        return self._json(200, {"pcs": out})
 
     # ---- static ----
     def _static(self, parts):
