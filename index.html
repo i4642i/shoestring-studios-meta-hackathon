@@ -1582,8 +1582,8 @@
         const fd = new FormData();
         fd.append("file", e.target.files[0]);
         const r = await api.send("POST", "api/orders/" + oid + "/upload", null, fd);
-        addMsg("sys", "Attached " + name + ": parsed " + r.pages +
-          " pages, " + r.chars + " chars, " + r.images + " images.");
+        addMsg("sys", "Attached " + name + " (" + r.bytes +
+          " bytes, stored).");
         document.getElementById("o-pdfname").textContent = name + " (attached in chat)";
         msg.textContent = "PDF attached through chat: " + name + ".";
         serverPdf = true;
@@ -1609,7 +1609,7 @@
         await api.send("PUT", "api/orders/" + oid + "/intake", { answers: answers });
         const inp = document.getElementById("o-pdf");
         if (inp.files.length) {
-          msg.textContent = "Parsing PDF…";
+          msg.textContent = "Attaching PDF…";
           const fd = new FormData();
           fd.append("file", inp.files[0]);
           await api.send("POST", "api/orders/" + oid + "/upload", null, fd);
@@ -1628,7 +1628,8 @@
       msg.textContent = "Order " + oid + " in production: " + r.files.join(", ");
       const pre = document.getElementById("o-result");
       pre.style.display = "block";
-      pre.innerHTML = esc("=== intake.json ===\n" + JSON.stringify(r.intake, null, 2) +
+      const stages = r.stages ? "=== stages ===\n" + r.stages.join("\n") + "\n\n" : "";
+      pre.innerHTML = esc(stages + "=== intake.json ===\n" + JSON.stringify(r.intake, null, 2) +
         "\n\n=== report.md (generated, do not edit) ===\n" + r.report_md).replace(/\[([^\]]+)\]\(api\/ref\?ref=([^)]+)\)/g, '<a href="api/ref?ref=$2" target="_blank" rel="noopener">$1</a>');
       statusEl.textContent = "Order " + oid + " — in production.";
       document.getElementById("queued").textContent = "Production started.";
@@ -1651,7 +1652,9 @@
         prog = "Here's what I have:\n" +
           "Audience: " + a.audience + "\nLength: " + a.length +
           "\nDepth: " + a.depth + "\nTheme: " + a.theme +
-          "\nPDF sections: " + c.sections.count + " (" + c.sections.file + ")";
+          "\nPDF: " + c.pdf.file + " (" + c.pdf.bytes + " bytes, stored)" +
+          (c.sections ? "\nPDF sections: " + c.sections.count +
+            " (" + c.sections.file + ")" : "");
         samSay(prog);
         msg.textContent = "Answers saved, PDF sectioned. Sales is writing the production request… (may take a minute)";
         const r = await api.send("POST", "api/orders/" + oid + "/start", {});
@@ -1696,13 +1699,12 @@
       return (S.catalog.agents || []).find(a => a.id === id);
     }
     function outputsOf(id) {
-      if (id === "order") return S.catalog.order.outputs || [];
       const a = agentOf(id);
       return ((a && a.flow) || {}).outputs || [];
     }
     function titleOf(id) {
-      if (id === "order") return ["Order", "brief + source"];
-      if (id === "final") return ["Final video", "collects results"];
+      if (id === "final") return ["Final storyboard",
+        "collects Penn storyboard + Wren narration"];
       const a = agentOf(id);
       return [a ? a.name : id, a ? a.title : "unknown agent"];
     }
@@ -1713,8 +1715,8 @@
       return { x: 60 + (n % 4) * 250, y: 120 + Math.floor(n / 4) * 160 };
     }
     function blankFlow() {
-      return { id: "", name: "", nodes: [{ id: "order" }, { id: "final" }],
-        lines: [], positions: { order: [40, 200], final: [940, 200] } };
+      return { id: "", name: "", nodes: [{ id: "sales_sam" }, { id: "final" }],
+        lines: [], positions: { sales_sam: [40, 200], final: [940, 200] } };
     }
 
     function render() {
@@ -1731,11 +1733,14 @@
         div.style.top = p.y + "px";
         div.dataset.n = n.id;
         let inner = "";
-        if (n.id !== "order" && n.id !== "final")
+        if (n.id !== "final")
           inner += '<span class="del" data-del="' + esc(n.id) + '">×</span>';
         inner += "<h4>" + esc(t[0]) + "</h4>" +
           '<div class="sub">' + esc(t[1]) + "</div>";
-        if (n.id !== "order" && n.id !== "final") {
+        if (n.temp)
+          inner += '<div class="sub" title="' + esc(n.temp) + '">' +
+            "temporary inputs</div>";
+        if (n.id !== "final") {
           const a = agentOf(n.id);
           const reqs = (((a && a.flow) || {}).inputs || [])
             .map(i => esc(i.category) + (i.required ? "*" : "")).join(", ");
@@ -1743,11 +1748,10 @@
           if (a && a.draft)
             inner += '<div class="req"><span class="dtag">DRAFT</span>cannot run yet</div>';
           if (n.id === "explain_cleo" || n.id === "case_rex" ||
-              n.id === "plan_ash")
+              n.id === "pd_marty" || n.id === "plan_ash")
             inner += '<div class="req"><a href="#" data-pre="' + esc(n.id) +
               '">Preview start prompt</a></div>';
         }
-        if (n.id !== "order")
           inner += '<div class="fl-port in" data-in="' + esc(n.id) + '"></div>';
         const outs = outputsOf(n.id);
         outs.forEach((o, i) => {
@@ -1782,15 +1786,9 @@
       box.textContent = "Loading start prompt…";
       const s = await api.get("api/crew/" + eid +
         "/start-prompt?order=" + encodeURIComponent(oid));
-      if (s.picks !== undefined) {
-        box.textContent = "Start prompt (" + eid + ", " + s.picks +
-          " picks)\n\n" + s.prompt;
-        return;
-      }
-      box.textContent = "Start prompt (" + eid + ", run " + s.structure_run +
-        ", " + s.parts + " parts" +
-        (s.missing.length ? ", missing: " + s.missing.join(",") : "") +
-        ")\n\n" + s.prompt;
+      box.textContent = "Start prompt (" + eid + ", " +
+        s.included.length + " item(s), " + s.picks + " picks)\n\n" +
+        s.prompt;
     }
 
     function portXY(el) {
@@ -2117,7 +2115,7 @@
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       const t = e.target && e.target.tagName;
       if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT") return;
-      if (!S.selNode || S.selNode === "order" || S.selNode === "final") return;
+      if (!S.selNode || S.selNode === "final") return;
       if (document.getElementById("p-flow").style.display === "none") return;
       e.preventDefault();
       delNode(S.selNode);
@@ -2844,16 +2842,8 @@
           dp.textContent = "Loading…";
           const s = await api.get("api/crew/" + sel.value +
             "/start-prompt?order=" + encodeURIComponent(oid));
-          if (s.picks !== undefined) {
-            dp.textContent = s.picks + " picks\n\n" + s.prompt;
-          } else if (s.chars !== undefined) {
-            dp.textContent = s.chars + " chars\n\n" + s.prompt;
-          } else {
-            dp.textContent = "Run " + s.structure_run + " · " + s.parts +
-              " parts" +
-              (s.missing.length ? " · missing: " + s.missing.join(",") : "") +
-              "\n\n" + s.prompt;
-          }
+          dp.textContent = s.included.length + " item(s), " + s.picks +
+            " picks\n\n" + s.prompt;
           note.textContent = note0;
         } catch (e) { dp.textContent = "Error: " + e.message; }
       };
@@ -2874,6 +2864,11 @@
         (d.entry.building ? " (building…)" : "") +
         " · index " + idxText(d.entry.index);
       if (d.entry.url) meta += " · " + d.entry.url;
+      const rec = d.entry.recipients;
+      meta += " · recipients: " + (rec === undefined || rec === null
+        ? "legacy (open)" : rec.length
+        ? rec.map(r => r.agent + "/" + r.order_id + " by " + r.set_by).join(", ")
+        : "none");
       document.getElementById("pc-dmeta").textContent = meta;
       pcTab("orig");
       renderOrig(d, pc, id);
