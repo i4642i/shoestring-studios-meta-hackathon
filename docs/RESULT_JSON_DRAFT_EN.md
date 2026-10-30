@@ -790,6 +790,37 @@ Excerpt-storage terms (checked 2026-10-30, for Q9):
   mirroring without added value. Third-party IP in snippets still
   applies.
 
+### 8.9 Permissions per content item (design only, not built)
+
+Decision change (2026-10-31): grants are per PC, access is per
+content item. An agent opens an item only if it passes BOTH layers:
+
+1. Tool grant per PC (`agent.json` tools): may this agent use this
+   PC at all — read tools, search tools, add/pick tools for new
+   content. §8.6's table is layer 1.
+2. Entry access per content item: stored with each entry
+   (`entry.json` "access": {"read": [<agent ids>],
+   "edit": [<agent ids>]}). "edit" = may modify or annotate that
+   item (re-ingest, add notes).
+
+Every read tool and `open_ref` checks both layers; refusal message:
+"no access to this item". The §13.2 "not picked for this order"
+refusal stays for the picks scope: on Theory/Article PCs, later
+agents pass the layers only inside their order's pick set.
+
+Defaults when an item is created:
+
+- Source PC item: read = all agents of that order (Sam sets it at
+  ingest); edit = [] (intake re-uploads instead of editing).
+- Theory/Article PC pick: read = the picker + all later agents of
+  that order; edit = the picker.
+
+UI (PC tab, parked until the 6-1/6-2 review): for each entry, an
+access panel (agents × {read, edit} checkboxes) plus the PC-level
+tool matrix. Save runs `validate_agent` for tool changes, logs who
+changed what and when, and applies from the next run. The current
+state shows on load.
+
 ## 9. Stable reference addresses
 
 Every stored passage gets a stable address:
