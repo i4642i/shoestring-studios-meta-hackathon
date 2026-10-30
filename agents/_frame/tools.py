@@ -115,6 +115,7 @@ def pc_list_source(ctx, args):
     return {"ref": entry.get("ref", ""), "title": entry.get("title", ""),
             "sections": [{"n": s["n"], "heading": s["heading"],
                           "paras": s["count"],
+                          "non_content": bool(s.get("non_content")),
                           "ref": entry["ref"] + "#s" + s["n"]}
                          for s in entry.get("sections", [])],
             "figures": len(entry.get("figures", [])),

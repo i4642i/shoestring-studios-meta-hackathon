@@ -184,7 +184,7 @@ ok(entry["figures"][0]["caption"] == "Figure 1 Getting started"
    and entry["figures"][0]["described"] is False,
    "figure record keeps caption, page, undescribed")
 ok(entry["tables"][0]["rows"] == [["a", "b"], ["c", "d"]]
-   and entry["tables"][0]["generated_by"] == "pdfplumber",
+   and entry["tables"][0]["described_by"] == "pdfplumber",
    "table record keeps rows + generator")
 ok("[fig1.1.1 p.1] Figure 1 Getting started" in
    [p["text"] for p in entry["paragraphs"]],
@@ -196,8 +196,17 @@ ok(entry["chars"] == sum(len(p["text"]) for p in entry["paragraphs"]),
    "chars counted")
 ok(entry["sections"][1] == {"n": "1.1", "heading": "Getting started",
                             "start": 1, "count": 5,
-                            "subsections": ["1.1.1 First steps"]},
+                            "subsections": ["1.1.1 First steps"],
+                            "non_content": False},
    "section index points into paragraphs")
+NC = pc.split_sections(pc.clean_pages(
+    ["1.1 Body\nText here.\n\nEXERCISES\n\n1.1 Do this.\n\n"
+     "REFERENCES 41\n"]))
+ok([s["n"] for s in NC] == ["1.1", "exercises", "references"]
+   and NC[1]["non_content"] is True and NC[2]["non_content"] is True
+   and NC[1]["subsections"] == ["1.1 Do this."]
+   and NC[1]["paras"][1]["text"] == "1.1 Do this.",
+   "non-content parts split off, exercise numbers demoted")
 
 # ---- open_ref ----
 got = pc.open_ref(entry, "pc://source/a3f9c1d4e2b8#s1.1/p2")
@@ -216,6 +225,14 @@ ok(fgot["file"] == "fig1.png" and fgot["page"] == 1
 tgot = pc.open_ref(entry, "pc://source/a3f9c1d4e2b8#tab1.2.1")
 ok(tgot["rows"] == [["a", "b"], ["c", "d"]]
    and "| a | b |" in tgot["markdown"], "open_ref table resolves")
+rgot = pc.open_ref(entry, "pc://source/a3f9c1d4e2b8#s1.1/p2-p3")
+ok(rgot["kind"] == "range" and "Body of one one." in rgot["text"],
+   "open_ref para range resolves")
+try:
+    pc.open_ref(entry, "pc://source/a3f9c1d4e2b8#s1.1/p4-p9")
+    ok(False, "short range rejected")
+except KeyError:
+    ok(True, "short range rejected")
 for bad in ("pc://source/WRONGIDHERE12#s1.1/p1",
             "pc://source/a3f9c1d4e2b8#s9.9/p1",
             "pc://theory/a3f9c1d4e2b8#p1", "not-a-ref"):
@@ -271,6 +288,17 @@ terms = pc.key_terms(OM[0])
 ok("Baptism" in terms and "everything" in terms and "Ada" in terms,
    "key terms: quoted, bold, capitalized")
 ok("Sales" not in terms, "sentence-initial capital excluded")
+KT = {"paras": [
+    {"text": "Market risk models use the “ETF trick” every day.",
+     "bold": ["Inverse Variance"]},
+    {"text": "Still, the Principal Component view wins. Risk parity "
+             "follows Value-at-Risk rules."}]}
+kts = pc.key_terms(KT)
+ok("ETF trick" in kts and "Inverse Variance" in kts
+   and "Principal Component" in kts and "Value-at-Risk" in kts
+   and "Market" not in kts and "Still" not in kts
+   and "Risk" not in kts,
+   "key terms: curly quotes, bold, phrases; initials dropped")
 
 # ---- see ranges ----
 ok(pc.check_see("p1-p3", 4) and pc.check_see("p4", 4),
@@ -300,8 +328,10 @@ ok(meta == {"parts": 2, "missing": ["p2"]},
 ok("no matching source section" in txt,
    "missing part marked in prompt")
 txt2, _m2 = pc.start_prompt_for("Rex", STRUCT, entry, max_chars=20)
-ok("Start prompt for Rex" in txt2 and "truncated" in txt2,
-   "start prompt truncates long sections honestly")
+ok("Start prompt for Rex" in txt2
+   and "p2-p5 not included -> open_ref pc://source/a3f9c1d4e2b8"
+       "#s1.1/p2-p5" in txt2,
+   "start prompt names the missing range + open_ref")
 MAPF = {"entry_summary": "A book about bars.",
         "sections": [{"ref": "s1.1", "summary": [{"text": "Bars talk.",
                                                  "see": "p1-p2"}],
@@ -321,6 +351,17 @@ ok(skel["status"] == "pending" and skel["llm_model"] == "model-x"
    and skel["map_version"] == pc.MAP_VERSION
    and len(skel["sections"]) == len(entry["sections"]),
    "blank map skeleton")
+NCENTRY = {"ref": entry["ref"], "doc_id": entry["doc_id"],
+           "paragraphs": entry["paragraphs"],
+           "sections": entry["sections"] + [
+               {"n": "exercises", "heading": "EXERCISES", "start": 0,
+                "count": 0, "subsections": [], "non_content": True}]}
+ok([s["ref"] for s in pc.blank_map(NCENTRY, "m")["sections"]]
+   == ["s" + s["n"] for s in entry["sections"]],
+   "blank map skips non-content sections")
+txtnc, _mnc = pc.start_prompt_for("Cleo", STRUCT, NCENTRY)
+ok("sexercises" not in txtnc and "EXERCISES" not in txtnc,
+   "start prompt section list skips non-content")
 
 # ---- ingest_source (temp root under gitignored scratch) ----
 tmp = tempfile.mkdtemp(prefix="pc_ingest_")

@@ -89,6 +89,18 @@ def _is_bullet(line):
     return bool(_BULLET_RE.match(line))
 
 
+_NONCONTENT_RE = re.compile(
+    r"^(exercises|references|bibliography)\b[\s\d.,:;]*$",
+    re.IGNORECASE)
+
+
+def _is_noncontent(text):
+    """Non-content part starter (EXERCISES/REFERENCES/BIBLIOGRAPHY,
+    optional trailing page number): its lowercase word, else None."""
+    m = _NONCONTENT_RE.match((text or "").strip())
+    return m.group(1).lower() if m else None
+
+
 def _is_caps(line):
     return bool(_CAPS_RE.match(line))
 
@@ -236,15 +248,26 @@ def split_sections(paras):
     one). Returns [{"n", "heading", "paras", "subsections"}]."""
     secs = []
     seen = set()
-    cur = {"n": "0", "heading": "", "paras": [], "subsections": []}
+    cur = {"n": "0", "heading": "", "paras": [], "subsections": [],
+           "non_content": False}
     for p in paras or []:
+        nc = _is_noncontent(p["text"])
+        if nc and nc not in seen:
+            if cur["paras"] or cur["n"] != "0":
+                secs.append(cur)
+            seen.add(nc)
+            cur = {"n": nc, "heading": p["text"].strip(), "paras": [],
+                   "subsections": [], "non_content": True}
+            p = dict(p)
+            cur["paras"].append(p)
+            continue
         m = _is_heading(p["text"])
         if m and m[0].count(".") <= 1 and m[0] not in seen:
             if cur["paras"] or cur["n"] != "0":
                 secs.append(cur)
             seen.add(m[0])
             cur = {"n": m[0], "heading": m[1], "paras": [],
-                   "subsections": []}
+                   "subsections": [], "non_content": False}
             p = dict(p)
             cur["paras"].append(p)
             continue
@@ -290,9 +313,12 @@ def caption_terms(caption):
 
 
 def _section_for_page(sections, page):
-    """Newest section (doc order) with a paragraph at or before page."""
+    """Newest content section (doc order) with a paragraph at or
+    before page. Non-content sections never own figures/tables."""
     best = sections[0]["n"] if sections else "1"
     for s in sections or []:
+        if s.get("non_content"):
+            continue
         for p in s["paras"]:
             if min(p.get("pages", [0])) <= page:
                 best = s["n"]
@@ -401,15 +427,18 @@ def build_entry(doc_id, title, origin_file, order_id, parsed_at,
                          "has": sorted(p.get("has", []))})
         out_secs.append({"n": s["n"], "heading": s["heading"],
                          "start": start, "count": len(s["paras"]),
-                         "subsections": list(s.get("subsections", []))})
+                         "subsections": list(s.get("subsections", [])),
+                         "non_content": bool(s.get("non_content"))})
     figrec = [{"addr": f["addr"], "file": f["file"], "page": f["page"],
                "bbox": _round_bbox(f.get("bbox")),
                "w": f.get("w", 0), "h": f.get("h", 0),
                "caption": f.get("caption", ""),
                "printed_no": f.get("number", ""),
-               "description": "", "text_in_image": "", "numbers": [],
+               "description": "",
+               "text_in_image": f.get("text", ""),
+               "numbers": [],
                "kind": f.get("kind", ""), "described": False,
-               "generated_by": "", "generated_at": ""}
+               "described_by": "", "generated_at": ""}
               for f in figs]
     tabrec = [{"addr": t["addr"], "page": t["page"],
                "bbox": _round_bbox(t.get("bbox")),
@@ -417,7 +446,7 @@ def build_entry(doc_id, title, origin_file, order_id, parsed_at,
                "printed_no": t.get("number", ""),
                "rows": t.get("rows") or [],
                "markdown": t.get("markdown", ""),
-               "generated_by": "pdfplumber",
+               "described_by": "pdfplumber",
                "generated_at": parsed_at}
               for t in tabs]
     return {"pc": pc, "doc_id": doc_id, "ref": entry_ref(pc, doc_id),
@@ -462,33 +491,57 @@ def omitted_candidates(section):
     return out
 
 
+_PHRASE_RE = re.compile(
+    r"\b([A-Z][A-Za-z\-']*(?:\s+[A-Z][A-Za-z\-']*)+)\b")
+_QUOTE_RES = (re.compile(r'"([^"\n]{2,60})"'),
+              re.compile("“([^”\n]{2,60})”"))
+_MD_BOLD_RE = re.compile(r"\*\*([^*][^*?\n]{1,59})\*\*")
+_SENT_END_RE = re.compile(r"[.!?\u2026]\s*$")
+
+
+def _sentence_initial(text, pos):
+    """True when pos opens the paragraph or a sentence in it."""
+    pre = text[:pos]
+    return pre.strip() == "" or bool(_SENT_END_RE.search(pre))
+
+
 def key_terms(section):
-    """Quoted, bold, and capitalized (not sentence-initial) terms in
-    first-seen order."""
+    """Real terms in first-seen order: quoted spans, bold spans,
+    multi-word capitalized phrases, and single capitalized words that
+    also occur mid-sentence. Sentence-initial-only words are not
+    terms and are dropped."""
     out, seen = [], set()
 
     def add(t):
-        if t and t not in seen:
+        t = " ".join((t or "").split())
+        if t and len(t) <= 60 and t not in seen:
             seen.add(t)
             out.append(t)
 
-    for p in section.get("paras", []):
+    paras = section.get("paras", [])
+    mid = set()
+    for p in paras:
         text = p.get("text", "")
-        for m in re.findall(r'"([^"\n]{2,60})"', text):
-            add(m)
-        for m in re.findall(r"\*\*([^*][^*?\n]{1,59})\*\*", text):
-            add(m)
-        first = re.search(r"[A-Za-z]", text)
-        pos0 = first.start() if first else -1
         for m in re.finditer(r"[A-Za-z][A-Za-z\-']*", text):
             tok = m.group(0)
-            if len(tok) < 2:
-                continue
-            if m.start() == pos0 and not (tok.isupper()
-                                          and len(tok) >= 2):
-                continue
-            if tok[0].isupper():
-                add(tok)
+            if len(tok) >= 2 and tok[0].isupper() \
+                    and not _sentence_initial(text, m.start()):
+                mid.add(tok)
+    for p in paras:
+        text = p.get("text", "")
+        for rx in _QUOTE_RES:
+            for m in rx.findall(text):
+                add(m)
+        for m in _MD_BOLD_RE.findall(text):
+            add(m)
+        for b in p.get("bold", []):
+            add(b)
+        for m in _PHRASE_RE.finditer(text):
+            if len(m.group(1).split()) <= 6:
+                add(m.group(1))
+        for m in re.finditer(r"[A-Za-z][A-Za-z\-']*", text):
+            if m.group(0) in mid:
+                add(m.group(0))
     return out
 
 
@@ -551,11 +604,27 @@ def open_ref(entry, ref, grant=None):
     if not frag:
         return {"kind": "entry", "ref": base, "title": entry.get("title"),
                 "sections": [{"n": s["n"], "heading": s["heading"],
-                              "count": s["count"]}
+                              "count": s["count"],
+                              "non_content": bool(s.get("non_content"))}
                              for s in entry.get("sections", [])],
                 "figures": len(entry.get("figures", [])),
                 "tables": len(entry.get("tables", [])),
                 "provenance": _provenance(entry)}
+    m = re.match(r"^s(.+)/p(\d+)-p?(\d+)$", frag)
+    if m:
+        a, b = int(m.group(2)), int(m.group(3))
+        if a > b:
+            raise ValueError("bad ref range: %r" % ref)
+        want = ["s%s/p%d" % (m.group(1), k)
+                for k in range(a, b + 1)]
+        got = [p for p in entry.get("paragraphs", [])
+               if p["addr"] in want]
+        if len(got) != len(want):
+            raise KeyError("no such paragraph range: %r" % ref)
+        pages = sorted({pg for p in got for pg in p["pages"]})
+        return {"kind": "range", "ref": ref,
+                "text": "\n\n".join(p["text"] for p in got),
+                "provenance": _provenance(entry, pages)}
     m = re.match(r"^s(.+)/p(\d+)$", frag)
     if m:
         want = "s%s/p%s" % (m.group(1), m.group(2))
@@ -612,13 +681,35 @@ def open_ref(entry, ref, grant=None):
 
 
 # ---- ingest (§10: hash -> id -> entry, map/index later) ----
+def _attach_bold(paras, marks):
+    """Copy per-page bold phrases onto the paragraphs that print them
+    (page provenance + word-boundary match). Marks may be None."""
+    if not marks:
+        return
+    by_page = {}
+    for i, mk in enumerate(marks, 1):
+        by_page[i] = (mk or {}).get("bold", [])
+    for p in paras or []:
+        found = []
+        for pg in p.get("pages", []):
+            for phrase in by_page.get(pg, []):
+                if phrase in found:
+                    continue
+                if re.search(r"\b%s\b" % re.escape(phrase),
+                             p.get("text", "")):
+                    found.append(phrase)
+        if found:
+            p["bold"] = found
+
+
 def ingest_source(order_id, base, parsed_at, added_by, pages, images,
-                  tables=None, skipped=0, root=None):
+                  tables=None, skipped=0, root=None, marks=None):
     """Full Source ingest: clean pages, split sections, hash the cleaned
     text to an id, dedup, and write entries/<id>/{entry.json, map.json,
     figures/} plus the first log line. images: [{page, top, caption,
     number, bbox, w, h, blob}]; tables: [{page, top, caption, number,
-    bbox, rows, markdown, blob|None}]; skipped: tiny decor count.
+    bbox, rows, markdown, blob|None}]; skipped: tiny decor count;
+    marks: per-page {"bold": [...]} typography (optional).
     Map/index/descriptions are built by the worker. Returns {"ref",
     "doc_id", "duplicate", "title", "sections", "chars", "figures",
     "tables"}."""
@@ -642,6 +733,7 @@ def ingest_source(order_id, base, parsed_at, added_by, pages, images,
     title = os.path.splitext(base or "document")[0]
     entry = build_entry(doc_id, title, base or "", order_id, parsed_at,
                         added_by, sections, images, tables)
+    _attach_bold(entry["paragraphs"], marks)
     os.makedirs(os.path.join(edir, "figures"), exist_ok=True)
     with open(ep, "w", encoding="utf-8") as f:
         json.dump(entry, f, ensure_ascii=False, indent=2)
@@ -735,6 +827,8 @@ def start_prompt_for(name, structure, entry, map_data=None,
         lines += ["### Entry summary", "(map pending)", ""]
     lines.append("### Section list")
     for s in entry.get("sections", []):
+        if s.get("non_content"):
+            continue
         lines.append("- s%s %s (%s#s%s)" % (s["n"], s.get("heading", ""),
                                             ref, s["n"]))
     lines.append("")
@@ -754,10 +848,19 @@ def start_prompt_for(name, structure, entry, map_data=None,
             missing.append(pid)
             continue
         ps = entry["paragraphs"][sec["start"]:sec["start"] + sec["count"]]
-        text = "\n\n".join(p["text"] for p in ps)
-        if len(text) > max_chars:
-            text = text[:max_chars] + "\n[...truncated %d chars]" \
-                % (len(text) - max_chars)
+        kept, used = [], 0
+        for p in ps:
+            if kept and used + len(p["text"]) + 2 > max_chars:
+                break
+            kept.append(p["text"])
+            used += len(p["text"]) + 2
+        text = "\n\n".join(kept)
+        if len(kept) < len(ps):
+            a = len(kept) + 1
+            rng = "p%d-p%d" % (a, len(ps)) if len(ps) > a \
+                else "p%d" % a
+            text += "\n%s not included -> open_ref %s#s%s/%s" \
+                % (rng, ref, sec["n"], rng)
         objs = [o["addr"] for o in entry.get("figures", [])
                 if o["addr"][3:].rsplit(".", 1)[0] == sec["n"]]
         objs += [o["addr"] for o in entry.get("tables", [])
@@ -798,4 +901,5 @@ def blank_map(entry, llm_model):
                           "summary": [], "omitted": [],
                           "key_terms": [], "has": [], "chars": 0,
                           "subsections": list(s.get("subsections", []))}
-                         for s in entry.get("sections", [])]}
+                         for s in entry.get("sections", [])
+                         if not s.get("non_content")]}
