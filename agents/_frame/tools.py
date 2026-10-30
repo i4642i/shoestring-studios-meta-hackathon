@@ -13,8 +13,9 @@ import urllib.request
 from . import graph
 from . import pc
 from . import results
-from .schemas import (list_headings, validate_concept, validate_draft,
-                      validate_request, validate_structure)
+from .schemas import (list_headings, validate_cases, validate_concept,
+                      validate_concepts, validate_draft, validate_request,
+                      validate_structure)
 
 
 def read_md_section(ctx, args):
@@ -97,6 +98,151 @@ def write_request(ctx, args):
     if errors:
         return {"ok": False, "errors": errors}
     return _save_category(ctx, "request", obj)
+
+
+def _verbatim_haystack(passage):
+    """Text a quote may match. Figure descriptions are AI-written, so
+    figure quotes match caption/image text/numbers only, never them."""
+    kind = passage.get("kind", "")
+    if kind == "figure":
+        bits = [passage.get("caption", ""),
+                passage.get("text_in_image", ""),
+                " ".join(passage.get("numbers", []) or [])]
+        return "\n".join(b for b in bits if b)
+    if kind == "table":
+        bits = [passage.get("caption", ""), passage.get("markdown", "")]
+        return "\n".join(b for b in bits if b)
+    return passage.get("text", "")
+
+
+def _norm_ws(s):
+    return " ".join(str(s).split())
+
+
+def _check_quote(errors, ref, quote, where):
+    """One {ref, quote} pair passes only when the quote appears
+    verbatim (whitespace normalized) in the passage at the ref."""
+    if not isinstance(ref, str) or not ref.strip():
+        errors.append("%s: missing ref" % where)
+        return
+    if not isinstance(quote, str) or not quote.strip():
+        errors.append("%s: missing quote" % where)
+        return
+    try:
+        rpc, rid, frag = pc.parse_ref(ref)
+    except ValueError:
+        errors.append("%s: bad ref %r" % (where, ref))
+        return
+    if not frag:
+        errors.append("%s: cite a passage, not the whole entry (%r)"
+                      % (where, ref))
+        return
+    try:
+        entry = pc.load_entry_by_ref(pc.entry_ref(rpc, rid))
+    except (OSError, ValueError, KeyError) as exc:
+        errors.append("%s: cannot open %r (%s)" % (where, ref, exc))
+        return
+    try:
+        passage = pc.open_ref(entry, ref)
+    except (ValueError, KeyError) as exc:
+        errors.append("%s: cannot open %r (%s)" % (where, ref, exc))
+        return
+    if _norm_ws(quote) not in _norm_ws(_verbatim_haystack(passage)):
+        errors.append("%s: quote not found verbatim in %r" % (where, ref))
+
+
+def _run_pick_refs(ctx):
+    """Entry refs picked in this run (research.jsonl pick events)."""
+    out = set()
+    d = (ctx or {}).get("run_dir", "")
+    log = os.path.join(d, "research.jsonl") if d else ""
+    if not log or not os.path.isfile(log):
+        return out
+    with open(log, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    for ln in lines:
+        try:
+            ev = json.loads(ln)
+        except ValueError:
+            continue
+        if ev.get("ev") != "pick" or not ev.get("ref"):
+            continue
+        try:
+            rpc, rid, _frag = pc.parse_ref(ev["ref"])
+        except ValueError:
+            continue
+        out.add(pc.entry_ref(rpc, rid))
+    return out
+
+
+def _report_pick_refs(report):
+    out = set()
+    for p in report.get("parts") or []:
+        if not isinstance(p, dict):
+            continue
+        for pk in p.get("picks") or []:
+            if not isinstance(pk, dict):
+                continue
+            try:
+                rpc, rid, _frag = pc.parse_ref(pk.get("ref", ""))
+            except ValueError:
+                continue
+            out.add(pc.entry_ref(rpc, rid))
+    return out
+
+
+def _claims_of(category, part):
+    if category == "concepts":
+        return [("claims[%d]" % m, cl)
+                for m, cl in enumerate(part.get("claims") or [])]
+    out = []
+    for m, cs in enumerate(part.get("cases") or []):
+        for n, cl in enumerate((cs or {}).get("claims") or []):
+            out.append(("cases[%d].claims[%d]" % (m, n), cl))
+    return out
+
+
+def _write_report(ctx, args, category, validator):
+    obj = args.get(category)
+    if not isinstance(obj, dict):
+        return {"ok": False, "errors": ["call with {%s: {...}}" % category]}
+    errors = validator(obj)
+    if errors:
+        return {"ok": False, "errors": errors}
+    for i, p in enumerate(obj["parts"]):
+        where = "%s.parts[%d]" % (category, i)
+        for cw, cl in _claims_of(category, p):
+            for n, cit in enumerate((cl or {}).get("citations") or []):
+                if not isinstance(cit, dict):
+                    continue
+                _check_quote(errors, cit.get("ref"), cit.get("quote"),
+                             "%s.%s.citations[%d]" % (where, cw, n))
+        for m, pk in enumerate(p.get("picks") or []):
+            if not isinstance(pk, dict):
+                continue
+            ev = pk.get("evidence") or {}
+            if isinstance(ev, dict):
+                _check_quote(errors, ev.get("ref"), ev.get("quote"),
+                             "%s.picks[%d].evidence" % (where, m))
+    if errors:
+        return {"ok": False, "errors": errors}
+    got = _report_pick_refs(obj)
+    want = _run_pick_refs(ctx)
+    for ref in sorted(got - want):
+        errors.append("pick %s was never picked in this run" % ref)
+    for ref in sorted(want - got):
+        errors.append("picked %s is missing from the report" % ref)
+    if errors:
+        return {"ok": False, "errors": errors}
+    return _save_category(ctx, category, obj)
+
+
+def write_concepts(ctx, args):
+    return _write_report(ctx, args, "concepts", validate_concepts)
+
+
+def write_cases(ctx, args):
+    return _write_report(ctx, args, "cases", validate_cases)
 
 
 def query_graph(ctx, args):
@@ -515,6 +661,24 @@ TOOLS = {
         {"type": "object",
          "properties": {"request": {"type": "object"}},
          "required": ["request"], "additionalProperties": False},
+    ),
+    "write_concepts": (
+        write_concepts,
+        "Save Cleo's theory report as this run's result.json "
+        "(concepts category). Fails unless every claim cites a "
+        "verbatim passage and the picks match this run's picks.",
+        {"type": "object",
+         "properties": {"concepts": {"type": "object"}},
+         "required": ["concepts"], "additionalProperties": False},
+    ),
+    "write_cases": (
+        write_cases,
+        "Save Rex's case report as this run's result.json (cases "
+        "category). Fails unless every claim cites a verbatim passage "
+        "and the picks match this run's picks.",
+        {"type": "object",
+         "properties": {"cases": {"type": "object"}},
+         "required": ["cases"], "additionalProperties": False},
     ),
     "query_graph": (
         query_graph,

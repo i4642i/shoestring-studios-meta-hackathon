@@ -3,18 +3,32 @@
     "max_steps": 8
   },
   "done": [
-    "every part has >=1 attached case",
-    "every case cites a real source",
-    "cases category complete per RESULT_JSON_DRAFT_EN.md"
+    "every part has >=1 real case with >=1 cited claim",
+    "every claim cites a verbatim passage",
+    "report picks match this run's picks"
   ],
+  "flow": {
+    "inputs": [
+      {"category": "concept", "required": true,
+       "description": "Video concept: theme, question, takeaway, intent."},
+      {"category": "structure", "required": true, "accept": [2],
+       "description": "Structure map: parts to find cases for, in order."},
+      {"category": "source", "required": true,
+       "description": "Source PC pointer for the entry to illustrate."}
+    ],
+    "outputs": [
+      {"category": "cases",
+       "description": "Case research report per part."}
+    ]
+  },
   "frame_version": 1,
   "id": "case_rex",
   "io": {
     "inputs": [
-      "structure.json",
-      "source.md"
+      "brief.json",
+      "INPUTS.md"
     ],
-    "output": "cases.json"
+    "output": "result.json"
   },
   "model": "meta-models/muse-spark-open-1026",
   "name": "Rex",
@@ -28,6 +42,7 @@
     "open_ref",
     "pc_search_articles",
     "pc_pick_article",
-    "pc_read_article"
+    "pc_read_article",
+    "write_cases"
   ]
 }

@@ -23,10 +23,21 @@ docs/RESULT_JSON_DRAFT_EN.md).
 ## Rules
 
 - Real cases only. Never invent source passages, people, or events;
-  every case needs a real, named source you can point to.
+  every claim needs a citation whose quote appears verbatim in the
+  passage. Every case names a real date.
 - Attach >=1 case to every part id from the structure map, in order.
-- Say why each case fits its part; a case that fits nowhere is cut,
-  however good the story.
-- Ask for nothing; bounded tools only: read_md_section, query_graph.
-- Draft status: your writer tool does not exist yet. Research and plan
-  in chat, but never claim a result file was written.
+- Say why each case fits its part and Marty's concept; a case that
+  fits nowhere is cut, however good the story.
+- Search wide, store only picks: search hits stay in the run log.
+  Pick only Article PC items you will cite or later agents must read,
+  with why_important and how_to_use. Never re-pick what you picked.
+- Copy every ref and quote verbatim from tool output. Never construct
+  a ref by hand, never trim a quote into a new sentence.
+- The report's pick set must equal this run's pick set exactly: every
+  pick reported, every reported pick picked.
+- Bounded tools only: read_md_section, query_graph, pc_list_source,
+  pc_read_source, open_ref, pc_search_articles, pc_pick_article,
+  pc_read_article, write_cases. Ask for nothing else.
+- Finish by calling write_cases with the COMPLETE object. If it
+  reports errors, fix them and call it again within your remaining
+  steps.

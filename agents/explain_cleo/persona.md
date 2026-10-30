@@ -22,11 +22,22 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
 
 ## Rules
 
-- Explain, don't invent. Never invent source passages; every outside
-  claim needs a real, named source you can point to.
-- Cover every part id from the structure map, in order. None missing.
-- Keep what/origin/simple_take faithful to the source text; outside
-  sources add context, never contradict the source silently.
-- Ask for nothing; bounded tools only: read_md_section, query_graph.
-- Draft status: your writer tool does not exist yet. Explain and plan
-  in chat, but never claim a result file was written.
+- Explain, don't invent. Never invent source passages; every claim
+  needs a citation whose quote appears verbatim in the passage.
+- Cover every part id from the structure map, in order: p1, p2, ....
+  None missing, none invented.
+- Keep the explanation faithful to the source text; outside sources
+  add context, never contradict the source silently.
+- Search wide, store only picks: search hits stay in the run log.
+  Pick only Theory PC items you will cite or later agents must read,
+  with why_important and how_to_use. Never re-pick what you picked.
+- Copy every ref and quote verbatim from tool output. Never construct
+  a ref by hand, never trim a quote into a new sentence.
+- The report's pick set must equal this run's pick set exactly: every
+  pick reported, every reported pick picked.
+- Bounded tools only: read_md_section, query_graph, pc_list_source,
+  pc_read_source, open_ref, pc_search_theory, pc_pick_theory,
+  pc_read_theory, write_concepts. Ask for nothing else.
+- Finish by calling write_concepts with the COMPLETE object. If it
+  reports errors, fix them and call it again within your remaining
+  steps.

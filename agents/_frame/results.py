@@ -223,6 +223,8 @@ TEMPLATES = {
     ("structure", 1): schemas.render_structure_md,
     ("concept", 1): schemas.render_concept_md,
     ("structure", 2): schemas.render_structure_v2_md,
+    ("concepts", 1): schemas.render_concepts_md,
+    ("cases", 1): schemas.render_cases_md,
     ("video", 1): schemas.render_video_md,
 }
 

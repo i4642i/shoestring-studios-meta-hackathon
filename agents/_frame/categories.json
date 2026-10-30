@@ -44,6 +44,167 @@
     },
     "version": 1
   },
+  "cases": {
+    "version": 1,
+    "description": "Case research report Rex writes per structure part, with real cases, Article PC picks, gaps.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "parts"
+      ],
+      "properties": {
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "part_id",
+              "cases",
+              "picks",
+              "gaps"
+            ],
+            "properties": {
+              "part_id": {
+                "type": "string"
+              },
+              "cases": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "title",
+                    "kind",
+                    "date",
+                    "summary",
+                    "fit_why",
+                    "viewer_hook",
+                    "claims"
+                  ],
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "event",
+                        "company",
+                        "person",
+                        "film",
+                        "other"
+                      ]
+                    },
+                    "date": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "fit_why": {
+                      "type": "string"
+                    },
+                    "viewer_hook": {
+                      "type": "string"
+                    },
+                    "claims": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "text",
+                          "citations"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "citations": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "ref",
+                                "quote"
+                              ],
+                              "properties": {
+                                "ref": {
+                                  "type": "string"
+                                },
+                                "quote": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "picks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "ref",
+                    "title",
+                    "why_important",
+                    "how_to_use",
+                    "evidence",
+                    "priority"
+                  ],
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "why_important": {
+                      "type": "string"
+                    },
+                    "how_to_use": {
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "type": "object",
+                      "required": [
+                        "ref",
+                        "quote"
+                      ],
+                      "properties": {
+                        "ref": {
+                          "type": "string"
+                        },
+                        "quote": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "priority": {
+                      "type": "string",
+                      "enum": [
+                        "must",
+                        "should",
+                        "optional"
+                      ]
+                    }
+                  }
+                }
+              },
+              "gaps": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
   "concept": {
     "version": 1,
     "description": "Video concept Marty writes: the theme, the core question, the viewer takeaway, the author's overall intent.",
@@ -67,6 +228,145 @@
         },
         "intent_overall": {
           "type": "string"
+        }
+      }
+    }
+  },
+  "concepts": {
+    "version": 1,
+    "description": "Easy theory explanation report Cleo writes per structure part, with claims, Theory PC picks, gaps.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "parts"
+      ],
+      "properties": {
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "part_id",
+              "concept_name",
+              "easy_explanation",
+              "why_it_came_about",
+              "analogy_or_example",
+              "common_misunderstanding",
+              "claims",
+              "picks",
+              "gaps"
+            ],
+            "properties": {
+              "part_id": {
+                "type": "string"
+              },
+              "concept_name": {
+                "type": "string"
+              },
+              "easy_explanation": {
+                "type": "string"
+              },
+              "why_it_came_about": {
+                "type": "string"
+              },
+              "analogy_or_example": {
+                "type": "string"
+              },
+              "common_misunderstanding": {
+                "type": "string"
+              },
+              "claims": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "text",
+                    "citations"
+                  ],
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    },
+                    "citations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "ref",
+                          "quote"
+                        ],
+                        "properties": {
+                          "ref": {
+                            "type": "string"
+                          },
+                          "quote": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "picks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "ref",
+                    "title",
+                    "why_important",
+                    "how_to_use",
+                    "evidence",
+                    "priority"
+                  ],
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "why_important": {
+                      "type": "string"
+                    },
+                    "how_to_use": {
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "type": "object",
+                      "required": [
+                        "ref",
+                        "quote"
+                      ],
+                      "properties": {
+                        "ref": {
+                          "type": "string"
+                        },
+                        "quote": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "priority": {
+                      "type": "string",
+                      "enum": [
+                        "must",
+                        "should",
+                        "optional"
+                      ]
+                    }
+                  }
+                }
+              },
+              "gaps": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         }
       }
     }

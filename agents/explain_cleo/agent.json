@@ -3,18 +3,32 @@
     "max_steps": 8
   },
   "done": [
-    "every part has what/origin/simple_take",
-    "every claim cites a real outside source",
-    "concepts category complete per RESULT_JSON_DRAFT_EN.md"
+    "every part explained simply with >=1 cited claim",
+    "every claim cites a verbatim passage",
+    "report picks match this run's picks"
   ],
+  "flow": {
+    "inputs": [
+      {"category": "concept", "required": true,
+       "description": "Video concept: theme, question, takeaway, intent."},
+      {"category": "structure", "required": true, "accept": [2],
+       "description": "Structure map: parts to explain, in order."},
+      {"category": "source", "required": true,
+       "description": "Source PC pointer for the entry to explain."}
+    ],
+    "outputs": [
+      {"category": "concepts",
+       "description": "Easy theory report per part."}
+    ]
+  },
   "frame_version": 1,
   "id": "explain_cleo",
   "io": {
     "inputs": [
-      "structure.json",
-      "source.md"
+      "brief.json",
+      "INPUTS.md"
     ],
-    "output": "concepts.json"
+    "output": "result.json"
   },
   "model": "meta-models/muse-spark-open-1026",
   "name": "Cleo",
@@ -28,6 +42,7 @@
     "open_ref",
     "pc_search_theory",
     "pc_pick_theory",
-    "pc_read_theory"
+    "pc_read_theory",
+    "write_concepts"
   ]
 }

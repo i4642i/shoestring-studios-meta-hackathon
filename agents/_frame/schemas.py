@@ -241,6 +241,165 @@ def validate_structure(obj, input_md_path):
     return errors
 
 
+PRIORITIES = ("must", "should", "optional")
+CASE_KINDS = ("event", "company", "person", "film", "other")
+
+
+def _nonempty(errors, obj, key, where):
+    if not isinstance(obj.get(key), str) or not obj[key].strip():
+        errors.append("%s needs non-empty %s" % (where, key))
+
+
+def _check_citations(errors, claim, where):
+    cits = claim.get("citations")
+    if not isinstance(cits, list) or not cits:
+        errors.append("%s needs >=1 citation" % where)
+        return
+    for n, cit in enumerate(cits):
+        cw = "%s.citations[%d]" % (where, n)
+        if not isinstance(cit, dict):
+            errors.append("%s must be an object" % cw)
+            continue
+        _nonempty(errors, cit, "ref", cw)
+        _nonempty(errors, cit, "quote", cw)
+
+
+def _check_pick(errors, pick, where, want_pc):
+    if not isinstance(pick, dict):
+        errors.append("%s must be an object" % where)
+        return
+    for k in ("ref", "title", "why_important", "how_to_use"):
+        _nonempty(errors, pick, k, where)
+    ref = pick.get("ref", "")
+    if (isinstance(ref, str) and ref
+            and not ref.startswith("pc://%s/" % want_pc)):
+        errors.append("%s.ref must point at the %s PC" % (where, want_pc))
+    ev = pick.get("evidence")
+    if not isinstance(ev, dict):
+        errors.append("%s.evidence must be {ref, quote}" % where)
+    else:
+        _nonempty(errors, ev, "ref", where + ".evidence")
+        _nonempty(errors, ev, "quote", where + ".evidence")
+        eref = ev.get("ref", "")
+        if (isinstance(ref, str) and isinstance(eref, str) and ref
+                and eref and not eref.startswith(ref)):
+            errors.append("%s.evidence.ref must sit inside the pick"
+                          % where)
+    if pick.get("priority") not in PRIORITIES:
+        errors.append("%s.priority must be must|should|optional" % where)
+
+
+def _check_part_ids(errors, parts, where):
+    for i, p in enumerate(parts):
+        want = "p%d" % (i + 1)
+        if not isinstance(p, dict) or p.get("part_id") != want:
+            errors.append("%s[%d].part_id must be %r" % (where, i, want))
+
+
+def _check_gaps(errors, part, where):
+    gaps = part.get("gaps")
+    if (not isinstance(gaps, list)
+            or any(not isinstance(g, str) for g in gaps)):
+        errors.append("%s.gaps must be a string list" % where)
+
+
+def validate_concepts(obj):
+    """Return a list of error strings (empty == valid). Static shape
+    only; verbatim and picks-match checks live in the writer tool."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["concepts must be an object"]
+    parts = obj.get("parts")
+    if not isinstance(parts, list) or not parts:
+        return ["concepts.parts must be a non-empty list"]
+    _check_part_ids(errors, parts, "concepts.parts")
+    for i, p in enumerate(parts):
+        if not isinstance(p, dict):
+            errors.append("concepts.parts[%d] must be an object" % i)
+            continue
+        where = "concepts.parts[%s]" % p.get("part_id", i)
+        for k in ("concept_name", "easy_explanation", "why_it_came_about",
+                  "analogy_or_example", "common_misunderstanding"):
+            _nonempty(errors, p, k, where)
+        claims = p.get("claims")
+        if not isinstance(claims, list) or not claims:
+            errors.append("%s needs >=1 claim" % where)
+        else:
+            for m, cl in enumerate(claims):
+                cw = "%s.claims[%d]" % (where, m)
+                if not isinstance(cl, dict):
+                    errors.append("%s must be an object" % cw)
+                    continue
+                _nonempty(errors, cl, "text", cw)
+                _check_citations(errors, cl, cw)
+        picks = p.get("picks")
+        if not isinstance(picks, list):
+            errors.append("%s.picks must be a list" % where)
+        else:
+            for m, pk in enumerate(picks):
+                _check_pick(errors, pk, "%s.picks[%d]" % (where, m),
+                            "theory")
+        _check_gaps(errors, p, where)
+    return errors
+
+
+def validate_cases(obj):
+    """Return a list of error strings (empty == valid). Static shape
+    only; verbatim and picks-match checks live in the writer tool."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["cases must be an object"]
+    parts = obj.get("parts")
+    if not isinstance(parts, list) or not parts:
+        return ["cases.parts must be a non-empty list"]
+    _check_part_ids(errors, parts, "cases.parts")
+    for i, p in enumerate(parts):
+        if not isinstance(p, dict):
+            errors.append("cases.parts[%d] must be an object" % i)
+            continue
+        where = "cases.parts[%s]" % p.get("part_id", i)
+        cases = p.get("cases")
+        if not isinstance(cases, list) or not cases:
+            errors.append("%s needs >=1 case" % where)
+        else:
+            for m, cs in enumerate(cases):
+                cw = "%s.cases[%d]" % (where, m)
+                if not isinstance(cs, dict):
+                    errors.append("%s must be an object" % cw)
+                    continue
+                for k in ("title", "summary", "fit_why",
+                          "viewer_hook"):
+                    _nonempty(errors, cs, k, cw)
+                if cs.get("kind") not in CASE_KINDS:
+                    errors.append("%s.kind must be %s"
+                                  % (cw, "|".join(CASE_KINDS)))
+                date = cs.get("date", "")
+                if (not isinstance(date, str) or not date.strip()
+                        or not any(ch.isdigit() for ch in date)):
+                    errors.append("%s.date must name when it happened"
+                                  % cw)
+                claims = cs.get("claims")
+                if not isinstance(claims, list) or not claims:
+                    errors.append("%s needs >=1 claim" % cw)
+                else:
+                    for n, cl in enumerate(claims):
+                        lw = "%s.claims[%d]" % (cw, n)
+                        if not isinstance(cl, dict):
+                            errors.append("%s must be an object" % lw)
+                            continue
+                        _nonempty(errors, cl, "text", lw)
+                        _check_citations(errors, cl, lw)
+        picks = p.get("picks")
+        if not isinstance(picks, list):
+            errors.append("%s.picks must be a list" % where)
+        else:
+            for m, pk in enumerate(picks):
+                _check_pick(errors, pk, "%s.picks[%d]" % (where, m),
+                            "article")
+        _check_gaps(errors, p, where)
+    return errors
+
+
 REQUIRED_REQUEST_TOP = ("order_id", "client_answers", "source_summary",
                           "production_notes", "open_questions")
 REQUIRED_ANSWERS = ("audience", "length", "depth", "theme", "source")
@@ -385,6 +544,79 @@ def render_structure_v2_md(obj):
         lines.append("- %s -> %s: %s"
                      % (link["from"], link["to"], link["why"]))
     lines.append("")
+    return "\n".join(lines)
+
+
+def _render_claims_md(lines, claims):
+    for cl in claims:
+        lines.append("- %s" % cl["text"])
+        for cit in cl["citations"]:
+            lines.append("  - %s"
+                         % render_cite_md(cit["ref"], cit["quote"]))
+    return lines
+
+
+def _render_picks_md(lines, picks):
+    for pk in picks:
+        lines.append("- [%s] %s (%s)"
+                     % (pk["priority"], pk["title"], pk["ref"]))
+        lines.append("  Why: %s Use: %s"
+                     % (pk["why_important"], pk["how_to_use"]))
+        ev = pk["evidence"]
+        lines.append("  Evidence: %s"
+                     % render_cite_md(ev["ref"], ev["quote"]))
+    return lines
+
+
+def render_concepts_md(obj):
+    """Easy theory report (concepts v1) as markdown."""
+    lines = ["# Concepts report", ""]
+    for p in obj["parts"]:
+        lines += ["## %s — %s" % (p["part_id"], p["concept_name"]), "",
+                  p["easy_explanation"], "",
+                  "Why it came about: %s" % p["why_it_came_about"], "",
+                  "Analogy: %s" % p["analogy_or_example"], "",
+                  "Common misunderstanding: %s"
+                  % p["common_misunderstanding"], "", "### Claims", ""]
+        _render_claims_md(lines, p["claims"])
+        lines += ["", "### Picks", ""]
+        if p["picks"]:
+            _render_picks_md(lines, p["picks"])
+        else:
+            lines.append("- None.")
+        lines += ["", "### Gaps", ""]
+        if p["gaps"]:
+            lines += ["- %s" % g for g in p["gaps"]]
+        else:
+            lines.append("- None.")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_cases_md(obj):
+    """Case research report (cases v1) as markdown."""
+    lines = ["# Cases report", ""]
+    for p in obj["parts"]:
+        lines += ["## %s" % p["part_id"], ""]
+        for cs in p["cases"]:
+            lines += ["### %s (%s, %s)" % (cs["title"], cs["kind"],
+                                           cs["date"]),
+                      "", cs["summary"], "",
+                      "Fit: %s" % cs["fit_why"],
+                      "Hook: %s" % cs["viewer_hook"], ""]
+            _render_claims_md(lines, cs["claims"])
+            lines.append("")
+        lines += ["### Picks", ""]
+        if p["picks"]:
+            _render_picks_md(lines, p["picks"])
+        else:
+            lines.append("- None.")
+        lines += ["", "### Gaps", ""]
+        if p["gaps"]:
+            lines += ["- %s" % g for g in p["gaps"]]
+        else:
+            lines.append("- None.")
+        lines.append("")
     return "\n".join(lines)
 
 

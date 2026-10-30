@@ -12,7 +12,8 @@ sys.path.insert(0, ROOT)
 tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import results
 from agents._frame.schemas import render_cite_md
-from agents._frame.tools import write_request, write_structure
+from agents._frame.tools import (write_cases, write_concepts,
+                                    write_request, write_structure)
 
 fails = 0
 
@@ -40,9 +41,10 @@ REQ = {"order_id": "o1",
        "open_questions": []}
 
 reg = results.registry()
-ok(set(reg) == {"brief", "concept", "source", "request", "structure",
+ok(set(reg) == {"brief", "cases", "concept", "concepts", "source",
+                "request", "structure",
                 "video"},
-   "registry has 6 incl concept")
+   "registry has 8 incl concepts+cases")
 ok(reg["source"]["version"] == 2 and reg["structure"]["version"] == 2
    and all(reg[c]["version"] == 1 for c in reg
            if c not in ("source", "structure")),
@@ -195,6 +197,153 @@ ok("api/ref?ref=pc%3A%2F%2Fa%2Fb%23p1" in results.render_report(rv),
 rvx = results.make_result("postprocess", "o1", "r1", {"video": VID})
 rvx["categories"]["video"]["version"] = 99
 ok("```json" in results.render_report(rvx), "unknown version falls back")
+
+# ---- Cleo/Rex writers (temp PC storage, verbatim vs fixtures) ----
+from agents._frame import pc as _pc
+pcdir = tempfile.mkdtemp(prefix="writerpc_")
+rdir = tempfile.mkdtemp(prefix="writerrun_")
+_pc.ROOT_OVERRIDE = pcdir
+try:
+    src = _pc.ingest_source("o20", "s.pdf", "2026-10-30T00:00:00",
+                            "sales_sam",
+                            ["1.1 Alpha\nSource alpha text states facts "
+                             "clearly.",
+                             "1.2 Beta\nSource beta text stays simple."],
+                            [], [], 0, root=pcdir)
+    the = _pc.ingest_theory("https://ex.test/t1", "Theory One", "ex.test",
+                            "2024-01-02", "2026-10-30T00:00:00",
+                            "explain_cleo",
+                            "Theory one explains slowly. Markets adapt "
+                            "slowly over time.", root=pcdir)
+    the2 = _pc.ingest_theory("https://ex.test/t2", "Theory Two",
+                             "ex.test", "2024-03-04",
+                             "2026-10-30T00:00:00", "explain_cleo",
+                             "Second theory drifts yearly. Nothing else "
+                             "matters.", root=pcdir)
+    art = _pc.ingest_article("https://ex.test/a1", "Case One", "ex.test",
+                             "2023-05-06", "2026-10-30T00:00:00",
+                             "case_rex",
+                             "In 2023 the mill trial failed loudly. "
+                             "Workers walked out twice.", root=pcdir)
+    SREF = src["ref"]
+    TREF = the["ref"]
+    TREF2 = the2["ref"]
+    AREF = art["ref"]
+    with open(os.path.join(rdir, "research.jsonl"), "w",
+              encoding="utf-8") as f:
+        f.write(json.dumps({"ev": "pick", "ref": TREF}) + "\n")
+        f.write(json.dumps({"ev": "search", "query": "q"}) + "\n")
+    cctx = {"run_dir": rdir, "agent_dir": os.path.join(ROOT, "agents",
+                                                       "explain_cleo"),
+            "producer": "explain_cleo", "order_id": "o20",
+            "run_id": "rw1"}
+    CONCEPTS = {"parts": [{
+        "part_id": "p1",
+        "concept_name": "Alpha",
+        "easy_explanation": "Alpha in plain words.",
+        "why_it_came_about": "Because beta.",
+        "analogy_or_example": "Like gamma.",
+        "common_misunderstanding": "Not delta.",
+        "claims": [{"text": "Alpha states facts.",
+                    "citations": [{"ref": SREF + "#s1.1/p2",
+                                   "quote": "states facts clearly"}]}],
+        "picks": [{"ref": TREF, "title": "Theory One",
+                   "why_important": "Explains alpha.",
+                   "how_to_use": "Cite for p1.",
+                   "evidence": {"ref": TREF + "#p1",
+                                "quote": "Markets adapt slowly"},
+                   "priority": "must"}],
+        "gaps": []}]}
+    outc = write_concepts(cctx, {"concepts": CONCEPTS})
+    ok(outc.get("ok"), "write_concepts accepts verbatim report")
+    savedc = results.load_result(os.path.join(rdir, "result.json"))
+    ok(savedc["categories"]["concepts"]["version"] == 1
+       and results.check_result(savedc) == [],
+       "concepts envelope validates")
+    repc = results.render_report(savedc)
+    ok("## concepts (v1)" in repc and "Alpha in plain words" in repc
+       and "api/ref?ref=" in repc, "concepts report renders")
+    bad = json.loads(json.dumps(CONCEPTS))
+    bad["parts"][0]["claims"][0]["citations"][0]["quote"] = \
+        "states myths loudly"
+    ok("verbatim" in " ".join(write_concepts(
+        cctx, {"concepts": bad}).get("errors", [])),
+       "write_concepts invented quote refuses")
+    bad = json.loads(json.dumps(CONCEPTS))
+    bad["parts"][0]["claims"][0]["citations"][0]["ref"] = SREF
+    ok("whole entry" in " ".join(write_concepts(
+        cctx, {"concepts": bad}).get("errors", [])),
+       "write_concepts whole-entry ref refuses")
+    bad = json.loads(json.dumps(CONCEPTS))
+    bad["parts"][0]["claims"][0]["citations"] = []
+    ok(write_concepts(cctx, {"concepts": bad}).get("ok") is False,
+       "write_concepts citationless claim refuses")
+    bad = json.loads(json.dumps(CONCEPTS))
+    bad["parts"][0]["picks"][0]["ref"] = AREF
+    ok("theory PC" in " ".join(write_concepts(
+        cctx, {"concepts": bad}).get("errors", [])),
+       "write_concepts article pick refuses")
+    bad = json.loads(json.dumps(CONCEPTS))
+    bad["parts"][0]["picks"][0]["ref"] = TREF2
+    bad["parts"][0]["picks"][0]["evidence"] = {"ref": TREF2 + "#p1",
+                                               "quote": "drifts yearly"}
+    ok("never picked" in " ".join(write_concepts(
+        cctx, {"concepts": bad}).get("errors", [])),
+       "write_concepts unpicked ref refuses")
+    bad = json.loads(json.dumps(CONCEPTS))
+    bad["parts"][0]["picks"] = []
+    ok("missing from the report" in " ".join(write_concepts(
+        cctx, {"concepts": bad}).get("errors", [])),
+       "write_concepts dropped pick refuses")
+    bad = json.loads(json.dumps(CONCEPTS))
+    bad["parts"][0]["part_id"] = "p2"
+    ok(write_concepts(cctx, {"concepts": bad}).get("ok") is False,
+       "write_concepts part_id gap refuses")
+    with open(os.path.join(rdir, "research.jsonl"), "w",
+              encoding="utf-8") as f:
+        f.write(json.dumps({"ev": "pick", "ref": AREF}) + "\n")
+    rctx = dict(cctx, agent_dir=os.path.join(ROOT, "agents", "case_rex"),
+                producer="case_rex", run_id="rw2")
+    CASES = {"parts": [{
+        "part_id": "p1",
+        "cases": [{"title": "Mill trial", "kind": "event",
+                   "date": "2023-05-06",
+                   "summary": "The mill trial failed.",
+                   "fit_why": "Shows failure plainly.",
+                   "viewer_hook": "A loud failure.",
+                   "claims": [{"text": "Workers walked out.",
+                               "citations": [{"ref": AREF + "#p1",
+                                              "quote": "walked out twice"}]}]}],
+        "picks": [{"ref": AREF, "title": "Case One",
+                   "why_important": "Real failure.",
+                   "how_to_use": "Illustrate p1.",
+                   "evidence": {"ref": AREF + "#p1",
+                                "quote": "mill trial failed loudly"},
+                   "priority": "should"}],
+        "gaps": ["No second case found."]}]}
+    outr = write_cases(rctx, {"cases": CASES})
+    ok(outr.get("ok"), "write_cases accepts verbatim report")
+    savedr = results.load_result(os.path.join(rdir, "result.json"))
+    ok(savedr["categories"]["cases"]["version"] == 1
+       and results.check_result(savedr) == [],
+       "cases envelope validates")
+    repr_ = results.render_report(savedr)
+    ok("## cases (v1)" in repr_ and "Mill trial" in repr_
+       and "api/ref?ref=" in repr_, "cases report renders")
+    bad = json.loads(json.dumps(CASES))
+    bad["parts"][0]["cases"][0]["kind"] = "rumor"
+    ok(write_cases(rctx, {"cases": bad}).get("ok") is False,
+       "write_cases bad kind refuses")
+    bad = json.loads(json.dumps(CASES))
+    bad["parts"][0]["cases"][0]["date"] = "someday"
+    ok(write_cases(rctx, {"cases": bad}).get("ok") is False,
+       "write_cases dateless case refuses")
+    bad = json.loads(json.dumps(CASES))
+    bad["parts"][0]["cases"] = []
+    ok(write_cases(rctx, {"cases": bad}).get("ok") is False,
+       "write_cases empty cases refuses")
+finally:
+    _pc.ROOT_OVERRIDE = None
 
 if fails:
     print("%d FAILURES" % fails)

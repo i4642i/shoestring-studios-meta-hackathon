@@ -32,13 +32,14 @@ def msgs(errs):
 cat = flow.load_catalog()
 ok(len(cat["agents"]) >= 9, "catalog lists 9 agents")
 drafts = sorted(a["id"] for a in cat["agents"] if a.get("draft"))
-ok(drafts == ["board_penn", "board_vera", "case_rex", "explain_cleo",
-              "plan_ash", "voice_iris", "voice_wren"], "7 drafts flagged")
+ok(drafts == ["board_penn", "board_vera", "plan_ash",
+              "voice_iris", "voice_wren"], "5 drafts flagged")
 ok("sales_sam" in [a["id"] for a in cat["agents"] if a.get("flow")],
    "workers declare flow I/O")
 ok(sorted(c["name"] for c in cat["categories"])
-   == ["brief", "concept", "request", "source", "structure", "video"],
-   "catalog has 6 categories")
+   == ["brief", "cases", "concept", "concepts", "request", "source",
+       "structure", "video"],
+   "catalog has 8 categories")
 ok(all((a.get("color") or "").startswith("#") for a in cat["agents"]),
    "catalog colors")
 
@@ -117,12 +118,12 @@ cyc = {"nodes": [{"id": "order"}, {"id": "sales_sam"},
 ok(any(e["message"].startswith("cycle:")
        for e in flow.validate_flow(cyc)), "cycle caught")
 bad = json.loads(json.dumps(dflt))
-bad["nodes"].append({"id": "explain_cleo"})
-bad["lines"].append({"id": "ld", "from": "order", "to": "explain_cleo",
+bad["nodes"].append({"id": "plan_ash"})
+bad["lines"].append({"id": "ld", "from": "order", "to": "plan_ash",
                       "categories": ["brief"]})
 errs = flow.validate_flow(bad)
 ok(any("is a draft" in e["message"] for e in errs)
-   and any(e.get("node") == "explain_cleo" for e in errs),
+   and any(e.get("node") == "plan_ash" for e in errs),
    "connected draft rejected")
 multi = {"nodes": [{"id": "order"}, {"id": "sales_sam"},
                    {"id": "pd_marty"}, {"id": "final"}],
