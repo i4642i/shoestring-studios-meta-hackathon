@@ -262,6 +262,43 @@ finally:
     flow.ORDERS_DIR = real_orders
 ok(not out.get("ok") and "no PC entry" in out.get("error", ""),
    "order without PC entry fails fast")
+from agents._frame import pc as _pc  # noqa: E402
+sp = os.path.join(tmp, "runs", "rid9", "explain_cleo")
+os.makedirs(sp)
+with open(os.path.join(sp, "struct.json"), "w", encoding="utf-8") as f:
+    json.dump({"data": {"parts": [{"id": "p1",
+                                   "heading": "1.1 Getting started",
+                                   "covers": "c", "keywords": []}]},
+              "version": 1}, f)
+_pc.ROOT_OVERRIDE = tmp
+try:
+    rr = _pc.ingest_source("o10", "s.pdf", "2026-10-30T07:00:00",
+                           "sales_sam",
+                           ["1.1 Getting started\nPreloaded text here."],
+                           [], [], 0, root=tmp)
+    os.makedirs(os.path.join(tmp, "orders", "o10"))
+    with open(os.path.join(tmp, "orders", "o10", "meta.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"files": {"pc_ref": rr["ref"]}}, f)
+    md = flow._render_inputs_md(
+        {"order_id": "o10", "answers": {"audience": "a"}},
+        [{"sender": "pd_marty", "category": "structure",
+          "file": "struct.json"}], os.path.join(tmp, "runs", "rid9"),
+        "explain_cleo")
+    ok("Start prompt for Cleo" in md and "Preloaded text here." in md,
+       "cleo input preloads source sections")
+    md2 = flow._render_inputs_md(
+        {"order_id": "o10", "answers": {"audience": "a"}}, [],
+        os.path.join(tmp, "runs", "rid9"), "explain_cleo")
+    ok("Start prompt" not in md2, "no structure means no preload")
+    md3 = flow._render_inputs_md(
+        {"order_id": "o10", "answers": {"audience": "a"}},
+        [{"sender": "pd_marty", "category": "structure",
+          "file": "struct.json"}], os.path.join(tmp, "runs", "rid9"),
+        "sales_sam")
+    ok("Start prompt" not in md3, "preload only for cleo/rex")
+finally:
+    _pc.ROOT_OVERRIDE = None
 
 
 def boom(agent_dir, run_dir, brief, input_md):

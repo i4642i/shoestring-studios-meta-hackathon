@@ -8,6 +8,7 @@ import json
 import os
 
 from . import graph
+from . import pc
 from . import results
 from .schemas import (list_headings, validate_draft, validate_request,
                       validate_structure)
@@ -95,6 +96,85 @@ def query_graph(ctx, args):
     return out
 
 
+def _entry_for(ctx, ref):
+    """The Source entry for this run: explicit ref, else the order's."""
+    if not ref:
+        ref = pc.order_entry_ref(ctx.get("order_id", ""))
+    if not ref:
+        return None, {"error": "no Source PC entry for this order"}
+    try:
+        return pc.load_entry_by_ref(ref), None
+    except (OSError, ValueError, KeyError) as exc:
+        return None, {"error": "cannot load entry: %s" % exc}
+
+
+def pc_list_source(ctx, args):
+    entry, err = _entry_for(ctx, (args or {}).get("ref"))
+    if err:
+        return err
+    return {"ref": entry.get("ref", ""), "title": entry.get("title", ""),
+            "sections": [{"n": s["n"], "heading": s["heading"],
+                          "paras": s["count"],
+                          "ref": entry["ref"] + "#s" + s["n"]}
+                         for s in entry.get("sections", [])],
+            "figures": len(entry.get("figures", [])),
+            "tables": len(entry.get("tables", []))}
+
+
+def pc_read_source(ctx, args):
+    args = args or {}
+    entry, err = _entry_for(ctx, args.get("ref"))
+    if err:
+        return err
+    if args.get("ref"):
+        try:
+            pcname, _id, _frag = pc.parse_ref(args["ref"])
+        except ValueError:
+            return {"error": "bad ref"}
+        if pcname != "source":
+            return {"error": "pc_read_source reads Source only; "
+                             "use open_ref"}
+        want = args["ref"]
+    elif not args.get("section"):
+        return {"error": "give section or ref"}
+    else:
+        want = entry["ref"] + "#s" + args["section"].strip()
+    try:
+        out = pc.open_ref(entry, want)
+    except (KeyError, ValueError) as exc:
+        return {"error": str(exc)}
+    cap = int(args.get("max_chars", 8000))
+    text = out.get("text", "")
+    if len(text) > cap:
+        out["text"] = text[:cap]
+        out["truncated"] = len(text) - cap
+    return out
+
+
+def open_ref(ctx, args):
+    """Any-PC ref reader with grant enforcement: the caller must hold
+    pc_read_<pc>. Grants are the tools listed in its agent.json."""
+    ref = (args or {}).get("ref", "")
+    try:
+        pcname, _id, _frag = pc.parse_ref(ref)
+    except ValueError:
+        return {"error": "bad ref"}
+    need = "pc_read_" + pcname
+    try:
+        with open(os.path.join(ctx.get("agent_dir", ""),
+                               "agent.json"), encoding="utf-8") as f:
+            held = json.load(f).get("tools", [])
+    except (OSError, ValueError):
+        held = []
+    if need not in held:
+        return {"error": "no read grant for %s" % pcname}
+    try:
+        entry = pc.load_entry_by_ref(ref)
+        return pc.open_ref(entry, ref)
+    except (OSError, KeyError, ValueError) as exc:
+        return {"error": str(exc)}
+
+
 # Writer tool -> run output file. The server keeps agent.json io.output
 # in sync with the employee's single write_* tool. Since the Q6 cutover
 # every run writes result.json (one envelope, categories inside).
@@ -145,6 +225,32 @@ TOOLS = {
         {"type": "object",
          "properties": {"question": {"type": "string"}},
          "required": ["question"], "additionalProperties": False},
+    ),
+    "pc_list_source": (
+        pc_list_source,
+        "List the Source PC entry for this order: sections with refs, "
+        "figure/table counts.",
+        {"type": "object",
+         "properties": {"ref": {"type": "string"}},
+         "additionalProperties": False},
+    ),
+    "pc_read_source": (
+        pc_read_source,
+        "Read one Source PC section or passage verbatim with provenance. "
+        "Give section (e.g. 1.1) or a pc://source ref.",
+        {"type": "object",
+         "properties": {"section": {"type": "string"},
+                        "ref": {"type": "string"},
+                        "max_chars": {"type": "integer"}},
+         "additionalProperties": False},
+    ),
+    "open_ref": (
+        open_ref,
+        "Open any stable pc:// ref verbatim with provenance. Refused "
+        "without that PC's read grant.",
+        {"type": "object",
+         "properties": {"ref": {"type": "string"}},
+         "required": ["ref"], "additionalProperties": False},
     ),
 }
 

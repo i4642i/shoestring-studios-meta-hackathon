@@ -17,6 +17,7 @@ sys.path.insert(0, ROOT)
 tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 os.makedirs(tempfile.tempdir, exist_ok=True)
 from agents._frame import pc  # noqa: E402
+from agents._frame import tools as tmod  # noqa: E402
 
 FAILS = []
 
@@ -235,6 +236,25 @@ om = pc.resolve_omitted([{"what": "a", "see": "p2"},
 ok(om == [{"what": "b", "see": "p4"}],
    "covered candidates leave the omitted list")
 
+# ---- start prompt for Cleo/Rex (§8.6) ----
+STRUCT = {"parts": [{"id": "p1", "heading": "1.1 Getting started",
+                      "covers": "c", "keywords": ["k"]},
+                     {"id": "p2", "heading": "9.9 Elsewhere",
+                      "covers": "c", "keywords": ["k"]}]}
+txt, meta = pc.start_prompt_for("Cleo", STRUCT, entry)
+ok("Start prompt for Cleo" in txt and entry["ref"] in txt,
+   "start prompt header names agent + entry")
+ok("Body of one one." in txt and "p1: 1.1 Getting started" in txt,
+   "start prompt carries matched section text")
+ok("fig1.1.1" in txt, "start prompt notes section figures")
+ok(meta == {"parts": 2, "missing": ["p2"]},
+   "start prompt reports missing parts")
+ok("no matching source section" in txt,
+   "missing part marked in prompt")
+txt2, _m2 = pc.start_prompt_for("Rex", STRUCT, entry, max_chars=20)
+ok("Start prompt for Rex" in txt2 and "truncated" in txt2,
+   "start prompt truncates long sections honestly")
+
 # ---- map skeleton ----
 skel = pc.blank_map(entry, "model-x")
 ok(skel["status"] == "pending" and skel["llm_model"] == "model-x"
@@ -303,6 +323,56 @@ try:
        "failed table becomes a table-image figure")
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
+
+# ---- read tools (ROOT_OVERRIDE temp root) ----
+tmp2 = tempfile.mkdtemp(prefix="pc_tools_")
+try:
+    pc.ROOT_OVERRIDE = tmp2
+    for eid, tl in (("explain_cleo", ["pc_list_source", "pc_read_source",
+                                      "open_ref"]),
+                    ("sales_sam", ["read_md_section"])):
+        ad = os.path.join(tmp2, "agents", eid)
+        os.makedirs(ad)
+        with open(os.path.join(ad, "agent.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"tools": tl}, f)
+    r3 = pc.ingest_source("ord-20261030-009", "toolbook.pdf",
+                          "2026-10-30T06:00:00", "sales_sam",
+                          ["1.1 Tools\nBody tools here."], [], [], 0,
+                          root=tmp2)
+    os.makedirs(os.path.join(tmp2, "orders", "ord-20261030-009"))
+    with open(os.path.join(tmp2, "orders", "ord-20261030-009",
+                            "meta.json"), "w", encoding="utf-8") as f:
+        json.dump({"files": {"pc_ref": r3["ref"]}}, f)
+    cleo = {"agent_dir": os.path.join(tmp2, "agents", "explain_cleo"),
+            "order_id": "ord-20261030-009"}
+    sam = {"agent_dir": os.path.join(tmp2, "agents", "sales_sam"),
+           "order_id": "ord-20261030-009"}
+    lst = tmod.pc_list_source(cleo, {})
+    ok(lst["ref"] == r3["ref"] and lst["sections"][0]["n"] == "1.1",
+       "pc_list_source lists entry sections")
+    ok("Body tools here." in
+       tmod.pc_read_source(cleo, {"section": "1.1"}).get("text", ""),
+       "pc_read_source reads a section")
+    ok(tmod.pc_read_source(
+        cleo, {"ref": r3["ref"] + "#s1.1/p2"}).get("text")
+       == "Body tools here.", "pc_read_source reads a ref")
+    ok("error" in tmod.pc_read_source(cleo, {"section": "9.9"}),
+       "pc_read_source bad section errors")
+    ok("error" in tmod.pc_read_source(cleo, {}),
+       "pc_read_source needs a target")
+    ok(tmod.open_ref(
+        cleo, {"ref": r3["ref"] + "#s1.1/p2"}).get("text")
+       == "Body tools here.", "open_ref opens with grant")
+    ok(tmod.open_ref(
+        sam, {"ref": r3["ref"] + "#s1.1/p2"}).get("error", "")
+       .startswith("no read grant"), "open_ref denies without grant")
+    noref = tmod.pc_list_source(
+        {"agent_dir": cleo["agent_dir"], "order_id": "ord-missing"}, {})
+    ok("error" in noref, "tools report a missing order entry")
+finally:
+    pc.ROOT_OVERRIDE = None
+    shutil.rmtree(tmp2, ignore_errors=True)
 
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
 sys.exit(1 if FAILS else 0)

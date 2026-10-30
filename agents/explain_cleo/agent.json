@@ -21,6 +21,9 @@
   "title": "Concept explainer",
   "tools": [
     "query_graph",
-    "read_md_section"
+    "read_md_section",
+    "pc_list_source",
+    "pc_read_source",
+    "open_ref"
   ]
 }

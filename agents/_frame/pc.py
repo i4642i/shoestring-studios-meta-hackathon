@@ -15,11 +15,16 @@ MIN_FIG_PT = 50  # images smaller than this (both sides, PDF points) are decor
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(_HERE))
+ROOT_OVERRIDE = None  # tests point storage+orders at a temp root
+
+
+def _base(root):
+    return root or ROOT_OVERRIDE or ROOT
 
 
 def pc_dir(pc, root=None):
     assert pc in PCS, "unknown PC: %r" % pc
-    return os.path.join(root or ROOT, "storage", "_pc", pc)
+    return os.path.join(_base(root), "storage", "_pc", pc)
 
 
 def entry_dir(pc, doc_id, root=None):
@@ -626,6 +631,80 @@ def ingest_source(order_id, base, parsed_at, added_by, pages, images,
             "title": entry["title"], "sections": len(entry["sections"]),
             "chars": entry["chars"], "figures": len(entry["figures"]),
             "tables": len(entry["tables"])}
+
+
+# ---- order linkage + start prompts (§8.6) ----
+def order_entry_ref(order_id, root=None):
+    """The Source PC ref recorded on an order's upload, or None."""
+    p = os.path.join(_base(root), "orders", order_id, "meta.json")
+    try:
+        with open(p, encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(meta, dict):
+        return None
+    return meta.get("files", {}).get("pc_ref")
+
+
+def load_entry_by_ref(ref, root=None):
+    """Load the stored entry a ref points at (any PC)."""
+    pcname, doc_id, _frag = parse_ref(ref)
+    p = os.path.join(entry_dir(pcname, doc_id, root), "entry.json")
+    with open(p, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _match_section(heading, sections):
+    m = re.match(r"^(\d+(?:\.\d+)*)\s+", (heading or "").strip())
+    if m:
+        for s in sections:
+            if s["n"] == m.group(1):
+                return s
+    bare = re.sub(r"^\d+(?:\.\d+)*\s+", "",
+                  (heading or "").strip()).lower()
+    if bare:
+        for s in sections:
+            h = (s.get("heading") or "").lower()
+            if h and (bare in h or h in bare):
+                return s
+    return None
+
+
+def start_prompt_for(name, structure, entry, max_chars=6000):
+    """Task input the runner preloads for Cleo/Rex: each structure
+    part with its source section verbatim. Returns (text, {"parts",
+    "missing"}). Long sections truncate with an honest note."""
+    ref = entry.get("ref", "")
+    lines = ["## Start prompt for %s (Source %s)" % (name, ref),
+             "For each structure part, its source section verbatim. "
+             "Quote with refs; never invent.", ""]
+    missing = []
+    parts = (structure or {}).get("parts", [])
+    for part in parts:
+        pid = part.get("id", "?")
+        heading = part.get("heading", "")
+        lines.append("### %s: %s" % (pid, heading))
+        sec = _match_section(heading, entry.get("sections", []))
+        if sec is None:
+            lines += ["(no matching source section)", ""]
+            missing.append(pid)
+            continue
+        ps = entry["paragraphs"][sec["start"]:sec["start"] + sec["count"]]
+        text = "\n\n".join(p["text"] for p in ps)
+        if len(text) > max_chars:
+            text = text[:max_chars] + "\n[...truncated %d chars]" \
+                % (len(text) - max_chars)
+        objs = [o["addr"] for o in entry.get("figures", [])
+                if o["addr"][3:].rsplit(".", 1)[0] == sec["n"]]
+        objs += [o["addr"] for o in entry.get("tables", [])
+                 if o["addr"][3:].rsplit(".", 1)[0] == sec["n"]]
+        lines.append("Source s%s (%s#s%s):" % (sec["n"], ref, sec["n"]))
+        lines.append(text)
+        if objs:
+            lines.append("Figures/tables here: " + ", ".join(objs))
+        lines.append("")
+    return "\n".join(lines), {"parts": len(parts), "missing": missing}
 
 
 # ---- map skeleton (§10.3/10.5) ----

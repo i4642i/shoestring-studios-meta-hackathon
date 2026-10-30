@@ -287,6 +287,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_graph(parts[2])
         if parts[:2] == ["api", "crew"] and len(parts) == 4 and parts[3] == "map":
             return self._api_map(parts[2])
+        if parts[:2] == ["api", "crew"] and len(parts) == 4 and parts[3] == "start-prompt":
+            return self._api_start_prompt(parts[2])
         if parts[:2] == ["api", "orders"] and len(parts) == 3:
             return self._api_order_get(parts[2])
         if parts[:2] == ["api", "ref"] and len(parts) == 2:
@@ -724,6 +726,55 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001 - surfaced as 502, key never leaks
             return self._json(502, {"error": "model API error: %s" % exc})
         return self._json(200, {"reply": reply.strip()})
+
+    def _api_start_prompt(self, eid):
+        """Preview the Source-PC start prompt preloaded for Cleo/Rex."""
+        if eid not in ("explain_cleo", "case_rex"):
+            return self._json(404, {"error": "start prompts exist for "
+                                             "Cleo and Rex only"})
+        qs = unquote(self.path).split("?", 1)
+        oid = dict(parse_qsl(qs[1])).get("order", "") if len(qs) > 1 else ""
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        meta = self._order_meta(d)
+        ref = (meta.get("files") or {}).get("pc_ref", "")
+        if not ref:
+            return self._json(409, {"error": "order has no PC entry: "
+                                             "upload its PDF first"})
+        best, best_t = None, -1.0
+        rdir = flows.RUNS_DIR
+        if os.path.isdir(rdir):
+            for rid in os.listdir(rdir):
+                sp = os.path.join(rdir, rid, "STATUS.json")
+                mp = os.path.join(rdir, rid, "pd_marty", "result.json")
+                try:
+                    with open(sp, encoding="utf-8") as f:
+                        st = json.load(f)
+                    if st.get("order_id") != oid:
+                        continue
+                    t = os.path.getmtime(mp)
+                    if t <= best_t:
+                        continue
+                    with open(mp, encoding="utf-8") as f:
+                        res = json.load(f)
+                    data = res["categories"]["structure"]["data"]
+                    best, best_t = (rid, data), t
+                except (OSError, ValueError, KeyError):
+                    continue
+        if best is None:
+            return self._json(409, {"error": "no Marty structure for this "
+                                             "order yet: run the flow first"})
+        try:
+            entry = pc.load_entry_by_ref(ref)
+        except (OSError, ValueError, KeyError) as exc:
+            return self._json(404, {"error": "PC entry missing: %s" % exc})
+        name = "Cleo" if eid == "explain_cleo" else "Rex"
+        text, meta2 = pc.start_prompt_for(name, best[1], entry)
+        return self._json(200, {"prompt": text, "parts": meta2["parts"],
+                                "missing": meta2["missing"],
+                                "entry_ref": ref,
+                                "structure_run": best[0]})
 
     # ---- orders ----
     def _order_dir(self, oid):

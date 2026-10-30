@@ -404,6 +404,9 @@
       <h3 id="pc-dtitle"></h3>
       <p id="pc-dmeta"></p>
       <p><button id="pc-rebuild">REBUILD MAP + INDEX</button> <span id="pc-dmsg"></span></p>
+      <p><button id="pc-pre-cleo">PREVIEW CLEO START PROMPT</button>
+      <button id="pc-pre-rex">PREVIEW REX START PROMPT</button></p>
+      <pre id="pc-dprompt" style="display:none"></pre>
       <div id="pc-dmap"></div>
       <h4>PASSAGE</h4>
       <pre id="pc-dpass">Click a "see" link to open the passage here.</pre>
@@ -2481,6 +2484,23 @@
           });
           map.appendChild(hp);
         }
+      });
+      const dp = document.getElementById("pc-dprompt");
+      dp.style.display = "none";
+      dp.textContent = "";
+      [["pc-pre-cleo", "explain_cleo"], ["pc-pre-rex", "case_rex"]].forEach((pair) => {
+        document.getElementById(pair[0]).onclick = async () => {
+          try {
+            dp.style.display = "block";
+            dp.textContent = "Loading…";
+            const s = await api.get("api/crew/" + pair[1] +
+              "/start-prompt?order=" + encodeURIComponent(d.entry.order_id));
+            dp.textContent = "Run " + s.structure_run + " · " + s.parts +
+              " parts" +
+              (s.missing.length ? " · missing: " + s.missing.join(",") : "") +
+              "\n\n" + s.prompt;
+          } catch (e) { dp.textContent = "Error: " + e.message; }
+        };
       });
       document.getElementById("pc-rebuild").onclick = async () => {
         try {
