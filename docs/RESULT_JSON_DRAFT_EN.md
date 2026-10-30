@@ -121,7 +121,7 @@ exists in the input"):
 ```json
 {
   "type": "object",
-  "required": ["source_ref", "parts", "links"],
+  "required": ["source_ref", "parts", "links", "duration"],
   "properties": {
     "source_ref": {"type": "string"},
     "parts": {
@@ -133,6 +133,25 @@ exists in the input"):
           "id": {"type": "string"}, "heading": {"type": "string"},
           "ref": {"type": "string"}, "covers": {"type": "string"},
           "keywords": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "duration": {
+      "type": "object",
+      "required": ["total_s", "parts"],
+      "properties": {
+        "total_s": {"type": "integer"},
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["part_id", "seconds", "why"],
+            "properties": {
+              "part_id": {"type": "string"},
+              "seconds": {"type": "integer"},
+              "why": {"type": "string"}
+            }
+          }
         }
       }
     },
@@ -154,6 +173,12 @@ exists in the input"):
 - `source_ref`: the Source PC entry ref (`pc://source/<id>`).
 - Each part's `ref` is its section ref (`pc://source/<id>#s<n>`).
   Non-content sections (exercises, references) are never parts.
+- `duration`: Marty's time plan. `total_s` is Marty's seconds
+  reading of the request length (`client_answers.length`, e.g.
+  "about 10 minutes" → 600); `parts[]` splits it across structure
+  parts with a `why` each. Checks: part seconds sum to `total_s`
+  (writer tool); `total_s` equals the request length parsed to
+  exact seconds (Sam→Marty handoff check).
 - Coverage, order, neighbour links, and exact-heading rules are
   unchanged from v1 (writer-enforced).
 
@@ -270,8 +295,8 @@ the new categories follow once the category set is approved.
 | 1 | Structure writer (Marty) | `request`, `source` | `concept`, `structure` (§3) |
 | 2 | Concept explainer (Cleo) | `concept`, `structure`, `source` | `concepts` (§5.1) |
 | 2 | Case researcher (Rex) | `concept`, `structure`, `source` | `cases` (§5.2) |
-| 3 | Planning PD | `request`, `structure`, `concepts`, `cases` | `plan` |
-| 4 | Storyboard writer | `plan`, `structure` | `storyboard` |
+| 3 | Planning PD (Ash) | `concept`, `structure`, `concepts`, `cases` | `storyboard_draft` (§5.3) |
+| 4 | Storyboard writer (Penn) | open (Q13) | open (Q13) |
 | 5 | Storyboard reviewer | `storyboard`, `source` | `storyboard_checked` |
 | 6 | Narration writer | `storyboard_checked`, `plan` | `narration` |
 | 7 | Narration reviewer | `narration`, `source` | `narration_checked` |
@@ -284,12 +309,8 @@ New category payloads (field sketches, schemas later):
 - `cases` (Rex): full schema in §5.2. Per part: cases with title,
   kind, date, summary, fit to Marty's concept, viewer hook, claims
   with citations, picks, gaps.
-- `plan`: `{audience, message, angle, fun_hooks[], flow: {intro,
-  body[], conclusion}, page_budget}` — for whom, what, from which
-  angle, how to make it fun; intro → body → conclusion.
-- `storyboard`: `{pages: [{n, learn, screen, material, next_link}]}` —
-  what the viewer learns, the screen, source/material used, link to
-  the next page.
+- `plan`: RETIRED — Ash now writes `storyboard_draft` (§5.3).
+- `storyboard`: to be redefined for Penn (Q13).
 - `storyboard_checked`: `{pages: [...same shape, corrected...],
   fixes: [{page, was, now, why}]}` — facts fixed against source and
   materials.
@@ -303,11 +324,12 @@ New category payloads (field sketches, schemas later):
 Notes on the stage table:
 
 - Stages 0–1 are exactly §§2–3 above, restated here for the full map.
-- Planning PD receives `request` too, so audience/length/theme from
-  the client interview survive into the plan (D4 multi-sender input).
-- Storyboard writer takes `plan` + `structure` but not `concepts` /
-  `cases` directly: the plan already folds them in, keeping the writer
-  input small. If page detail suffers, add those two lines later.
+- Ash (stage 3) receives `concept`, `structure` (with time plan),
+  `concepts`, `cases`, and reads the Source PC plus this order's
+  Theory/Article picks. No `request`: audience and theme reach Ash
+  through the concept, length through the time plan.
+- Penn's role (stage 4) is open (Q13): Ash already drafts the
+  storyboard scene by scene.
 - Reviewers also receive source/materials pointers via `source`; full
   material text stays in sidecars (cf. Q3).
 - `narration_checked` is the last agent result; scene/video assembly
@@ -580,6 +602,106 @@ sources.
 - Writer check (§13): the set of pick refs in the report must
   equal the set of items picked in this run — no unexplained
   pick, no unpicked ref.
+
+## 5.3 Ash (`plan_ash`): `storyboard_draft` v1
+
+Produces `{storyboard_draft}`. Consumes `concept`, `structure`
+(with time plan), `concepts`, `cases`. Follows Marty's structure
+and time plan scene by scene, filling each scene selectively from
+Cleo's and Rex's material. Reads the Source PC map + refs and this
+order's Theory/Article picks (maps + refs + reasons, §13.2); read
+tools scoped the same way.
+
+`storyboard_draft` payload schema (`data`):
+
+```json
+{
+  "type": "object",
+  "required": ["total_s", "scenes", "unused_picks"],
+  "properties": {
+    "total_s": {"type": "integer"},
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["n", "start_s", "end_s", "part_id", "role",
+                     "viewer_learns", "screen_idea",
+                     "narration_points", "materials", "next_link"],
+        "properties": {
+          "n": {"type": "integer"},
+          "start_s": {"type": "integer"},
+          "end_s": {"type": "integer"},
+          "part_id": {"type": "string"},
+          "role": {"type": "string",
+                   "enum": ["hook", "explain", "case", "recap",
+                            "other"]},
+          "viewer_learns": {"type": "string"},
+          "screen_idea": {"type": "string"},
+          "narration_points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["text", "citations"],
+              "properties": {
+                "text": {"type": "string"},
+                "citations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["ref", "quote"],
+                    "properties": {
+                      "ref": {"type": "string"},
+                      "quote": {"type": "string"}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "materials": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["ref", "from", "how_used"],
+              "properties": {
+                "ref": {"type": "string"},
+                "from": {"type": "string",
+                         "enum": ["source", "theory", "article"]},
+                "how_used": {"type": "string"}
+              }
+            }
+          },
+          "next_link": {"type": "string"}
+        }
+      }
+    },
+    "unused_picks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ref", "why_not_used"],
+        "properties": {
+          "ref": {"type": "string"},
+          "why_not_used": {"type": "string"}
+        }
+      }
+    }
+  }
+}
+```
+
+- `total_s` equals the structure time plan's `total_s`.
+- Scene times are contiguous from 0 to `total_s`
+  (`scenes[0].start_s == 0`, each `end_s ==` next `start_s`, last
+  `end_s == total_s`).
+- Per-part scene time stays within ±15% of Marty's plan (summed
+  scene seconds per `part_id` vs plan seconds).
+- Every structure part has at least one scene.
+- Every material `ref` sits in the Source PC or in this order's
+  Theory/Article picks; `from` names which.
+- Every citation passes the verbatim check (§9).
+- Every pick of this order is either used in a scene's `materials`
+  or listed in `unused_picks` with a reason — no silent drops.
 
 ## 6. Rules this draft follows (from D1–D9)
 
@@ -1049,6 +1171,10 @@ Code places that read the old files (Sam/Marty switch list):
   stay in the run log; PCs grow only through picks with provenance.
 - Q12 DECIDED: Marty splits into `concept` v1 + `structure` v2
   (§3); Cleo/Rex write `concepts` v1 / `cases` v1 (§§5.1–5.2).
+- Q13 OPEN: Penn's role, now that Ash writes the storyboard draft
+  (§5.3). Candidates: scene composition detail, visual/material
+  direction, or merge into Ash. Blocks: the `storyboard` category
+  shape and the stage 5–7 inputs.
 
 ## 13. Stage-2 research rules (Cleo/Rex)
 
