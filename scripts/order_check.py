@@ -28,15 +28,15 @@ ok(intake.missing_of({}, {}) == ["audience", "length", "depth", "theme",
                                  "source PDF"],
    "empty order misses all 4 + PDF")
 ok(intake.missing_of({"audience": "x", "length": "y", "depth": "z",
-                      "theme": "w"}, {"parsed": "parsed.md"}) == [],
-   "complete answers + parsed PDF is ready")
+                      "theme": "w"}, {"source": "source.pdf"}) == [],
+   "complete answers + stored PDF is ready")
 ok(intake.missing_of({"audience": "x"}, {}) == ["length", "depth", "theme",
                                                "source PDF"],
    "partial answers still missing")
 ok(intake.missing_of({"audience": "x", "length": "y", "depth": "z",
                       "theme": "w"}, {}) == ["source PDF"],
    "answers without PDF miss only the PDF")
-ok(intake.missing_of({"audience": "  "}, {"parsed": "parsed.md"})
+ok(intake.missing_of({"audience": "  "}, {"source": "source.pdf"})
    == ["audience", "length", "depth", "theme"],
    "blank answer counts as missing")
 

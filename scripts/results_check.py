@@ -45,10 +45,10 @@ ok(set(reg) == {"brief", "cases", "concept", "concepts", "source",
                 "request", "structure",
                 "video"},
    "registry has 8 incl concepts+cases")
-ok(reg["source"]["version"] == 2 and reg["structure"]["version"] == 2
+ok(reg["source"]["version"] == 3 and reg["structure"]["version"] == 2
    and all(reg[c]["version"] == 1 for c in reg
            if c not in ("source", "structure")),
-   "source+structure v2, rest v1")
+   "source v3 + structure v2, rest v1")
 
 r = results.make_result("sales_sam", "o1", "r1", {"request": dict(REQ)})
 ok(r["status"] == "unverified" and r["format_version"] == 1
@@ -118,6 +118,19 @@ wdir = tempfile.mkdtemp(prefix="writecheck_")
 ctx = {"run_dir": wdir, "agent_dir": os.path.join(ROOT, "agents",
                                                   "sales_sam"),
        "producer": "sales_sam", "order_id": "o1", "run_id": "r9"}
+from agents._frame import pc as _pc
+samroot = tempfile.mkdtemp(prefix="samroot_")
+_pc.ROOT_OVERRIDE = samroot
+sent = _pc.ingest_source("o1", "s.pdf", "2026-10-30T00:00:00",
+                         "sales_sam",
+                         ["1.1 Alpha\nSource alpha text."], [], [], 0,
+                         root=samroot)
+_pc.set_recipients("source", sent["doc_id"], "o1",
+                   ["sales_sam", "pd_marty"], "sales_sam", root=samroot)
+sendp = os.path.join(wdir, "send.json")
+with open(sendp, "w", encoding="utf-8") as f:
+    json.dump({"ref": sent["ref"], "doc_id": sent["doc_id"],
+               "at": "t"}, f)
 out = write_request(ctx, {"request": dict(REQ)})
 ok(out.get("ok") and out.get("output") == "result.json"
    and os.path.isfile(os.path.join(wdir, "result.json")),
@@ -127,10 +140,40 @@ ok(saved["producer"] == "sales_sam" and saved["run_id"] == "r9"
    and saved["status"] == "unverified"
    and saved["categories"]["request"]["data"]["order_id"] == "o1",
    "request envelope header + data")
+src3 = saved["categories"]["source"]
+ok(src3["version"] == 3 and src3["data"]["ref"] == sent["ref"]
+   and src3["data"]["title"] == sent["title"]
+   and src3["data"]["sections"] == 1
+   and sorted(r["agent"] for r in src3["data"]["recipients"])
+   == ["pd_marty", "sales_sam"],
+   "write_request bundles source v3 from the entry")
+os.remove(sendp)
+no_send = write_request(ctx, {"request": dict(REQ)})
+ok(no_send.get("ok") is False
+   and "pc_send_source" in " ".join(no_send.get("errors", [])),
+   "write_request without send refuses")
+with open(sendp, "w", encoding="utf-8") as f:
+    json.dump({"ref": sent["ref"], "doc_id": sent["doc_id"],
+               "at": "t"}, f)
+ep = os.path.join(samroot, "storage", "_pc", "source", "entries",
+                  sent["doc_id"], "entry.json")
+with open(ep, encoding="utf-8") as f:
+    ent0 = json.load(f)
+ent0["recipients"] = [r for r in ent0["recipients"]
+                       if r["order_id"] != "o1"]
+with open(ep, "w", encoding="utf-8") as f:
+    json.dump(ent0, f)
+no_rec = write_request(ctx, {"request": dict(REQ)})
+ok(no_rec.get("ok") is False
+   and "pc_set_recipients" in " ".join(no_rec.get("errors", [])),
+   "write_request without recipients refuses")
+_pc.set_recipients("source", sent["doc_id"], "o1",
+                   ["sales_sam", "pd_marty"], "sales_sam", root=samroot)
 bad = dict(REQ)
 del bad["order_id"]
 ok(write_request(ctx, {"request": bad}).get("ok") is False,
    "write_request invalid refuses")
+_pc.ROOT_OVERRIDE = None
 
 mdp = os.path.join(wdir, "input.md")
 with open(mdp, "w", encoding="utf-8") as f:
@@ -169,6 +212,33 @@ ok(write_structure(ctx2, {"result": {"concept": dict(CONCEPT),
    is False, "write_structure foreign ref refuses")
 ok(write_structure(ctx2, {"structure": struct}).get("ok") is False,
    "write_structure old shape refuses")
+men = _pc.ingest_source("o1", "m.pdf", "2026-10-30T00:00:00",
+                        "sales_sam",
+                        ["1.1 Alpha\nAlpha body.",
+                         "1.2 Beta\nBeta body."], [], [], 0,
+                        root=samroot)
+mstruct = {"source_ref": men["ref"],
+           "parts": [{"id": "p1", "heading": "1.1 Alpha",
+                      "ref": men["ref"] + "#s1.1", "covers": "x",
+                      "keywords": ["k"]},
+                     {"id": "p2", "heading": "1.2 Beta",
+                      "ref": men["ref"] + "#s1.2", "covers": "y",
+                      "keywords": ["k"]}],
+           "links": [{"from": "p1", "to": "p2", "why": "w"}]}
+mdp2 = os.path.join(wdir, "other.md")
+with open(mdp2, "w", encoding="utf-8") as f:
+    f.write("# T\n\n## 9.9 Else\n\ntext\n")
+_pc.ROOT_OVERRIDE = samroot
+ctx3 = dict(ctx2, input_md=mdp2, run_id="r11")
+ok(write_structure(ctx3, {"result": {"concept": dict(CONCEPT),
+                                    "structure": mstruct}}).get("ok")
+   is True, "entry text wins over input file")
+mshort = json.loads(json.dumps(mstruct))
+del mshort["parts"][1]
+ok(write_structure(ctx3, {"result": {"concept": dict(CONCEPT),
+                                    "structure": mshort}}).get("ok")
+   is False, "entry coverage enforced (missing part)")
+_pc.ROOT_OVERRIDE = None
 ok(os.path.isfile(os.path.join(wdir, "report.md")),
    "writers also write report.md")
 

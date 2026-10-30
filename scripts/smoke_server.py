@@ -261,9 +261,12 @@ def main():
                    mp("source.pdf", pdf),
                    {"Content-Type": "multipart/form-data; boundary=BOUND123"})
         r = json.loads(b.decode()) if s == 200 else {}
-        parsed_ok = os.path.isfile("orders/%s/parsed.md" % oid)
-        check("order pdf parse", s == 200 and r.get("pages") == 1
-              and r.get("chars", 0) > 0 and parsed_ok, (s, r))
+        stored_ok = os.path.isfile("orders/%s/source.pdf" % oid)
+        check("order pdf stored", s == 200 and r.get("file") == "source.pdf"
+              and r.get("bytes", 0) > 0 and r.get("name") == "source.pdf"
+              and stored_ok
+              and not os.path.isfile("orders/%s/parsed.md" % oid),
+              (s, r))
         s, _ = req("POST", "/api/orders/" + oid + "/upload",
                    mp("notes.md", b"# hi"),
                    {"Content-Type": "multipart/form-data; boundary=BOUND123"})
@@ -272,9 +275,11 @@ def main():
                    mp("img.pdf", make_img_pdf()),
                    {"Content-Type": "multipart/form-data; boundary=BOUND123"})
         r = json.loads(b.decode()) if s == 200 else {}
-        img_ok = os.path.isfile("orders/%s/images/p01-i01.png" % oid)
-        check("order pdf images", s == 200 and r.get("images") == 1
-              and img_ok, (s, r))
+        check("order pdf re-upload stores", s == 200
+              and r.get("name") == "img.pdf"
+              and os.path.isfile("orders/%s/source.pdf" % oid)
+              and not os.path.isdir("orders/%s/images" % oid),
+              (s, r))
         s, _ = jpost("/api/orders/" + oid + "/chat", {"messages": []})
         check("order chat bad shape", s == 400, s)
         s, _ = jpost("/api/orders/ord-20000101-999/chat",
@@ -294,7 +299,7 @@ def main():
                    {"Content-Type": "application/json"})
         s, b = jpost("/api/orders/" + oid3 + "/complete", {"extract": True})
         check("extract skips when answered", s == 409
-              and "no parsed PDF" in b.decode(), s)
+              and "no attached PDF" in b.decode(), s)
         s, _ = jpost("/api/orders/" + oid2 + "/start", {})
         check("start needs approval", s == 409, s)
         s, _ = jpost("/api/orders/ord-20000101-999/start", {})

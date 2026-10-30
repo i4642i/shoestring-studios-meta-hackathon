@@ -67,14 +67,22 @@ else:
     _anc = _stamp == _head
 ok(bool(_stamp) and bool(_head) and (_stamp == _head or _anc),
    "page stamp tracks served code")
-ok([o["category"] for o in cat["order"]["outputs"]] == ["brief", "source"],
-   "order outputs brief+source")
+ok("order" not in cat, "catalog has no order node")
+samdecl = next(a for a in cat["agents"] if a["id"] == "sales_sam")
+ok(samdecl["flow"]["inputs"] == []
+   and sorted(o["category"] for o in samdecl["flow"]["outputs"])
+   == ["request", "source"],
+   "sam starts the flow, outputs request+source")
 
 dflt = flow.load_flow("default")
 ok([n["id"] for n in dflt["nodes"]]
-   == ["order", "sales_sam", "pd_marty", "explain_cleo", "case_rex",
-       "final"],
-   "default flow is order->sam->marty->cleo,rex->final")
+   == ["sales_sam", "pd_marty", "explain_cleo", "case_rex", "final"]
+   and dflt["name"] == "Order to storyboard",
+   "default flow is sam->marty->cleo,rex->final storyboard")
+ok(next(n for n in dflt["nodes"] if n["id"] == "final").get("temp")
+   and sorted(ln["id"] for ln in dflt["lines"])
+   == ["l2", "l3", "l4", "l5", "l6", "l8", "l9"],
+   "final marked temporary inputs, 7 lines")
 try:
     flow.load_flow("../x")
     ok(False, "bad flow id raises")
@@ -84,36 +92,40 @@ except ValueError:
 # ---- validate ----
 ok(flow.validate_flow(dflt) == [], "default flow validates")
 bad = json.loads(json.dumps(dflt))
-bad["lines"].append({"id": "lx", "from": "order", "to": "sales_sam",
+bad["lines"].append({"id": "lx", "from": "sales_sam", "to": "pd_marty",
                       "categories": ["nope"]})
 errs = flow.validate_flow(bad)
 ok(any("unknown category" in e["message"] for e in errs)
    and errs[0].get("line") == "lx", "unknown category + line id")
 bad = json.loads(json.dumps(dflt))
-bad["lines"].append({"id": "ld", "from": "order", "to": "sales_sam",
-                      "categories": ["brief"]})
+bad["lines"].append({"id": "ld", "from": "sales_sam", "to": "pd_marty",
+                      "categories": ["request"]})
 ok(any("duplicate line" in e["message"]
        for e in flow.validate_flow(bad)), "dup pair kept forbidden")
-bad = {"nodes": [{"id": "order"}, {"id": "sales_sam"}, {"id": "final"}],
-       "lines": [{"id": "l1", "from": "order", "to": "final",
-                  "categories": ["brief"]}],
+bad = {"nodes": [{"id": "sales_sam"}, {"id": "pd_marty"},
+                 {"id": "final"}],
+       "lines": [{"id": "l1", "from": "sales_sam", "to": "final",
+                  "categories": ["request"]}],
        "positions": {}}
 errs = flow.validate_flow(bad)
 ok(any("no incoming line" in e["message"] for e in errs)
-   and any(e.get("node") == "sales_sam" for e in errs),
+   and any(e.get("node") == "pd_marty" for e in errs),
    "agent without input + node id")
+starter = {"nodes": [{"id": "sales_sam"}, {"id": "final"}],
+           "lines": [{"id": "l1", "from": "sales_sam", "to": "final",
+                      "categories": ["request"]}],
+           "positions": {}}
+ok(flow.validate_flow(starter) == [], "sam starts without lines")
 bad = json.loads(json.dumps(dflt))
 for ln in bad["lines"]:
-    if ln["id"] == "l1":
-        ln["categories"] = ["source"]
-ok(any("misses required input 'brief'" in e["message"]
+    if ln["id"] == "l3":
+        ln["categories"] = ["structure"]
+ok(any("misses required input 'concept'" in e["message"]
        for e in flow.validate_flow(bad)), "missing required input")
-cyc = {"nodes": [{"id": "order"}, {"id": "sales_sam"},
+cyc = {"nodes": [{"id": "sales_sam"},
                  {"id": "pd_marty"}, {"id": "final"}],
-       "lines": [{"id": "l1", "from": "order", "to": "sales_sam",
-                  "categories": "*"},
-                 {"id": "l2", "from": "sales_sam", "to": "pd_marty",
-                  "categories": ["request"]},
+       "lines": [{"id": "l2", "from": "sales_sam", "to": "pd_marty",
+                  "categories": ["request", "source"]},
                  {"id": "l3", "from": "pd_marty", "to": "sales_sam",
                   "categories": ["structure"]},
                  {"id": "l4", "from": "pd_marty", "to": "final",
@@ -123,27 +135,35 @@ ok(any(e["message"].startswith("cycle:")
        for e in flow.validate_flow(cyc)), "cycle caught")
 bad = json.loads(json.dumps(dflt))
 bad["nodes"].append({"id": "plan_ash"})
-bad["lines"].append({"id": "ld", "from": "order", "to": "plan_ash",
-                      "categories": ["brief"]})
+bad["lines"].append({"id": "ld", "from": "sales_sam", "to": "plan_ash",
+                      "categories": ["request"]})
 errs = flow.validate_flow(bad)
 ok(any("is a draft" in e["message"] for e in errs)
    and any(e.get("node") == "plan_ash" for e in errs),
    "connected draft rejected")
-multi = {"nodes": [{"id": "order"}, {"id": "sales_sam"},
-                   {"id": "pd_marty"}, {"id": "final"}],
-         "lines": [{"id": "l1", "from": "order", "to": "sales_sam",
-                    "categories": "*"},
-                   {"id": "l2", "from": "sales_sam", "to": "pd_marty",
-                    "categories": ["request"]},
-                   {"id": "l3", "from": "order", "to": "pd_marty",
+old = {"nodes": [{"id": "order"}, {"id": "sales_sam"},
+                 {"id": "final"}],
+       "lines": [{"id": "l1", "from": "order", "to": "sales_sam",
+                  "categories": "*"}],
+       "positions": {}}
+ok(any("has no agent.json" in e["message"]
+       for e in flow.validate_flow(old)),
+   "retired order node fails clean")
+multi = {"nodes": [{"id": "sales_sam"}, {"id": "pd_marty"},
+                   {"id": "explain_cleo"}, {"id": "final"}],
+         "lines": [{"id": "l1", "from": "sales_sam", "to": "pd_marty",
+                    "categories": ["request", "source"]},
+                   {"id": "l2", "from": "pd_marty", "to": "explain_cleo",
+                    "categories": ["concept", "structure"]},
+                   {"id": "l3", "from": "sales_sam", "to": "explain_cleo",
                     "categories": ["source"]},
-                   {"id": "l4", "from": "pd_marty", "to": "final",
-                    "categories": ["structure"]}],
+                   {"id": "l4", "from": "explain_cleo", "to": "final",
+                    "categories": ["concepts"]}],
          "positions": {}}
 ok(flow.validate_flow(multi) == [], "multi-sender intake validates")
 seq = flow.topo_order(dflt)
-ok(seq.index("order") < seq.index("sales_sam")
-   < seq.index("pd_marty") < seq.index("explain_cleo")
+ok(seq.index("sales_sam") < seq.index("pd_marty")
+   < seq.index("explain_cleo")
    < seq.index("final") == len(seq) - 1
    and seq.index("pd_marty") < seq.index("case_rex")
    < seq.index("final"),
@@ -153,19 +173,24 @@ ok(flow.new_run_id().startswith("flow-"), "run id shape")
 # ---- transfer unit ----
 tmp = tempfile.mkdtemp(prefix="flowcheck_")
 rd = os.path.join(tmp, "r1")
-os.makedirs(os.path.join(rd, "order"))
-oreq = results.make_result("order", "o1", "r1",
-                           {"brief": {"order_id": "o1", "answers": {
-                               "audience": "a", "length": "b", "depth": "c",
-                               "theme": "d"}, "source_file": "s.pdf"}})
-results.save_result(os.path.join(rd, "order"), oreq)
-got, nbytes, errs = flow._transfer(rd, "order", "x", ["brief"], None)
-ok(errs == [] and len(got) == 1 and got[0]["sender"] == "order"
+os.makedirs(os.path.join(rd, "sales_sam"))
+sreq = results.make_result(
+    "sales_sam", "o1", "r1",
+    {"request": {"order_id": "o1",
+                 "client_answers": {"audience": "a", "length": "b",
+                                    "depth": "c", "theme": "d",
+                                    "source": "e"},
+                 "source_summary": "s", "production_notes": ["n"],
+                 "open_questions": []}})
+results.save_result(os.path.join(rd, "sales_sam"), sreq)
+got, nbytes, errs = flow._transfer(rd, "sales_sam", "x", ["request"],
+                                   None)
+ok(errs == [] and len(got) == 1 and got[0]["sender"] == "sales_sam"
    and got[0]["version"] == 1 and nbytes > 0, "transfer labels sender")
-got, _, errs = flow._transfer(rd, "order", "x", ["brief"],
-                              [{"category": "brief", "accept": [2]}])
+got, _, errs = flow._transfer(rd, "sales_sam", "x", ["request"],
+                              [{"category": "request", "accept": [2]}])
 ok(errs and "not in accepted" in errs[0], "accept list enforced")
-got, _, errs = flow._transfer(rd, "order", "x", ["request"], None)
+got, _, errs = flow._transfer(rd, "sales_sam", "x", ["concept"], None)
 ok(errs and "has no category" in errs[0], "missing category aborts")
 
 # ---- stubbed end-to-end ----
@@ -189,7 +214,12 @@ CONCEPTS = {"parts": [{"part_id": "p1", "concept_name": "c",
                        "claims": [], "picks": [], "gaps": []}]}
 CASES = {"parts": [{"part_id": "p1", "cases": [], "picks": [],
                     "gaps": []}]}
-PAY = {"sales_sam": ("sales_sam", {"request": REQ}),
+SAM_SOURCE = {"ref": "pc://source/abc123abc123", "title": "s",
+              "chars": 24, "sections": 2,
+              "recipients": [{"agent": "pd_marty", "order_id": "o9",
+                              "set_by": "sales_sam", "at": "t"}]}
+PAY = {"sales_sam": ("sales_sam", {"request": REQ,
+                                   "source": SAM_SOURCE}),
        "pd_marty": ("pd_marty", {"concept": CONCEPT,
                                         "structure": STRUCT}),
        "explain_cleo": ("explain_cleo", {"concepts": CONCEPTS}),
@@ -210,12 +240,7 @@ os.makedirs(od)
 with open(os.path.join(od, "meta.json"), "w", encoding="utf-8") as f:
     json.dump({"answers": {"audience": "a", "length": "b", "depth": "c",
                            "theme": "d"},
-               "files": {"source": "s.pdf",
-                         "pc_ref": "pc://source/abc123abc123",
-                         "pc_title": "s", "pc_sections": 2,
-                         "pc_chars": 24}}, f)
-with open(os.path.join(od, "parsed.md"), "w", encoding="utf-8") as f:
-    f.write("# T\n\n## 1.1 A\n\ntext\n")
+               "files": {"source": "s.pdf"}}, f)
 real_orders = flow.ORDERS_DIR
 flow.ORDERS_DIR = os.path.join(tmp, "orders")
 try:
@@ -230,7 +255,8 @@ ok(st["state"] == "done" and st["flow_id"] == "default"
    and st["order_id"] == "o9", "STATUS done with ids")
 sam = results.load_result(os.path.join(rdir, "sales_sam", "result.json"))
 ok(sam["status"] == "checked"
-   and sam["categories"]["request"]["version"] == 1, "sam checked")
+   and sam["categories"]["request"]["version"] == 1
+   and sam["categories"]["source"]["version"] == 3, "sam checked")
 mar = results.load_result(os.path.join(rdir, "pd_marty", "result.json"))
 ok(mar["status"] == "checked"
    and mar["categories"]["concept"]["version"] == 1
@@ -242,12 +268,12 @@ ok(cleo["status"] == "checked"
 rex = results.load_result(os.path.join(rdir, "case_rex", "result.json"))
 ok(rex["status"] == "checked"
    and rex["categories"]["cases"]["version"] == 1, "rex checked")
-ores = results.load_result(os.path.join(rdir, "order", "result.json"))
-osrc = ores["categories"]["source"]
-ok(osrc["version"] == 2
-   and osrc["data"]["ref"] == "pc://source/abc123abc123"
-   and osrc["data"]["sections"] == 2
-   and os.path.isfile(osrc["data"]["file"]), "order source is v2 pointer")
+ssrc = sam["categories"]["source"]
+ok(ssrc["data"]["ref"] == "pc://source/abc123abc123"
+   and ssrc["data"]["sections"] == 2
+   and ssrc["data"]["recipients"][0]["agent"] == "pd_marty"
+   and "file" not in ssrc["data"] and "head" not in ssrc["data"],
+   "sam source is v3 pointer, no sidecar")
 fin = results.load_result(os.path.join(rdir, "final", "result.json"))
 ok(fin["producer"] == "postprocess" and fin["status"] == "checked"
    and fin["categories"] == {}, "final postprocess result")
@@ -262,26 +288,50 @@ mani = json.load(open(os.path.join(rdir, "pd_marty", "INPUTS.json"),
 ok(mani["received"] == [{"sender": "sales_sam", "category": "request",
                          "version": 1,
                          "file": "received.sales_sam.request.json"},
-                        {"sender": "order", "category": "source",
-                         "version": 2,
-                         "file": "received.order.source.json"}],
+                        {"sender": "sales_sam", "category": "source",
+                         "version": 3,
+                         "file": "received.sales_sam.source.json"}],
    "marty manifest has request + source")
 cmani = json.load(open(os.path.join(rdir, "explain_cleo", "INPUTS.json"),
                       encoding="utf-8"))
-ok([ (r["sender"], r["category"], r["version"]) for r in
-     cmani["received"]] == [("pd_marty", "concept", 1),
-                            ("pd_marty", "structure", 2),
-                            ("order", "source", 2)],
+ok([(r["sender"], r["category"], r["version"]) for r in
+    cmani["received"]] == [("pd_marty", "concept", 1),
+                           ("pd_marty", "structure", 2),
+                           ("sales_sam", "source", 3)],
    "cleo manifest has concept + structure + source")
 evs = [json.loads(ln) for ln in
        open(os.path.join(rdir, "events.jsonl"), encoding="utf-8")]
 kinds = [e["ev"] for e in evs]
 ok(kinds[0] == "flow_start" and kinds[-1] == "flow_done"
-   and "order_ready" in kinds and kinds.count("line") == 9
+   and "order_ready" not in kinds and kinds.count("line") == 7
    and "final_ready" in kinds, "event trail complete")
-line1 = next(e for e in evs if e.get("line") == "l1")
-ok(sorted(line1["categories"]) == ["brief", "source"]
-   and line1["bytes"] > 0, "line log shows sent categories")
+line2 = next(e for e in evs if e.get("line") == "l2")
+ok(sorted(line2["categories"]) == ["request", "source"]
+   and line2["bytes"] > 0, "line log shows sent categories")
+
+calls = []
+
+
+def stub2(agent_dir, run_dir, brief, input_md):
+    calls.append(os.path.basename(run_dir))
+    return stub(agent_dir, run_dir, brief, input_md)
+
+
+flow.ORDERS_DIR = os.path.join(tmp, "orders")
+try:
+    out = flow.run_flow(dflt, "o9", stub2,
+                        runs_root=os.path.join(tmp, "runs"),
+                        run_id="rid1b")
+finally:
+    flow.ORDERS_DIR = real_orders
+evs2 = [json.loads(ln) for ln in
+        open(os.path.join(tmp, "runs", "rid1b", "events.jsonl"),
+             encoding="utf-8")]
+ok(out.get("ok") and "sales_sam" not in calls
+   and any(e.get("ev") == "agent_done"
+           and e.get("agent") == "sales_sam"
+           and e.get("reused") for e in evs2),
+   "sam reuses stored order result")
 
 flow.ORDERS_DIR = os.path.join(tmp, "orders")
 try:
@@ -294,61 +344,78 @@ ok(not out.get("ok") and "no such order" in out.get("error", ""),
 npc = os.path.join(tmp, "orders", "o8")
 os.makedirs(npc)
 with open(os.path.join(npc, "meta.json"), "w", encoding="utf-8") as f:
-    json.dump({"answers": {"audience": "a", "length": "b", "depth": "c",
-                           "theme": "d"},
+    json.dump({"answers": {"audience": "a"},
                "files": {"source": "s.pdf"}}, f)
-with open(os.path.join(npc, "parsed.md"), "w", encoding="utf-8") as f:
-    f.write("# T\n\ntext\n")
 flow.ORDERS_DIR = os.path.join(tmp, "orders")
 try:
     out = flow.run_flow(dflt, "o8", stub,
                         runs_root=os.path.join(tmp, "runs"), run_id="rid0")
 finally:
     flow.ORDERS_DIR = real_orders
-ok(not out.get("ok") and "no PC entry" in out.get("error", ""),
-   "order without PC entry fails fast")
+ok(not out.get("ok") and "misses answers" in out.get("error", ""),
+   "order without answers fails fast")
 from agents._frame import pc as _pc  # noqa: E402
 sp = os.path.join(tmp, "runs", "rid9", "explain_cleo")
 os.makedirs(sp)
-with open(os.path.join(sp, "struct.json"), "w", encoding="utf-8") as f:
-    json.dump({"data": {"parts": [{"id": "p1",
-                                   "heading": "1.1 Getting started",
-                                   "covers": "c", "keywords": []}]},
-              "version": 1}, f)
+mp_ = os.path.join(tmp, "runs", "rid9", "pd_marty")
+os.makedirs(mp_)
+rx = os.path.join(tmp, "runs", "rid9", "case_rex")
+os.makedirs(rx)
 _pc.ROOT_OVERRIDE = tmp
 try:
     rr = _pc.ingest_source("o10", "s.pdf", "2026-10-30T07:00:00",
                            "sales_sam",
                            ["1.1 Getting started\nPreloaded text here."],
                            [], [], 0, root=tmp)
+    _pc.set_recipients("source", rr["doc_id"], "o10",
+                       ["explain_cleo", "pd_marty"], "sales_sam",
+                       root=tmp)
     os.makedirs(os.path.join(tmp, "orders", "o10"))
     with open(os.path.join(tmp, "orders", "o10", "meta.json"), "w",
               encoding="utf-8") as f:
         json.dump({"files": {"pc_ref": rr["ref"]}}, f)
+    srcfile = {"sender": "sales_sam", "category": "source",
+               "version": 3,
+               "data": {"ref": rr["ref"], "title": "s", "chars": 1,
+                        "sections": 1, "recipients": []}}
+    with open(os.path.join(sp, "received.sales_sam.source.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(srcfile, f)
+    with open(os.path.join(mp_, "received.sales_sam.source.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(srcfile, f)
+    with open(os.path.join(rx, "received.sales_sam.source.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(srcfile, f)
+    rcv = [{"sender": "sales_sam", "category": "source", "version": 3,
+            "file": "received.sales_sam.source.json"}]
     md = flow._render_inputs_md(
-        {"order_id": "o10", "answers": {"audience": "a"}},
-        [{"sender": "pd_marty", "category": "structure",
-          "file": "struct.json"}], os.path.join(tmp, "runs", "rid9"),
-        "explain_cleo")
-    ok("Start prompt for Cleo" in md and "Preloaded text here." in md,
-       "cleo input preloads source sections")
+        {"order_id": "o10", "answers": {"audience": "a"}}, rcv,
+        os.path.join(tmp, "runs", "rid9"), "explain_cleo")
+    ok("## PC input" in md and "1.1 Getting started" in md
+       and rr["ref"] in md and "Preloaded text here." not in md,
+       "cleo input is map-based (no verbatim preload)")
     md2 = flow._render_inputs_md(
         {"order_id": "o10", "answers": {"audience": "a"}}, [],
         os.path.join(tmp, "runs", "rid9"), "explain_cleo")
-    ok("Start prompt" not in md2, "no structure means no preload")
+    ok("0 item(s)" in md2, "no source means empty PC input")
     md3 = flow._render_inputs_md(
-        {"order_id": "o10", "answers": {"audience": "a"}},
-        [{"sender": "pd_marty", "category": "structure",
-          "file": "struct.json"}], os.path.join(tmp, "runs", "rid9"),
-        "sales_sam")
-    ok("Start prompt" not in md3, "preload only for cleo/rex")
+        {"order_id": "o10", "answers": {"audience": "a"}}, rcv,
+        os.path.join(tmp, "runs", "rid9"), "sales_sam")
+    ok("## PC input" not in md3, "sam gets no PC input")
     md4 = flow._render_inputs_md(
-        {"order_id": "o10", "answers": {"audience": "a"}}, [],
+        {"order_id": "o10", "answers": {"audience": "a"}}, rcv,
         os.path.join(tmp, "runs", "rid9"), "pd_marty")
-    ok("1.1 Getting started" in md4
-       and "(ref: %s#s1.1)" % rr["ref"] in md4
-       and "Preloaded text here." in md4,
-       "marty input preloads full source with refs")
+    ok("## PC input" in md4 and "1.1 Getting started" in md4
+       and "Preloaded text here." not in md4,
+       "marty input is map-based like the others")
+    md5 = flow._render_inputs_md(
+        {"order_id": "o10", "answers": {"audience": "a"}}, rcv,
+        os.path.join(tmp, "runs", "rid9"), "case_rex")
+    ok("## PC input" in md5 and "no access to 1 other item(s)" in md5
+       and "### Source" not in md5
+       and "1.1 Getting started" not in md5,
+       "unlisted agent gets no chunk for the entry")
     tr = _pc.ingest_theory("https://ex.test/t9", "Picked Theory",
                            "ex.test", "2024-01-01",
                            "2026-10-30T00:00:00", "explain_cleo",

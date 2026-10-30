@@ -124,8 +124,8 @@ This file doubles as the system prompt: the runner sends it verbatim.
 
 ## 9. Flow participation (OPTIONAL)
 
-Why: the Flow tab wires crew into pipelines (Order → Sam → Marty →
-Final video). Connections live ONLY in the flow file
+Why: the Flow tab wires crew into pipelines (Sam → Marty → Cleo, Rex →
+Final storyboard). Connections live ONLY in the flow file
 (`data/flows/<id>.json`): an agent declares what it consumes and
 produces, never where results go. This section is the contract that
 makes lines checkable and handoffs safe.
@@ -157,9 +157,10 @@ Rules:
 - Every named category MUST exist in `agents/_frame/categories.json`.
   Agents without `flow` cannot join a flow; agents without a writer
   tool are drafts (display only, never run).
-- The runner is unchanged: a flow run composes one `input.md` (sections
-  labeled by sender/category) plus an `INPUTS.json` manifest and calls
-  the normal bounded loop.
+- The runner is unchanged: a flow run composes one `INPUTS.md` (order
+  brief, sections labeled by sender/category, recipients-gated PC input)
+  plus an `INPUTS.json` manifest and calls the normal bounded loop.
+  Agents with no required inputs may start a flow.
 
 Category registry (`agents/_frame/categories.json`): one entry per
 result category: `version` (integer, starts at 1), `description`, and a

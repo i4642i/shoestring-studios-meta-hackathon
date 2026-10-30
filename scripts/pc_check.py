@@ -539,10 +539,14 @@ try:
     with open(os.path.join(tmp2, "orders", "ord-20261030-009",
                             "meta.json"), "w", encoding="utf-8") as f:
         json.dump({"files": {"pc_ref": r3["ref"]}}, f)
+    pc.set_recipients("source", r3["doc_id"], "ord-20261030-009",
+                        ["explain_cleo"], "sales_sam", root=tmp2)
     cleo = {"agent_dir": os.path.join(tmp2, "agents", "explain_cleo"),
-            "order_id": "ord-20261030-009"}
+            "producer": "explain_cleo", "order_id": "ord-20261030-009"}
     sam = {"agent_dir": os.path.join(tmp2, "agents", "sales_sam"),
-           "order_id": "ord-20261030-009"}
+           "producer": "sales_sam", "order_id": "ord-20261030-009"}
+    rex = {"agent_dir": os.path.join(tmp2, "agents", "explain_cleo"),
+           "producer": "case_rex", "order_id": "ord-20261030-009"}
     lst = tmod.pc_list_source(cleo, {})
     ok(lst["ref"] == r3["ref"] and lst["sections"][0]["n"] == "1.1",
        "pc_list_source lists entry sections")
@@ -565,6 +569,54 @@ try:
     noref = tmod.pc_list_source(
         {"agent_dir": cleo["agent_dir"], "order_id": "ord-missing"}, {})
     ok("error" in noref, "tools report a missing order entry")
+    ok(tmod.pc_list_source(rex, {}).get("error")
+       == "no access to this item",
+       "unlisted agent refused on list")
+    ok(tmod.pc_read_source(rex, {"section": "1.1"}).get("error")
+       == "no access to this item",
+       "unlisted agent refused on read")
+    ok(tmod.open_ref(
+        rex, {"ref": r3["ref"] + "#s1.1/p2"}).get("error")
+       == "no access to this item",
+       "unlisted agent refused on open_ref")
+    full = tmod.pc_read_source(cleo, {"ref": r3["ref"]})
+    ok(full.get("kind") == "full-text"
+       and "Body tools here." in full.get("text", ""),
+       "bare entry ref reads the whole entry")
+    ent = pc.load_entry_by_ref(r3["ref"], root=tmp2)
+    ok(pc.may_read(ent, "explain_cleo", "ord-20261030-009")
+       and not pc.may_read(ent, "case_rex", "ord-20261030-009")
+       and not pc.may_read(ent, "explain_cleo", "ord-other"),
+       "may_read gates agent + order")
+    del ent["recipients"]
+    ok(pc.may_read(ent, "anyone", "ord-20261030-009"),
+       "legacy entry without recipients stays open")
+    rows = pc.set_recipients("source", r3["doc_id"], "ord-20261030-009",
+                             ["case_rex"], "sales_sam", root=tmp2)
+    ok(sorted(r["agent"] for r in rows
+              if r["order_id"] == "ord-20261030-009")
+       == ["case_rex", "explain_cleo"],
+       "set_recipients merges per agent")
+    md = pc.entry_markdown(pc.load_entry_by_ref(r3["ref"], root=tmp2))
+    ok("## 1.1 Tools" in md and "(ref: %s#s1.1)" % r3["ref"] in md
+       and "Body tools here." in md,
+       "entry_markdown keeps exact headings + refs")
+    text, meta = pc.prompt_chunks_for("explain_cleo", "ord-20261030-009",
+                                      [r3["ref"]],
+                                      os.path.join(tmp2, "runs"))
+    ok(meta["included"] == [r3["ref"]] and meta["denied"] == []
+       and "s1.1 Tools" in text and r3["ref"] in text,
+       "prompt chunk includes listed entry")
+    text2, meta2 = pc.prompt_chunks_for("case_rex", "ord-20261030-009",
+                                        [r3["ref"]],
+                                        os.path.join(tmp2, "runs"))
+    ok(meta2["included"] == [r3["ref"]] and "s1.1 Tools" in text2,
+       "merged recipient gets the chunk too")
+    _t3, meta3 = pc.prompt_chunks_for("pd_marty", "ord-20261030-009",
+                                      [r3["ref"]],
+                                      os.path.join(tmp2, "runs"))
+    ok(meta3["included"] == [] and meta3["denied"] == [r3["ref"]],
+       "non-listed entry contributes no chunk")
 finally:
     pc.ROOT_OVERRIDE = None
     shutil.rmtree(tmp2, ignore_errors=True)

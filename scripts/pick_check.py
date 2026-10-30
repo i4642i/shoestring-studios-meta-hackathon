@@ -123,6 +123,17 @@ try:
         {"picks": [{"ref": p["ref"]}]}]}}}},
               open(os.path.join(rd, "explain_cleo", "result.json"),
                    "w"))
+    auto = pc.load_entry_by_ref(p["ref"], root=tmp)
+    ok(any(r.get("agent") == "explain_cleo"
+           and r.get("order_id") == "ord-20261030-001"
+           for r in auto.get("recipients", [])),
+       "picker auto-listed on pick")
+    ok(tmod.pc_read_theory(a, {"ref": p["ref"] + "#p1"}).get("error")
+       == "no access to this item",
+       "picked but unlisted agent refused")
+    _rpc, rid, _frag = pc.parse_ref(p["ref"])
+    pc.set_recipients("theory", rid, "ord-20261030-001",
+                      ["plan_ash"], "plan_ash")
     r2 = tmod.pc_read_theory(a, {"ref": p["ref"] + "#p1"})
     ok(r2.get("text", "").startswith("TWAP slices"),
        "later agent reads picked entry")
