@@ -1085,8 +1085,10 @@ Who sets the list:
   checks (no reason in the report = no access).
 
 New entries deny by default. Entries created before recipients
-(without the key) stay open. The recipient list shows on each PC
-management page.
+(without the key) stay open until the first recipients write
+converts them — note a duplicate send re-lists a shared entry for
+the new order. The recipient list shows on each PC management
+page.
 
 Stage-3 handoff grants: Ash's `storyboard_draft` scenes carry
 `handoff[]` (item, agents, why, how to use). On a passing draft

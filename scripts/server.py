@@ -1383,6 +1383,7 @@ class Handler(BaseHTTPRequestHandler):
                   "source": source}
         with open(os.path.join(d, "intake.json"), "w", encoding="utf-8") as f:
             json.dump(intake, f, ensure_ascii=False, indent=2)
+        meta = self._order_meta(d)
         meta["status"] = final_status
         self._order_save_meta(d, meta)
         with open(os.path.join(d, "report.md"), encoding="utf-8") as f:

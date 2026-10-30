@@ -929,9 +929,27 @@ def pc_send_source(ctx, args):
     indexed = _indexed("source", prof, r["doc_id"])
     worker_note = "skipped (map + index done)"
     warning = ""
-    if not (map_done and indexed) and (args or {}).get("build",
-                                                       "all") != "skip":
-        mode = "index" if map_done else ("noindex" if indexed else "all")
+    jetson_down = ""
+    if prof == "jetson":
+        try:
+            graph._adapter().jetson_health()
+        except (RuntimeError, ImportError, OSError) as exc:
+            jetson_down = str(exc)
+    if (args or {}).get("build", "all") == "skip":
+        worker_note = "skipped (build=skip)"
+    if jetson_down and map_done and not indexed \
+            and (args or {}).get("build", "all") != "skip":
+        worker_note = "skipped (map done, index skipped: jetson down)"
+        warning = ("index skipped (%s); the map is done so the crew "
+                   "can read (REBUILD INDEX when the Jetson is up)"
+                   % jetson_down)
+    if not (map_done and indexed) and not warning \
+            and (args or {}).get("build", "all") != "skip":
+        if jetson_down:
+            mode = "noindex"
+        else:
+            mode = "index" if map_done else ("noindex" if indexed
+                                             else "all")
         try:
             done = subprocess.run(
                 [sys.executable, os.path.join("scripts",
@@ -1014,7 +1032,8 @@ def pc_set_recipients(ctx, args):
     bad = [a for a in agents
            if not os.path.isfile(os.path.join(aroot, a, "agent.json"))]
     if bad:
-        return {"error": "unknown agents: %s" % ", ".join(bad)}
+        return {"error": "unknown agents: %s (use agent ids, e.g. "
+                         "pd_marty, explain_cleo, case_rex)" % ", ".join(bad)}
     order_id = ctx.get("order_id", "")
     ref = pc.order_entry_ref(order_id)
     if not ref:

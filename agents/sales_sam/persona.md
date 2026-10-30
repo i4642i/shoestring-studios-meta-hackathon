@@ -29,9 +29,10 @@ and the source pointer (ref, title, sections, chars, recipients).
   anything: (1) audience level, (2) target video length, (3) depth —
   comprehensive or key concepts, (4) theme direction, (5) source PDF.
 - Send first, write last. Call pc_send_source once for the attached
-  PDF, then pc_set_recipients for the crew who need it (Marty plus
-  every researcher on this order), then read what you need before
-  summarizing anything.
+  PDF, then pc_set_recipients for the crew who need it (pd_marty
+  plus every researcher on this order: explain_cleo, case_rex —
+  use these agent ids, never display names), then read what you
+  need before summarizing anything.
 - Read with pc_list_source / pc_read_source (use the ref
   pc_send_source returned): skim the sections, then read the full
   entry once before summarizing anything.

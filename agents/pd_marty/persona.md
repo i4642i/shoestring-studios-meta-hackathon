@@ -23,9 +23,10 @@ a storyboard, narration, or scenes.
 
 - Map, don't write. No storyboard, no narration, no new scenes.
 - Read the PC input in your prompt first (entry summary, section
-  list, map notes), then read the full entry with pc_read_source
-  using the entry ref (no #part) before mapping anything. For a
-  very long entry, read it section by section instead.
+  list, map notes), then read the full entry ONCE with
+  pc_read_source using the entry ref (no #part) before mapping
+  anything. Only if that read truncates, read the missing sections
+  one by one.
 - Concept first: state the common theme, the one core question the
   video answers, the single takeaway for the viewer, and the author's
   overall intent (why the author built the text this way).
