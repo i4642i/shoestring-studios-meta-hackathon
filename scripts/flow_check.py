@@ -41,6 +41,28 @@ ok(sorted(c["name"] for c in cat["categories"])
    "catalog has 5 categories")
 ok(all((a.get("color") or "").startswith("#") for a in cat["agents"]),
    "catalog colors")
+
+# ---- page stamp tracks served code (ancestry, not equality) ----
+import re as _re
+import subprocess as _sp
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import server as _srv  # noqa: E402
+_mm = _re.search(r'const PAGE_BUILD = "([0-9a-f]{40})";',
+                 open(os.path.join(ROOT, "index.html"),
+                      encoding="utf-8").read())
+_stamp = _mm.group(1) if _mm else ""
+_head = _sp.run(["git", "log", "-1", "--format=%H", "--"]
+                + list(_srv.VERSION_PATHS),
+                cwd=ROOT, capture_output=True,
+                text=True).stdout.strip()
+if _stamp and _head and _stamp != _head:
+    _anc = _sp.run(["git", "merge-base", "--is-ancestor",
+                    _stamp, _head],
+                   cwd=ROOT).returncode == 0
+else:
+    _anc = _stamp == _head
+ok(bool(_stamp) and bool(_head) and (_stamp == _head or _anc),
+   "page stamp tracks served code")
 ok([o["category"] for o in cat["order"]["outputs"]] == ["brief", "source"],
    "order outputs brief+source")
 
