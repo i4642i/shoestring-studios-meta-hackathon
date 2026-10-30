@@ -114,7 +114,7 @@ def validate_draft(obj):
 
 REQUIRED_CONCEPT_TOP = ("common_theme", "core_question",
                           "viewer_takeaway", "intent_overall")
-REQUIRED_STRUCT_TOP = ("source_ref", "parts", "intent")
+REQUIRED_STRUCT_TOP = ("source_ref", "parts", "links")
 
 
 def validate_concept(obj):
@@ -208,36 +208,28 @@ def validate_structure(obj, input_md_path):
                               % (num, title, parent.get("id")))
     elif "parts" in obj:
         errors.append("parts must be a list")
-    intent = obj.get("intent")
-    if isinstance(intent, dict):
-        if not isinstance(intent.get("overall"), str) or not intent["overall"].strip():
-            errors.append("intent.overall must be a non-empty string")
-        links = intent.get("links")
-        if isinstance(links, list):
-            seen = set()
-            for j, lk in enumerate(links):
-                if not isinstance(lk, dict):
-                    errors.append("intent.links[%d] must be an object" % j)
-                    continue
-                a, b = lk.get("from"), lk.get("to")
-                if a not in ids:
-                    errors.append("intent.links[%d].from unknown part: %r" % (j, a))
-                if b not in ids:
-                    errors.append("intent.links[%d].to unknown part: %r" % (j, b))
-                if not isinstance(lk.get("why"), str) or not lk["why"].strip():
-                    errors.append("intent.links[%d] needs non-empty why" % j)
-                if isinstance(a, str) and isinstance(b, str):
-                    seen.add((a, b))
-            for i in range(1, len(ids)):
-                pair = (ids[i - 1], ids[i])
-                if pair not in seen:
-                    errors.append("missing neighbour link %s->%s" % pair)
-        elif "links" in intent:
-            errors.append("intent.links must be a list")
-        else:
-            errors.append("missing: intent.links")
-    elif "intent" in obj:
-        errors.append("intent must be an object")
+    links = obj.get("links")
+    if isinstance(links, list):
+        seen = set()
+        for j, lk in enumerate(links):
+            if not isinstance(lk, dict):
+                errors.append("links[%d] must be an object" % j)
+                continue
+            a, b = lk.get("from"), lk.get("to")
+            if a not in ids:
+                errors.append("links[%d].from unknown part: %r" % (j, a))
+            if b not in ids:
+                errors.append("links[%d].to unknown part: %r" % (j, b))
+            if not isinstance(lk.get("why"), str) or not lk["why"].strip():
+                errors.append("links[%d] needs non-empty why" % j)
+            if isinstance(a, str) and isinstance(b, str):
+                seen.add((a, b))
+        for i in range(1, len(ids)):
+            pair = (ids[i - 1], ids[i])
+            if pair not in seen:
+                errors.append("missing neighbour link %s->%s" % pair)
+    elif "links" in obj:
+        errors.append("links must be a list")
     return errors
 
 
@@ -549,8 +541,8 @@ def render_structure_v2_md(obj):
         lines.append("- %s `%s`: %s (keywords: %s) [%s]"
                      % (p["id"], p["heading"], p["covers"],
                         ", ".join(p["keywords"]), p["ref"]))
-    lines += ["", "## Author intent", "", obj["intent"]["overall"], ""]
-    for link in obj["intent"]["links"]:
+    lines += ["", "## Links", ""]
+    for link in obj["links"]:
         lines.append("- %s -> %s: %s"
                      % (link["from"], link["to"], link["why"]))
     lines.append("")

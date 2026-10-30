@@ -118,10 +118,27 @@ def _retry_writer(agent, messages, ctx, play, writer, writer_arg,
         if m.get("role") == "assistant" and m.get("tool_calls"):
             last = m
             break
+    shape_hint = ""
+    if last is not None:
+        for tc in last.get("tool_calls", []):
+            fn = tc.get("function", {}) or {}
+            if fn.get("name") != writer:
+                continue
+            try:
+                call_args = json.loads(fn.get("arguments", "") or "{}")
+            except ValueError:
+                break
+            inner = call_args.get(writer_arg)
+            if isinstance(inner, dict):
+                shape_hint = (" The object goes under the %r argument "
+                              "and must keep exactly these top-level "
+                              "keys: %s."
+                              % (writer_arg, ", ".join(sorted(inner))))
+            break
     ask = ("Your last %s call failed validation:\n%s\n"
-           "Reply with ONLY the corrected, complete JSON object. "
+           "Reply with ONLY the corrected, complete JSON object.%s "
            "No explanation, no tool calls."
-           % (writer, "\n".join("- " + e for e in errors)))
+           % (writer, "\n".join("- " + e for e in errors), shape_hint))
     slim = [{"role": "system", "content": persona}]
     if last is not None:
         slim.append(last)
@@ -149,7 +166,8 @@ def _retry_writer(agent, messages, ctx, play, writer, writer_arg,
                          "Correction accepted and saved to %s." % result.get("path")})
     else:
         messages.append({"role": "user", "content":
-                         "Correction still failing:\n%s\nFix it and call %s again."
+                         "Correction still failing:\n%s\nDo not read "
+                         "anything else; fix it and call %s again now."
                          % ("\n".join("- " + e for e in result.get("errors", ["unknown error"])),
                             writer)})
     tool_ev = {"ev": "tool", "step": step, "tool": writer, "retry": True, "ok": ok}

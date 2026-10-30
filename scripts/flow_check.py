@@ -180,7 +180,7 @@ STRUCT = {"source_ref": "pc://source/abc123abc123",
           "parts": [{"id": "p1", "heading": "h",
                      "ref": "pc://source/abc123abc123#s1",
                      "covers": "x", "keywords": ["k"]}],
-          "intent": {"overall": "o", "links": []}}
+          "links": []}
 CONCEPTS = {"parts": [{"part_id": "p1", "concept_name": "c",
                        "easy_explanation": "e",
                        "why_it_came_about": "w",

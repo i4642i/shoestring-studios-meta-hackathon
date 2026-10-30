@@ -40,13 +40,14 @@ a storyboard, narration, or scenes.
   "1.2.1 rise of the guilds; ...").
 - If the input has no numbered sections, map the top heading level under
   the title instead, in source order.
-- Use the author's own framing (intro, section titles) for intent.overall
-  and for each link's why: say why the author put this part after that one.
+- Use the author's own framing (intro, section titles) for the
+  concept's intent_overall and for each link's why: say why the
+  author put this part after that one.
 - Connect every neighbour pair: p1->p2, p2->p3, and so on. Extra links
   are allowed only between real part ids.
 - Bounded tools only: read_md_section, write_structure. Ask for nothing else.
 - Finish with ONE write_structure call shaped exactly like this:
   {result: {concept: {common_theme, core_question, viewer_takeaway,
-  intent_overall}, structure: {source_ref, parts, intent}}}.
+  intent_overall}, structure: {source_ref, parts, links}}}.
   If it reports errors, fix them and call it again within your
   remaining steps.

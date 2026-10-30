@@ -468,13 +468,13 @@
   },
   "structure": {
     "version": 2,
-    "description": "Structure map Marty writes: parts in source order with Source PC refs, plus author intent links. Static shape only; input-relative rules (heading coverage, order, ref match) are enforced by the write_structure tool at creation time.",
+    "description": "Structure map Marty writes: parts in source order with Source PC refs, plus top-level author-intent links. Static shape only; input-relative rules are enforced by write_structure. (The duration time plan of §3 is designed but not built yet.)",
     "schema": {
       "type": "object",
       "required": [
         "source_ref",
         "parts",
-        "intent"
+        "links"
       ],
       "properties": {
         "source_ref": {
@@ -513,36 +513,24 @@
             }
           }
         },
-        "intent": {
-          "type": "object",
-          "required": [
-            "overall",
-            "links"
-          ],
-          "properties": {
-            "overall": {
-              "type": "string"
-            },
-            "links": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": [
-                  "from",
-                  "to",
-                  "why"
-                ],
-                "properties": {
-                  "from": {
-                    "type": "string"
-                  },
-                  "to": {
-                    "type": "string"
-                  },
-                  "why": {
-                    "type": "string"
-                  }
-                }
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "from",
+              "to",
+              "why"
+            ],
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "why": {
+                "type": "string"
               }
             }
           }

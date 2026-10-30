@@ -145,8 +145,8 @@ struct = {"source_ref": SREF,
                     {"id": "p2", "heading": "1.2 Beta",
                      "ref": SREF + "#s1.2", "covers": "y",
                      "keywords": ["k"]}],
-          "intent": {"overall": "o",
-                     "links": [{"from": "p1", "to": "p2", "why": "w"}]}}
+          "links": [{"from": "p1", "to": "p2", "why": "w"}]}
+
 ctx2 = dict(ctx, input_md=mdp, producer="pd_marty", run_id="r10")
 out2 = write_structure(ctx2, {"result": {"concept": dict(CONCEPT),
                                       "structure": struct}})
