@@ -467,7 +467,7 @@
   color: var(--ink); }
 .fl-node .sub { color: #4b5563; font-size: 12px; margin-bottom: 2px; }
 .fl-node .req { color: #374151; font-size: 11px; }
-.fl-node .dtag { display: inline-block; font-size: 10px; font-weight: 800;
+.dtag { display: inline-block; font-size: 10px; font-weight: 800;
   letter-spacing: 1px; color: #4b5563; background: #e5e7eb;
   border-radius: 4px; padding: 1px 6px; margin: 3px 4px 0 0; }
 .fl-node .del { float: right; cursor: pointer; color: #9ca3af;
@@ -502,6 +502,25 @@
 #fl-problems { color: #b91c1c; }
 #fl-err { color: #b91c1c; font-weight: 600; }
 #fl-status { color: var(--dim); font-size: 12px; margin-left: 8px; }
+#fl-main { display: flex; gap: 12px; align-items: flex-start; }
+#fl-crew { width: 236px; flex: none; background: #fff;
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+  max-height: 480px; overflow-y: auto; }
+#fl-crew h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: 2px;
+  color: var(--dim); }
+.fl-member { display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px;
+  margin-bottom: 6px; background: #fff; }
+.fl-member:last-child { margin-bottom: 0; }
+.fl-member .dot { width: 12px; height: 12px; border-radius: 50%;
+  flex: none; border: 1px solid rgba(0,0,0,.25); }
+.fl-member .who { flex: 1 1 auto; min-width: 0; }
+.fl-member .nm { font-size: 13px; font-weight: 700; color: var(--ink); }
+.fl-member .ti { font-size: 11px; color: var(--dim); display: block;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fl-member button { flex: none; font-size: 11px; padding: 3px 8px; }
+.fl-member.on { opacity: .45; }
+.fl-member.draftm { border-style: dashed; }
 </style>
 <div class="page" id="p-flow">
   <div class="card">
@@ -515,12 +534,14 @@
       <button id="fl-new">NEW</button>
       <span id="fl-status"></span>
     </div>
-    <div class="addform" id="fl-palette"></div>
+    <div id="fl-main">
+      <div id="fl-crew"><h4>CREW</h4><div id="fl-crewlist"></div></div>
     <div id="fl-scroll"><div id="fl-canvas">
       <svg id="fl-svg" width="1160" height="480"></svg>
       <div id="fl-nodes"></div>
       <div id="fl-linepop"></div>
     </div></div>
+    </div>
     <p id="fl-err"></p>
     <ul id="fl-problems"></ul>
     <h3>RUN</h3>
@@ -1659,7 +1680,7 @@
         x.onclick = (e) => { e.stopPropagation(); delNode(x.dataset.del); };
       });
       drawLines();
-      renderPalette();
+      renderCrew();
     }
 
     function portXY(el) {
@@ -1713,28 +1734,63 @@
       });
     }
 
-    function renderPalette() {
-      const pal = document.getElementById("fl-palette");
-      pal.innerHTML = "";
+    function renderCrew() {
+      const list = document.getElementById("fl-crewlist");
+      list.innerHTML = "";
       (S.catalog.agents || []).forEach(a => {
-        const b = document.createElement("button");
         const onCanvas = S.flow.nodes.some(n => n.id === a.id);
         const usable = !!a.flow && !a.draft;
-        b.textContent = "+ " + a.name;
+        const row = document.createElement("div");
+        row.className = "fl-member" + (onCanvas ? " on" : "") +
+          (a.draft ? " draftm" : "");
+        row.draggable = usable && !onCanvas;
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        dot.style.background = a.color || "#9ca3af";
+        const who = document.createElement("span");
+        who.className = "who";
+        const nm = document.createElement("span");
+        nm.className = "nm";
+        nm.textContent = a.name;
+        const ti = document.createElement("span");
+        ti.className = "ti";
+        ti.textContent = a.title || '';
+        who.appendChild(nm);
+        who.appendChild(ti);
+        row.appendChild(dot);
+        row.appendChild(who);
+        if (a.draft) {
+          const tag = document.createElement("span");
+          tag.className = "dtag";
+          tag.textContent = "DRAFT";
+          row.appendChild(tag);
+        }
+        const b = document.createElement("button");
+        b.textContent = "Add";
         b.disabled = onCanvas || !usable;
         b.title = a.draft ? "Draft — cannot run yet"
           : (!usable ? "Agent declares no flow I/O"
           : (onCanvas ? "On canvas" : "Add " + a.name));
-        b.onclick = () => {
-          const k = S.flow.nodes.length;
-          S.flow.nodes.push({ id: a.id });
-          S.flow.positions[a.id] =
-            [80 + (k % 4) * 250, 120 + Math.floor(k / 4) * 170];
-          render();
-          scheduleValidate();
-        };
-        pal.appendChild(b);
+        b.onclick = (e) => { e.stopPropagation(); addAgent(a.id); };
+        row.appendChild(b);
+        row.addEventListener("dragstart", e => {
+          e.dataTransfer.setData("text/agent-id", a.id);
+        });
+        list.appendChild(row);
       });
+    }
+    function addAgent(id, x, y) {
+      if (S.flow.nodes.some(n => n.id === id)) return;
+      S.flow.nodes.push({ id: id });
+      if (x == null || y == null) {
+        const k = S.flow.nodes.length;
+        x = 80 + (k % 4) * 250;
+        y = 120 + Math.floor(k / 4) * 170;
+      }
+      S.flow.positions[id] = [Math.max(0, Math.round(x - 92)),
+        Math.max(0, Math.round(y - 30))];
+      render();
+      scheduleValidate();
     }
 
     function delNode(id) {
@@ -1814,6 +1870,14 @@
       const c = canvas.getBoundingClientRect();
       return { x: e.clientX - c.left, y: e.clientY - c.top };
     }
+    canvas.addEventListener("dragover", e => { e.preventDefault(); });
+    canvas.addEventListener("drop", e => {
+      e.preventDefault();
+      const id = e.dataTransfer.getData("text/agent-id");
+      if (!id) return;
+      const c = canvas.getBoundingClientRect();
+      addAgent(id, e.clientX - c.left, e.clientY - c.top);
+    });
     nodesEl.addEventListener("pointerdown", (e) => {
       const t = e.target;
       const q = t.closest ? t.closest.bind(t) : () => null;
@@ -2066,6 +2130,24 @@
     function status(t) {
       document.getElementById("fl-status").textContent = t || "";
     }
+    document.addEventListener("keydown", e => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const tag = (document.activeElement || {}).tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA")
+        return;
+      const page = document.getElementById("p-flow");
+      if (!page || !page.classList.contains("active")) return;
+      if (S.selLine) {
+        S.flow.lines = S.flow.lines.filter(l => l.id !== S.selLine);
+        S.selLine = null;
+        hidePop();
+        render();
+        scheduleValidate();
+      } else if (S.selNode) {
+        e.preventDefault();
+        delNode(S.selNode);
+      }
+    });
     S.catalog = { agents: [], order: { outputs: [] } };
     S.flow = blankFlow();
     render();

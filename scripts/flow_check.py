@@ -39,6 +39,8 @@ ok("sales_sam" in [a["id"] for a in cat["agents"] if a.get("flow")],
 ok(sorted(c["name"] for c in cat["categories"])
    == ["brief", "request", "source", "structure", "video"],
    "catalog has 5 categories")
+ok(all((a.get("color") or "").startswith("#") for a in cat["agents"]),
+   "catalog colors")
 ok([o["category"] for o in cat["order"]["outputs"]] == ["brief", "source"],
    "order outputs brief+source")
 
