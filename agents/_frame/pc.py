@@ -476,15 +476,28 @@ _EXAMPLE_RE = re.compile(r"\b(for example|e\.g\.|i\.e\.|consider|suppose"
 _NUMBER_RE = re.compile(r"\b\d+(?:[.,]\d+)*%?\b")
 
 
+_NOCID_RE = re.compile(r"\(cid:\d+\)")
+_DOTTED_RE = re.compile(r"^\d+(?:\.\d+)+$")
+
+
 def omitted_candidates(section):
     """Code-detected per-section candidates: numbers, formulas,
     figure/table mentions, lists, example sentences — each with its
-    exact "pN" see ref."""
+    exact "pN" see ref. Formula and figure/table candidates carry
+    their text so coverage can be judged on words, not ranges.
+    (cid:N) bullets and dotted section numbers are not values."""
     out = []
+    caps = {}
+    for o in (section.get("figures", []) or []) + \
+            (section.get("tables", []) or []):
+        caps[o.get("addr", "")] = o.get("caption", "")
     for k, p in enumerate(section.get("paras", []), 1):
         see = "p%d" % k
         text = p.get("text", "")
-        for m in _NUMBER_RE.findall(text):
+        clean = _NOCID_RE.sub(" ", text)
+        for m in _NUMBER_RE.findall(clean):
+            if _DOTTED_RE.match(m):
+                continue
             out.append({"what": "number " + m, "see": see})
         if _EXAMPLE_RE.search(text):
             out.append({"what": "example: " + text[:80], "see": see})
@@ -494,12 +507,14 @@ def omitted_candidates(section):
             out.append({"what": "list: " + text[:80], "see": see})
         for h in sorted(p.get("has", [])):
             if h.startswith("tab"):
-                kind = "table"
+                out.append({"what": "table: "
+                                    + caps.get(h, h)[:60], "see": see})
             elif h.startswith("fig"):
-                kind = "figure"
+                out.append({"what": "figure: "
+                                    + caps.get(h, h)[:60], "see": see})
             else:
-                kind = "formula"
-            out.append({"what": "%s %s" % (kind, h), "see": see})
+                out.append({"what": "formula: " + text[:80],
+                            "see": see})
     return out
 
 
@@ -526,12 +541,9 @@ def _sentence_initial(text, pos):
     return pre.strip() == "" or bool(_SENT_END_RE.search(pre))
 
 
-def key_terms(section):
-    """Real terms in first-seen order: quoted spans, bold spans,
-    multi-word capitalized phrases, and single capitalized words that
-    also occur mid-sentence. Sentence-initial-only words are not
-    terms and are dropped, as are singles already covered by a kept
-    phrase ("TYPES" inside "TYPES OF DATA")."""
+def _collect_terms(section):
+    """All candidate terms with origin: 0 quoted/bold, 1 phrase,
+    2 mid-sentence single. First-seen dict order."""
     seen = {}
 
     def add(t, origin):
@@ -566,11 +578,45 @@ def key_terms(section):
         for m in re.finditer(r"[A-Za-z][A-Za-z\-']*", text):
             if m.group(0) in mid:
                 add(m.group(0), 2)
+    return seen
+
+
+def key_terms(section):
+    """Real terms in first-seen order: quoted spans, bold spans,
+    multi-word capitalized phrases, and single capitalized words that
+    also occur mid-sentence. Sentence-initial-only words are not
+    terms and are dropped, as are singles already covered by a kept
+    phrase ("TYPES" inside "TYPES OF DATA")."""
+    seen = _collect_terms(section)
     keepers = [t for t, o in seen.items() if o < 2]
     return [t for t, o in seen.items()
             if o < 2 or (t.lower() not in _TERM_STOP and not any(
                 re.search(r"\b%s\b" % re.escape(t), k)
                 for k in keepers if k != t))]
+
+
+TERMS_PER_SECTION = 15
+
+
+def rank_key_terms(section):
+    """Full term list, best first: occurrence count, +2 when
+    multi-word, +3 when quoted/bold. First-seen breaks ties."""
+    seen = _collect_terms(section)
+    text = "\n".join(p.get("text", "")
+                     for p in section.get("paras", []))
+    scored = []
+    for t, o in seen.items():
+        n = len(re.findall(r"\b%s\b" % re.escape(t), text,
+                           re.IGNORECASE))
+        score = n + (2 if " " in t else 0) + (3 if o == 0 else 0)
+        scored.append((t, o, score))
+    keepers = [t for t, o, _s in scored if o < 2]
+    out = [x for x in scored
+           if x[1] < 2 or (x[0].lower() not in _TERM_STOP and not any(
+               re.search(r"\b%s\b" % re.escape(x[0]), k)
+               for k in keepers if k != x[0]))]
+    out.sort(key=lambda x: -x[2])
+    return [t for t, _o, _s in out]
 
 
 # ---- see ranges (§10.2-10.3) ----
@@ -593,16 +639,67 @@ def check_see(see, n_paras):
     return bool(cov) and max(cov) <= n_paras
 
 
-def resolve_omitted(candidates, summaries):
-    """Candidates not covered by any summary see-range stay omitted."""
+def _content_words(s):
+    return [w.lower() for w in re.findall(r"[A-Za-z]{4,}", s or "")
+            if w.lower() not in _TERM_STOP]
+
+
+def _stated_in(sentences, kind, body):
+    """True when some summary sentence actually states the candidate:
+    numbers/mentions by exact value, the rest by 2+ shared content
+    words. Case-like examples are judged as examples."""
+    if kind == "number":
+        num = re.sub(r"[,\s%]", "", body).lower()
+        return bool(num) and any(
+            num in re.sub(r"[,\s%]", "", st).lower()
+            for st in sentences)
+    if kind == "mention":
+        m = re.search(r"(Figure|Fig\.|Table|Tab\.|Exhibit)\s+(\S+)", body)
+        if not m:
+            return False
+        num = m.group(2).rstrip(".,;:")
+        return any(
+            ("fig" in st.lower() or "table" in st.lower()
+             or "exhibit" in st.lower())
+            and re.search(r"(?<![\d.])%s(?![\d.])" % re.escape(num), st)
+            for st in sentences)
+    keys = set(_content_words(body))
+    if len(keys) < 2:
+        return False
+    return any(len(keys & set(_content_words(st))) >= 2
+               for st in sentences)
+
+
+def resolve_omitted(candidates, summaries, base=None):
+    """Candidates the summary text does not state stay omitted, each
+    with its exact ref (base + "/pN") when base is given. Candidates
+    without a known kind keep the old see-range rule. Identical whats
+    merge into their first occurrence: same value, same verdict."""
+    sentences = [s.get("text", "") for s in summaries or []]
     covered = set()
     for s in summaries or []:
         covered |= _expand(s.get("see", ""))
-    out = []
+    out, seen_whats = [], set()
     for c in candidates or []:
-        m = re.match(r"^p(\d+)$", c.get("see", ""))
-        if not m or int(m.group(1)) not in covered:
-            out.append(c)
+        what = c.get("what", "")
+        if what in seen_whats:
+            continue
+        seen_whats.add(what)
+        kind = what.split(":", 1)[0] if ": " in what \
+            else what.split(" ", 1)[0]
+        if kind in ("number", "mention", "example", "list", "formula",
+                    "figure", "table"):
+            body = what.split(": ", 1)[1] if ": " in what \
+                else what[len(kind):].strip()
+            stated = _stated_in(sentences, kind, body)
+        else:
+            m = re.match(r"^p(\d+)$", c.get("see", ""))
+            stated = bool(m) and int(m.group(1)) in covered
+        if not stated:
+            d = dict(c)
+            if base:
+                d["ref"] = "%s/%s" % (base, c.get("see", ""))
+            out.append(d)
     return out
 
 
@@ -762,6 +859,9 @@ def ingest_source(order_id, base, parsed_at, added_by, pages, images,
     entry = build_entry(doc_id, title, base or "", order_id, parsed_at,
                         added_by, sections, images, tables)
     _attach_bold(entry["paragraphs"], marks)
+    for s in entry["sections"]:
+        ps = entry["paragraphs"][s["start"]:s["start"] + s["count"]]
+        s["terms_all"] = rank_key_terms({"paras": ps})
     os.makedirs(os.path.join(edir, "figures"), exist_ok=True)
     with open(ep, "w", encoding="utf-8") as f:
         json.dump(entry, f, ensure_ascii=False, indent=2)
@@ -905,7 +1005,8 @@ def start_prompt_for(name, structure, entry, map_data=None,
         if ms.get("omitted"):
             lines.append("Omitted (look these up, never guess): "
                          + "; ".join("%s [%s]" % (o.get("what"),
-                                                  o.get("see"))
+                                                  o.get("ref",
+                                                        o.get("see")))
                                      for o in ms["omitted"]))
         lines.append("")
     lines += ["### How to read more",

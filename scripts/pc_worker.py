@@ -238,11 +238,13 @@ def build_map(entry, model):
         if s.get("non_content"):
             continue
         paras = flat[s["start"]:s["start"] + s["count"]]
-        sec = {"n": s["n"], "heading": s["heading"], "paras": paras}
+        sec = {"n": s["n"], "heading": s["heading"], "paras": paras,
+               "figures": entry.get("figures", []),
+               "tables": entry.get("tables", [])}
         items, miss = _section_map(model, s["n"], s["heading"], paras,
                                    stats)
         missing += 1 if miss else 0
-        has, terms = [], list(pc.key_terms(sec))
+        has, terms = [], pc.rank_key_terms(sec)[:pc.TERMS_PER_SECTION]
         for fig in entry.get("figures", []):
             if _sec_no(fig["addr"]) != s["n"]:
                 continue
@@ -250,7 +252,7 @@ def build_map(entry, model):
                         "caption": fig.get("caption", ""),
                         "desc": _fig_desc(fig)})
             for t in pc.caption_terms(fig.get("caption", "")):
-                if t not in terms:
+                if t not in terms and len(terms) < pc.TERMS_PER_SECTION:
                     terms.append(t)
         for tab in entry.get("tables", []):
             if _sec_no(tab["addr"]) != s["n"]:
@@ -259,12 +261,13 @@ def build_map(entry, model):
                         "caption": tab.get("caption", ""),
                         "desc": _tab_desc(tab)})
             for t in pc.caption_terms(tab.get("caption", "")):
-                if t not in terms:
+                if t not in terms and len(terms) < pc.TERMS_PER_SECTION:
                     terms.append(t)
         out.append({"ref": "s" + s["n"], "heading": s["heading"],
                     "summary": items,
                     "omitted": pc.resolve_omitted(
-                        pc.omitted_candidates(sec), items),
+                        pc.omitted_candidates(sec), items,
+                        entry["ref"] + "#s" + s["n"]),
                     "key_terms": terms, "has": has,
                     "chars": sum(len(p["text"]) for p in paras),
                     "subsections": list(s.get("subsections", []))})

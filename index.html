@@ -2508,6 +2508,7 @@
           const ol = document.createElement("ul");
           s.omitted.forEach((o) => {
             const li = document.createElement("li");
+            if (o.ref) li.title = o.ref;
             li.appendChild(document.createTextNode(o.what + " ["));
             li.appendChild(seeLink(s.ref, o.see));
             li.appendChild(document.createTextNode("]"));

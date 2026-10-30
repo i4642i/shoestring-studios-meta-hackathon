@@ -267,7 +267,8 @@ ok(any("apples" in c["what"] and c["see"] == "p2" for c in lc),
 ph = pc.split_sections(pc.clean_pages(["1.1 Pics\nBody here."]))
 ph[0]["paras"].append({"text": "[fig1.1.1 p.1] Cap", "pages": [1],
                        "has": ["fig1.1.1"]})
-ok(any(c["what"] == "figure fig1.1.1" for c in pc.omitted_candidates(ph[0])),
+ok(any(c["what"] == "figure: fig1.1.1"
+       for c in pc.omitted_candidates(ph[0])),
    "figure tags read as figures, not formulas")
 
 # ---- captions, chunks, caption terms ----
@@ -311,6 +312,11 @@ ok("ETF trick" in kts and "Inverse Variance" in kts
    and "Risk" not in kts and "Principal" not in kts
    and "Component" not in kts and "The" not in kts,
    "key terms: curly quotes, bold, phrases; initials dropped")
+RK = {"paras": [{"text": '"Solo" fund notes Alpha Beta pairs. '
+                          'Alpha Beta repeats daily while Zed watches '
+                          'Zed closely.'}]}
+ok(pc.rank_key_terms(RK) == ["Solo", "Alpha Beta", "Zed"],
+   "terms ranked: quoted beats frequent, phrases beat singles")
 
 # ---- see ranges ----
 ok(pc.check_see("p1-p3", 4) and pc.check_see("p4", 4),
@@ -323,6 +329,32 @@ om = pc.resolve_omitted([{"what": "a", "see": "p2"},
                         [{"text": "t", "see": "p1-p3"}])
 ok(om == [{"what": "b", "see": "p4"}],
    "covered candidates leave the omitted list")
+SUMS = [{"text": "Tick bars sample every 1,000 transactions.",
+         "see": "p1-p2"}]
+om2 = pc.resolve_omitted(
+    [{"what": "number 1,000", "see": "p1"},
+     {"what": "number 42", "see": "p2"},
+     {"what": "example: TWAP algorithms leave footprints.", "see": "p2"},
+     {"what": "mention Figure 3", "see": "p2"}], SUMS,
+    "pc://source/abc#s1.1")
+ok([c["what"] for c in om2]
+   == ["number 42", "example: TWAP algorithms leave footprints.",
+       "mention Figure 3"]
+   and om2[0]["ref"] == "pc://source/abc#s1.1/p2",
+   "omitted judged by summary text, with exact refs")
+NOC = pc.split_sections(pc.clean_pages(
+    ["1.1 Vals\n(cid:2) first (cid:2) second\nSee 2.3.1 and 42 things."]))
+nwhats = " ".join(c["what"] for c in pc.omitted_candidates(NOC[0]))
+ok("number 2" not in nwhats and "number 2.3.1" not in nwhats
+   and "number 42" in nwhats,
+   "bullets and dotted numbers are not number candidates")
+DUP = pc.resolve_omitted([{"what": "number 7", "see": "p1"},
+                           {"what": "number 7", "see": "p3"}],
+                          [{"text": "nothing here.", "see": "p1-p3"}],
+                          "pc://source/abc#s1.1")
+ok(DUP == [{"what": "number 7", "see": "p1",
+            "ref": "pc://source/abc#s1.1/p1"}],
+   "identical omitteds merge into first occurrence")
 
 # ---- start prompt for Cleo/Rex (§8.6) ----
 STRUCT = {"parts": [{"id": "p1", "heading": "1.1 Getting started",
@@ -405,6 +437,9 @@ try:
        "ingest provenance recorded")
     ok([s["n"] for s in ientry["sections"]] == ["1.1", "1.2"],
        "ingest sections split")
+    ok(all(isinstance(s.get("terms_all"), list)
+           for s in ientry["sections"]),
+       "ingest stores full ranked terms per section")
     with open(os.path.join(edir, "map.json"), encoding="utf-8") as f:
         imap = json.load(f)
     ok(imap["status"] == "pending", "ingest leaves map pending")
