@@ -67,9 +67,9 @@ ok([o["category"] for o in cat["order"]["outputs"]] == ["brief", "source"],
    "order outputs brief+source")
 
 dflt = flow.load_flow("default")
-ok([n["id"] for n in dflt["nodes"]][:4]
-   == ["order", "sales_sam", "pd_marty", "final"]
-   and len(dflt["nodes"]) == 11, "default flow +7 draft nodes")
+ok([n["id"] for n in dflt["nodes"]]
+   == ["order", "sales_sam", "pd_marty", "final"],
+   "default flow is order->sam->marty->final")
 try:
     flow.load_flow("../x")
     ok(False, "bad flow id raises")
@@ -117,6 +117,7 @@ cyc = {"nodes": [{"id": "order"}, {"id": "sales_sam"},
 ok(any(e["message"].startswith("cycle:")
        for e in flow.validate_flow(cyc)), "cycle caught")
 bad = json.loads(json.dumps(dflt))
+bad["nodes"].append({"id": "explain_cleo"})
 bad["lines"].append({"id": "ld", "from": "order", "to": "explain_cleo",
                       "categories": ["brief"]})
 errs = flow.validate_flow(bad)
