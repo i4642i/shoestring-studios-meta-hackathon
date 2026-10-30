@@ -18,7 +18,7 @@ ALLOW_MODELS = ("muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1",
 ALLOW_PREFIX = ("muse-glimmer-", "muse-spark-open-")
 AGENT_REQUIRED = ("frame_version", "id", "name", "title", "model", "tools",
                   "bounds", "io", "done")
-AGENT_OPTIONAL = ("flow",)
+AGENT_OPTIONAL = ("flow", "stage")
 
 
 def validate(path):
@@ -84,6 +84,10 @@ def validate(path):
             errs.append("agent.json missing: %s" % missing)
         if agent.get("id") != want_id:
             errs.append("id != folder name")
+        if "stage" in agent and (not isinstance(agent["stage"], int)
+                                 or isinstance(agent["stage"], bool)
+                                 or not 0 <= agent["stage"] <= 99):
+            errs.append("stage must be int 0-99")
         model = agent.get("model", "")
         if not (model in ALLOW_MODELS or model.startswith(ALLOW_PREFIX)):
             errs.append("model not on allowlist: %s" % model)

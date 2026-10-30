@@ -31,6 +31,7 @@
   "model": "meta-models/muse-spark-open-1026",
   "name": "Sam",
   "title": "Sales representative, frontline",
+  "stage": 0,
   "tools": [
     "query_graph",
     "read_md_section",

@@ -18,6 +18,12 @@ YES_LINE = "Yes, start."
 NO_LINE = "No, not yet."
 START_LINE = "Great — starting production now."
 
+NO_PROMISE_RULE = ("Never promise to do anything or claim anything is "
+                   "done or already underway (starting production, "
+                   "parsing, uploading, writing, running, preparing): "
+                   "only ask questions, confirm what you have so far, "
+                   "and say what happens after the client confirms.")
+
 _HEADING_RE = re.compile(r"^(\d+\.)+\s*\S")
 
 

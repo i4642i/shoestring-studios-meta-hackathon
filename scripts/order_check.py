@@ -49,6 +49,11 @@ ok(bool(intake.DECLINE_ACK.strip()) and len(intake.DECLINE_ACK) <= 200,
 ok("start" not in intake.DECLINE_ACK.lower()
    or "not" in intake.DECLINE_ACK.lower(),
    "decline ack promises no start")
+ok(all(v in intake.NO_PROMISE_RULE.lower()
+       for v in ("start", "pars", "upload", "writ", "runn")),
+   "no-promise rule names every action")
+ok("never promise" in intake.NO_PROMISE_RULE.lower(),
+   "no-promise rule forbids promising")
 
 # ---- sections: numbered headings become markdown headings ----
 SAMPLE = "\n".join([

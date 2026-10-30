@@ -519,10 +519,12 @@ class Handler(BaseHTTPRequestHandler):
                 continue
             agent = self._load_agent(path)
             out.append({"id": agent["id"], "name": agent["name"],
+                        "stage": agent.get("stage"),
                         "title": agent["title"], "model": agent["model"],
                         "tools": agent["tools"],
                         "appearance": self._appearance(path),
                         "graph": graph.get_status(path)["state"]})
+            out.sort(key=lambda c: (c.get("stage") if isinstance(c.get("stage"), int) else 99, c["id"]))
         return self._json(200, out)
 
     def _api_crew_detail(self, eid):
@@ -1493,8 +1495,8 @@ class Handler(BaseHTTPRequestHandler):
         system = (persona + "\n\n" + "\n".join(context)
                   + "\nAlways reply in English only: never Korean or any other "
                   "language, no matter what language the user writes in. "
-                  "Never promise to start production or claim anything "
-                  "has started. "
+                  + intake.NO_PROMISE_RULE + " "
+
                   "Keep replies to 1-3 short sentences. "
                   "Reply in plain conversational sentences only: never "
                   "output JSON, code, or tool calls.")

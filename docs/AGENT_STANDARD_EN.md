@@ -42,7 +42,7 @@ No other top-level files are allowed without updating this standard.
   "frame_version": 1,
   "id": "pd_marty",
   "name": "Marty",
-  "title": "Documentary PD, showrunner",
+  "title": "Structure writer",
   "model": "meta-models/muse-spark-open-1026",
   "tools": ["read_md_section", "write_structure"],
   "bounds": { "max_steps": 6 },
@@ -53,8 +53,8 @@ No other top-level files are allowed without updating this standard.
 
 Rules:
 
-- All fields above are REQUIRED. One OPTIONAL field exists: `flow`
-  (section 9). Anything else unknown is rejected.
+- All fields above are REQUIRED. Two OPTIONAL fields exist: `flow` (section 9) and `stage` (integer 0-99, crew-plan stage for Crew-page sorting; unstaged agents go last).
+  Anything else unknown is rejected.
 - `frame_version`: integer; the runner refuses versions it does not support.
 - `id` MUST equal the parent folder name.
 - `model` MUST be on the allowlist (D15): `meta-models/muse-spark-open-1026`
