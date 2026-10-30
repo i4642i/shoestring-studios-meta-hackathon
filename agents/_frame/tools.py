@@ -6,6 +6,9 @@ ctx: {"run_dir":..., "agent_dir":..., "input_md":...}
 import importlib.util
 import json
 import os
+import time
+import urllib.error
+import urllib.request
 
 from . import graph
 from . import pc
@@ -156,28 +159,307 @@ def pc_read_source(ctx, args):
     return out
 
 
+def _held_tools(ctx):
+    try:
+        with open(os.path.join((ctx or {}).get("agent_dir", ""),
+                               "agent.json"), encoding="utf-8") as f:
+            return json.load(f).get("tools", [])
+    except (OSError, ValueError):
+        return []
+
+
+def _need_grant(ctx, pcname):
+    need = "pc_read_" + pcname
+    if need not in _held_tools(ctx):
+        return {"error": "no read grant for %s" % pcname}
+    return None
+
+
 def open_ref(ctx, args):
     """Any-PC ref reader with grant enforcement: the caller must hold
-    pc_read_<pc>. Grants are the tools listed in its agent.json."""
+    pc_read_<pc>. Grants are the tools listed in its agent.json.
+    Theory/Article refs are picks-scoped (§13.2)."""
     ref = (args or {}).get("ref", "")
     try:
         pcname, _id, _frag = pc.parse_ref(ref)
     except ValueError:
         return {"error": "bad ref"}
-    need = "pc_read_" + pcname
-    try:
-        with open(os.path.join(ctx.get("agent_dir", ""),
-                               "agent.json"), encoding="utf-8") as f:
-            held = json.load(f).get("tools", [])
-    except (OSError, ValueError):
-        held = []
-    if need not in held:
-        return {"error": "no read grant for %s" % pcname}
+    err = _need_grant(ctx, pcname)
+    if err:
+        return err
+    err = _pick_scope_error(ctx, pcname, ref)
+    if err:
+        return err
     try:
         entry = pc.load_entry_by_ref(ref)
         return pc.open_ref(entry, ref)
     except (OSError, KeyError, ValueError) as exc:
         return {"error": str(exc)}
+
+
+# ---- Tavily web research + picks (§13.1-13.3) ----
+TAVILY_SEARCH_URL = "https://api.tavily.com/search"
+TAVILY_EXTRACT_URL = "https://api.tavily.com/extract"
+PICKERS = {"theory": "explain_cleo", "article": "case_rex"}
+FETCH_CAP = 60000
+
+
+def _tavily_key():
+    return os.environ.get("TAVILY_API_KEY", "")
+
+
+def _tavily_post(url, payload):
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError("tavily %s: %s" % (exc.code, exc.reason))
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        raise RuntimeError("tavily unreachable: %s" % exc)
+
+
+def _tavily_search(query, limit):
+    key = _tavily_key()
+    if not key:
+        raise RuntimeError("TAVILY_API_KEY missing: add it to .env")
+    data = _tavily_post(TAVILY_SEARCH_URL,
+                        {"api_key": key, "query": query,
+                         "search_depth": "basic", "max_results": limit,
+                         "include_answer": False})
+    return [{"title": h.get("title", ""), "url": h.get("url", ""),
+             "snippet": (h.get("content") or "")[:300]}
+            for h in data.get("results", [])[:limit]]
+
+
+def _tavily_extract(url):
+    key = _tavily_key()
+    if not key:
+        raise RuntimeError("TAVILY_API_KEY missing: add it to .env")
+    data = _tavily_post(TAVILY_EXTRACT_URL,
+                        {"api_key": key, "urls": [url],
+                         "extract_depth": "basic"})
+    res = (data.get("results") or [{}])[0]
+    text = res.get("content") or res.get("raw_content") or ""
+    if not text.strip():
+        fails = data.get("failed_results", [])
+        why = fails[0].get("error", "empty") if fails else "empty"
+        raise RuntimeError("extract failed for %s: %s" % (url, why))
+    return {"title": res.get("title", ""), "text": text}
+
+
+def _log_research(ctx, obj):
+    d = (ctx or {}).get("run_dir", "")
+    if not d:
+        return
+    try:
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "research.jsonl"), "a",
+                  encoding="utf-8") as f:
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def _order_picks(order_id):
+    """Union of picks[].ref across concepts/cases results for the
+    order. The reports ARE the pick set (§13.2); no new store."""
+    out = set()
+    if not order_id:
+        return out
+    try:
+        rids = os.listdir(os.path.join(pc._base(None), "runs"))
+    except OSError:
+        return out
+    for rid in rids:
+        rd = os.path.join(pc._base(None), "runs", rid)
+        try:
+            with open(os.path.join(rd, "STATUS.json"),
+                      encoding="utf-8") as f:
+                if json.load(f).get("order_id") != order_id:
+                    continue
+        except (OSError, ValueError):
+            continue
+        for ag in ("explain_cleo", "case_rex"):
+            try:
+                with open(os.path.join(rd, ag, "result.json"),
+                          encoding="utf-8") as f:
+                    res = json.load(f)
+            except (OSError, ValueError):
+                continue
+            for cat in res.get("categories", {}).values():
+                data = (cat or {}).get("data", {})
+                for part in data.get("parts", []):
+                    for pk in part.get("picks", []):
+                        if pk.get("ref"):
+                            out.add(pk["ref"])
+    return out
+
+
+def _pick_scope_error(ctx, pcname, ref):
+    """None when ctx may open ref; else an error dict. The picker
+    reads the whole PC; everyone else only entries picked for their
+    order (§13.2)."""
+    if pcname not in PICKERS:
+        return None
+    if (ctx or {}).get("producer") == PICKERS[pcname]:
+        return None
+    try:
+        epc, eid, _frag = pc.parse_ref(ref)
+    except ValueError:
+        return {"error": "bad ref"}
+    if epc != pcname:
+        return {"error": "bad ref"}
+    if pc.entry_ref(epc, eid) not in _order_picks(
+            (ctx or {}).get("order_id")):
+        return {"error": "not picked for this order"}
+    return None
+
+
+def _domain(url):
+    try:
+        from urllib.parse import urlsplit
+        host = urlsplit(url).hostname or ""
+    except ValueError:
+        return ""
+    return host[4:] if host.startswith("www.") else host
+
+
+def _first_line(text):
+    for ln in (text or "").splitlines():
+        if ln.strip() and len(ln.strip()) <= 160:
+            return ln.strip()
+    return ""
+
+
+def _pc_search(ctx, args, tool):
+    q = ((args or {}).get("query") or "").strip()
+    if not q:
+        return {"error": "give query"}
+    try:
+        limit = min(10, max(1, int((args or {}).get("max_results", 5))))
+    except (TypeError, ValueError):
+        limit = 5
+    try:
+        hits = _tavily_search(q, limit)
+    except RuntimeError as exc:
+        return {"error": str(exc)}
+    _log_research(ctx, {"ev": "search", "query": q, "tool": tool,
+                        "hits": hits})
+    return {"query": q, "hits": hits}
+
+
+def pc_search_theory(ctx, args):
+    """Web search for theory (Tavily basic). Hits stay in the run log;
+    nothing is stored until picked."""
+    return _pc_search(ctx, args, "pc_search_theory")
+
+
+def pc_search_articles(ctx, args):
+    """Web search for cases/articles (Tavily basic). Hits stay in the
+    run log; nothing is stored until picked."""
+    return _pc_search(ctx, args, "pc_search_articles")
+
+
+def _pc_pick(ctx, args, pcname):
+    args = args or {}
+    missing = [k for k in ("url", "part_id", "why_important",
+                           "how_to_use")
+               if not (args.get(k) or "").strip()]
+    if missing:
+        return {"error": "missing: " + ", ".join(missing)}
+    url = args["url"].strip()
+    try:
+        got = _tavily_extract(url)
+    except RuntimeError as exc:
+        return {"error": str(exc)}
+    text = got["text"]
+    trunc = len(text) - FETCH_CAP if len(text) > FETCH_CAP else 0
+    if trunc:
+        text = text[:FETCH_CAP]
+    title = got.get("title", "").strip() or _first_line(text) or url
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    fn = pc.ingest_theory if pcname == "theory" else pc.ingest_article
+    try:
+        r = fn(url, title, _domain(url), "", now,
+               (ctx or {}).get("producer", ""), text)
+    except (OSError, ValueError) as exc:
+        return {"error": "ingest failed: %s" % exc}
+    ev = {"ev": "pick", "ref": r["ref"], "url": url,
+          "part_id": args["part_id"].strip(),
+          "picked_by": (ctx or {}).get("producer", ""),
+          "order_id": (ctx or {}).get("order_id", ""),
+          "run_id": (ctx or {}).get("run_id", ""),
+          "reason": args["why_important"].strip(),
+          "how_to_use": args["how_to_use"].strip(),
+          "duplicate": r["duplicate"]}
+    if trunc:
+        ev["truncated_from"] = trunc + FETCH_CAP
+    _log_research(ctx, ev)
+    return {"ref": r["ref"], "doc_id": r["doc_id"],
+            "duplicate": r["duplicate"], "title": r["title"],
+            "paras": r["paras"], "chars": r["chars"],
+            "supersedes": r["supersedes"]}
+
+
+def pc_pick_theory(ctx, args):
+    """Pick a search hit into the Theory PC (full ingest) and get its
+    ref. Pick only what will be cited or read by later agents."""
+    return _pc_pick(ctx, args, "theory")
+
+
+def pc_pick_article(ctx, args):
+    """Pick a search hit into the Article PC (full ingest) and get its
+    ref. Pick only what will be cited or read by later agents."""
+    return _pc_pick(ctx, args, "article")
+
+
+def _pc_read_web(ctx, args, pcname):
+    args = args or {}
+    err = _need_grant(ctx, pcname)
+    if err:
+        return err
+    ref = (args.get("ref") or "").strip()
+    if not ref:
+        return {"error": "give ref"}
+    try:
+        rpc, _id, _frag = pc.parse_ref(ref)
+    except ValueError:
+        return {"error": "bad ref"}
+    if rpc != pcname:
+        return {"error": "pc_read_%s reads %s only; use open_ref"
+                         % (pcname, pcname)}
+    err = _pick_scope_error(ctx, pcname, ref)
+    if err:
+        return err
+    try:
+        entry = pc.load_entry_by_ref(ref)
+        out = pc.open_ref(entry, ref)
+    except (OSError, KeyError, ValueError) as exc:
+        return {"error": str(exc)}
+    try:
+        cap = int(args.get("max_chars", 8000))
+    except (TypeError, ValueError):
+        cap = 8000
+    text = out.get("text", "")
+    if len(text) > cap:
+        out["text"] = text[:cap]
+        out["truncated"] = len(text) - cap
+    return out
+
+
+def pc_read_theory(ctx, args):
+    """Read a Theory PC ref verbatim with provenance. Later agents:
+    only entries picked for their order."""
+    return _pc_read_web(ctx, args, "theory")
+
+
+def pc_read_article(ctx, args):
+    """Read an Article PC ref verbatim with provenance. Later agents:
+    only entries picked for their order."""
+    return _pc_read_web(ctx, args, "article")
 
 
 # Writer tool -> run output file. The server keeps agent.json io.output
@@ -252,9 +534,70 @@ TOOLS = {
     "open_ref": (
         open_ref,
         "Open any stable pc:// ref verbatim with provenance. Refused "
-        "without that PC's read grant.",
+        "without that PC's read grant; Theory/Article refs are "
+        "picks-scoped.",
         {"type": "object",
          "properties": {"ref": {"type": "string"}},
+         "required": ["ref"], "additionalProperties": False},
+    ),
+    "pc_search_theory": (
+        pc_search_theory,
+        "Web search for theory (Tavily basic). Hits stay in the run "
+        "log; nothing is stored until picked.",
+        {"type": "object",
+         "properties": {"query": {"type": "string"},
+                        "max_results": {"type": "integer"}},
+         "required": ["query"], "additionalProperties": False},
+    ),
+    "pc_search_articles": (
+        pc_search_articles,
+        "Web search for cases/articles (Tavily basic). Hits stay in "
+        "the run log; nothing is stored until picked.",
+        {"type": "object",
+         "properties": {"query": {"type": "string"},
+                        "max_results": {"type": "integer"}},
+         "required": ["query"], "additionalProperties": False},
+    ),
+    "pc_pick_theory": (
+        pc_pick_theory,
+        "Pick a search hit into the Theory PC (full ingest: fetch, "
+        "clean, id, addresses, map, index) and get its ref.",
+        {"type": "object",
+         "properties": {"url": {"type": "string"},
+                        "part_id": {"type": "string"},
+                        "why_important": {"type": "string"},
+                        "how_to_use": {"type": "string"}},
+         "required": ["url", "part_id", "why_important", "how_to_use"],
+         "additionalProperties": False},
+    ),
+    "pc_pick_article": (
+        pc_pick_article,
+        "Pick a search hit into the Article PC (full ingest: fetch, "
+        "clean, id, addresses, map, index) and get its ref.",
+        {"type": "object",
+         "properties": {"url": {"type": "string"},
+                        "part_id": {"type": "string"},
+                        "why_important": {"type": "string"},
+                        "how_to_use": {"type": "string"}},
+         "required": ["url", "part_id", "why_important", "how_to_use"],
+         "additionalProperties": False},
+    ),
+    "pc_read_theory": (
+        pc_read_theory,
+        "Read a Theory PC ref verbatim with provenance. Later "
+        "agents: only entries picked for their order.",
+        {"type": "object",
+         "properties": {"ref": {"type": "string"},
+                        "max_chars": {"type": "integer"}},
+         "required": ["ref"], "additionalProperties": False},
+    ),
+    "pc_read_article": (
+        pc_read_article,
+        "Read an Article PC ref verbatim with provenance. Later "
+        "agents: only entries picked for their order.",
+        {"type": "object",
+         "properties": {"ref": {"type": "string"},
+                        "max_chars": {"type": "integer"}},
          "required": ["ref"], "additionalProperties": False},
     ),
 }
