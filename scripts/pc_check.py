@@ -63,6 +63,32 @@ ok(sum("moral" in p["text"] for p in pc.clean_pages(REFRAIN)) == 2,
    "mid-page repeats kept")
 ok("42" in [p["text"] for p in pc.clean_pages(["First.\n42\nLast."])][1],
    "mid-page bare number kept")
+NH = pc.clean_pages(["28 FINANCIAL DATA\nBody page one.",
+                     "29 FINANCIAL DATA\nBody page two."])
+ok(len(NH) == 1 and "Body page one. Body page two." in NH[0]["text"],
+   "numbered running heads removed")
+RV = [x for pair in zip(
+    ["%d FINANCIAL DATA\nBody even %d." % (20 + 2 * i, i) for i in range(6)],
+    ["ODD HEAD\nBody odd %d." % i for i in range(6)])
+    for x in pair]
+RVX = [p["text"] for p in pc.clean_pages(RV)]
+ok(not any("FINANCIAL DATA" in t or "ODD HEAD" in t for t in RVX),
+   "alternating recto/verso heads removed")
+RARE = ["SHARED EDGE\nBody %d." % i for i in range(2)] + \
+    ["Unique top %d.\nBody %d." % (i, i) for i in range(10)]
+ok(sum("SHARED EDGE" in p["text"] for p in pc.clean_pages(RARE)) == 2,
+   "rare edge repeat kept")
+ZSC = pc.split_sections(
+    pc.clean_pages(["0 t t fragment\n1.1 Real\nBody."]))
+ok([s["n"] for s in ZSC] == ["0", "1.1"]
+   and ZSC[0]["paras"][0]["text"] == "0 t t fragment",
+   "zero-numbered line is not a section")
+DUP = pc.split_sections(
+    pc.clean_pages(["1.1 A\nBody a.\n\n1.1 A again\nBody b."]))
+ok([s["n"] for s in DUP] == ["1.1"]
+   and DUP[0]["subsections"] == ["1.1 A again"]
+   and len(DUP[0]["paras"]) == 4,
+   "duplicate section number demoted to subsection")
 
 # ---- cleaning: hyphen joins ----
 ok(pc.clean_pages(["The finan-\ncial result."])[0]["text"]
@@ -207,6 +233,11 @@ ok(cap == {"label": "Figure 1.1", "number": "1.1",
            "rest": "System overview"}, "figure caption parsed")
 ok(pc.parse_caption("Exhibit A Growth")["number"] == "A",
    "exhibit caption parsed")
+ok(pc.parse_caption("FIGURE2.1 Averagedailyfrequency")["number"] == "2.1",
+   "caps run-together caption parsed")
+ok(pc.parse_caption("FIGURE2.1Averagedailyfrequency") == {
+    "label": "FIGURE 2.1", "number": "2.1", "rest": "Averagedailyfrequency"},
+   "glued caption number split")
 ok(pc.parse_caption("Just body text.") is None,
    "non-caption rejected")
 ct = pc.chunk_text("pc://source/abc#fig1.1.1", "figure", "Getting started",
@@ -254,6 +285,18 @@ ok("no matching source section" in txt,
 txt2, _m2 = pc.start_prompt_for("Rex", STRUCT, entry, max_chars=20)
 ok("Start prompt for Rex" in txt2 and "truncated" in txt2,
    "start prompt truncates long sections honestly")
+MAPF = {"entry_summary": "A book about bars.",
+        "sections": [{"ref": "s1.1", "summary": [{"text": "Bars talk.",
+                                                 "see": "p1-p2"}],
+                      "key_terms": ["bars"],
+                      "omitted": [{"what": "number 42", "see": "p2"}]}]}
+txt3, _m3 = pc.start_prompt_for("Cleo", STRUCT, entry, MAPF)
+ok("A book about bars." in txt3 and "### Section list" in txt3
+   and "s1.1 Getting started" in txt3 and "Bars talk. [p1-p2]" in txt3
+   and "Terms: bars" in txt3 and "number 42 [p2]" in txt3
+   and "### How to read more" in txt3 and "open_ref" in txt3,
+   "start prompt carries summary, map, list, open_ref guide")
+ok("(map pending)" in txt, "start prompt notes a pending map")
 
 # ---- map skeleton ----
 skel = pc.blank_map(entry, "model-x")

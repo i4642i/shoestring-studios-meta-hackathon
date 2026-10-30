@@ -66,9 +66,21 @@ _BULLET_RE = re.compile(r"^(?:[-*\u2022\u2023]|\d+[.)]"
 _CAPS_RE = re.compile(r"^[A-Z0-9][A-Z0-9\s\-:;,&'\u2019]{1,60}$")
 _BARE_NUM_RE = re.compile(r"^(?:\d{1,4}|p(?:ag(?:e)?)?\.?\s*\d{1,4})$",
                            re.IGNORECASE)
+def _norm_key(line):
+    """Repeat-comparison key: whitespace-normalized, lowercased, with a
+    leading bare page number dropped (running heads vary only by it).
+    Dotted numbers ("1.1") survive: only NAMELESS digits strip."""
+    key = " ".join(line.split()).lower()
+    return re.sub(r"^\d{1,4}\s+", "", key)
+
+
 def _is_heading(line):
     m = _HEADING_RE.match(line)
-    return (m.group(1), m.group(2)) if m else None
+    if not m:
+        return None
+    if int(m.group(1).split(".")[0]) == 0:
+        return None  # "0 ..." is a math fragment, never a section
+    return (m.group(1), m.group(2))
 
 
 def _is_bullet(line):
@@ -81,20 +93,20 @@ def _is_caps(line):
 
 def _strip_zones(page_lines):
     """Drop running headers/footers: the first/last line of each page is
-    a candidate; a candidate on most pages (>= half + 1, needs >= 2
-    pages) is removed everywhere it sits in a zone. Bare page numbers
-    in zones go unconditionally."""
+    a candidate; a candidate on many pages (>= a third, at least 2)
+    is removed everywhere it sits in a zone. The bar is a third, not
+    a half, because recto/verso heads alternate and each variant sits
+    on only half the pages. Bare page numbers in zones go
+    unconditionally."""
     counts = {}
     for lines in page_lines:
         lead = [ln for ln in lines if ln[0].strip()]
         if not lead:
             continue
-        keys = {" ".join(lead[0][0].split()).lower(),
-                " ".join(lead[-1][0].split()).lower()}
-        for key in keys:
+        for key in {_norm_key(lead[0][0]), _norm_key(lead[-1][0])}:
             if len(key) >= 2:
                 counts[key] = counts.get(key, 0) + 1
-    need = len(page_lines) // 2 + 1 if len(page_lines) >= 2 else 10 ** 9
+    need = max(2, len(page_lines) // 3) if len(page_lines) >= 2 else 10 ** 9
     repeats = {k for k, n in counts.items() if n >= need}
     out = []
     for lines in page_lines:
@@ -105,7 +117,7 @@ def _strip_zones(page_lines):
             s = ln.strip()
             zone = i in zone_idx
             if zone and (_BARE_NUM_RE.match(s)
-                         or " ".join(s.split()).lower() in repeats):
+                         or _norm_key(s) in repeats):
                 continue
             keep.append((ln, pg))
         out.append(keep)
@@ -210,12 +222,14 @@ def split_sections(paras):
     a top section; deeper numbers become subsections of the current
     one). Returns [{"n", "heading", "paras", "subsections"}]."""
     secs = []
+    seen = set()
     cur = {"n": "0", "heading": "", "paras": [], "subsections": []}
     for p in paras or []:
         m = _is_heading(p["text"])
-        if m and m[0].count(".") <= 1:
+        if m and m[0].count(".") <= 1 and m[0] not in seen:
             if cur["paras"] or cur["n"] != "0":
                 secs.append(cur)
+            seen.add(m[0])
             cur = {"n": m[0], "heading": m[1], "paras": [],
                    "subsections": []}
             p = dict(p)
@@ -232,19 +246,25 @@ def split_sections(paras):
 
 
 # ---- figures and tables ----
-_CAPTION_RE = re.compile(r"^(Figure|Fig\.|Exhibit|Table|Tab\.)\s+(\S+)"
-                          r"\s*(.*)$")
+_CAPTION_RE = re.compile(r"^(Figure|Fig\.|Exhibit|Table|Tab\.)\s*(\S+)"
+                          r"\s*(.*)$", re.IGNORECASE)
 _CAP_STOP = {"figure", "fig", "table", "tab", "exhibit"}
 
 
 def parse_caption(line):
     """Split a printed caption into label/number/rest. None when the
-    line is not a caption."""
+    line is not a caption. Glued numbers ("FIGURE2.1Average...") split
+    at the end of the numeric prefix."""
     m = _CAPTION_RE.match((line or "").strip())
     if not m:
         return None
-    return {"label": "%s %s" % (m.group(1), m.group(2)),
-            "number": m.group(2), "rest": m.group(3).strip()}
+    num, rest = m.group(2), m.group(3).strip()
+    lead = re.match(r"\d+(?:\.\d+)*", num)
+    if lead and lead.group(0) != num:
+        rest = (num[lead.end():] + " " + rest).strip()
+        num = lead.group(0)
+    return {"label": "%s %s" % (m.group(1), num),
+            "number": num, "rest": rest}
 
 
 def caption_terms(caption):
@@ -603,6 +623,7 @@ def ingest_source(order_id, base, parsed_at, added_by, pages, images,
                 "title": old.get("title", ""),
                 "sections": len(old.get("sections", [])),
                 "chars": old.get("chars", 0),
+                "paras": len(old.get("paragraphs", [])),
                 "figures": len(old.get("figures", [])),
                 "tables": len(old.get("tables", []))}
     title = os.path.splitext(base or "document")[0]
@@ -629,7 +650,9 @@ def ingest_source(order_id, base, parsed_at, added_by, pages, images,
                             "skipped_decor": skipped}) + "\n")
     return {"ref": entry["ref"], "doc_id": doc_id, "duplicate": False,
             "title": entry["title"], "sections": len(entry["sections"]),
-            "chars": entry["chars"], "figures": len(entry["figures"]),
+            "chars": entry["chars"],
+            "paras": len(entry["paragraphs"]),
+            "figures": len(entry["figures"]),
             "tables": len(entry["tables"])}
 
 
@@ -655,6 +678,17 @@ def load_entry_by_ref(ref, root=None):
         return json.load(f)
 
 
+def load_map_by_ref(ref, root=None):
+    """Load the entry's map.json, or None when not built yet."""
+    try:
+        pcname, doc_id, _frag = parse_ref(ref)
+        p = os.path.join(entry_dir(pcname, doc_id, root), "map.json")
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
 def _match_section(heading, sections):
     m = re.match(r"^(\d+(?:\.\d+)*)\s+", (heading or "").strip())
     if m:
@@ -671,14 +705,30 @@ def _match_section(heading, sections):
     return None
 
 
-def start_prompt_for(name, structure, entry, max_chars=6000):
-    """Task input the runner preloads for Cleo/Rex: each structure
-    part with its source section verbatim. Returns (text, {"parts",
-    "missing"}). Long sections truncate with an honest note."""
+def start_prompt_for(name, structure, entry, map_data=None,
+                     max_chars=6000):
+    """Task input the runner preloads for Cleo/Rex (scope lock C):
+    entry summary, section list, each structure part with its source
+    section verbatim, map notes per section, and how to read more via
+    open_ref. Returns (text, {"parts", "missing"}). Long sections
+    truncate with an honest note."""
     ref = entry.get("ref", "")
     lines = ["## Start prompt for %s (Source %s)" % (name, ref),
              "For each structure part, its source section verbatim. "
              "Quote with refs; never invent.", ""]
+    if map_data and map_data.get("entry_summary"):
+        lines += ["### Entry summary", map_data["entry_summary"], ""]
+    else:
+        lines += ["### Entry summary", "(map pending)", ""]
+    lines.append("### Section list")
+    for s in entry.get("sections", []):
+        lines.append("- s%s %s (%s#s%s)" % (s["n"], s.get("heading", ""),
+                                            ref, s["n"]))
+    lines.append("")
+    by_ref = {}
+    if isinstance(map_data, dict):
+        for s in map_data.get("sections", []):
+            by_ref[s.get("ref", "")] = s
     missing = []
     parts = (structure or {}).get("parts", [])
     for part in parts:
@@ -703,7 +753,25 @@ def start_prompt_for(name, structure, entry, max_chars=6000):
         lines.append(text)
         if objs:
             lines.append("Figures/tables here: " + ", ".join(objs))
+        ms = by_ref.get("s" + sec["n"], {})
+        for b in ms.get("summary", []):
+            lines.append("- %s [%s]" % (b.get("text", ""), b.get("see")))
+        if ms.get("key_terms"):
+            lines.append("Terms: " + ", ".join(ms["key_terms"]))
+        if ms.get("omitted"):
+            lines.append("Omitted (look these up, never guess): "
+                         + "; ".join("%s [%s]" % (o.get("what"),
+                                                  o.get("see"))
+                                     for o in ms["omitted"]))
         lines.append("")
+    lines += ["### How to read more",
+              "You hold Source PC read tools. pc_list_source lists "
+              "sections; pc_read_source({section: \"1.1\"}) or "
+              "({ref: \"...\"}) reads verbatim; open_ref({ref: \"...\"}) "
+              "opens any pc:// ref you hold the grant for. Cite every "
+              "used passage as {ref, quote} with the quote verbatim; "
+              "AI-made descriptions and map summaries are navigation "
+              "only, never evidence.", ""]
     return "\n".join(lines), {"parts": len(parts), "missing": missing}
 
 

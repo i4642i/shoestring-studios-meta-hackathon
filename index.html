@@ -1721,6 +1721,9 @@
           inner += '<div class="req">needs: ' + (reqs || "—") + "</div>";
           if (a && a.draft)
             inner += '<div class="req"><span class="dtag">DRAFT</span>cannot run yet</div>';
+          if (n.id === "explain_cleo" || n.id === "case_rex")
+            inner += '<div class="req"><a href="#" data-pre="' + esc(n.id) +
+              '">Preview start prompt</a></div>';
         }
         if (n.id !== "order")
           inner += '<div class="fl-port in" data-in="' + esc(n.id) + '"></div>';
@@ -1738,8 +1741,29 @@
       nodesEl.querySelectorAll("[data-del]").forEach(x => {
         x.onclick = (e) => { e.stopPropagation(); delNode(x.dataset.del); };
       });
+      nodesEl.querySelectorAll("[data-pre]").forEach(x => {
+        x.onclick = (e) => {
+          e.stopPropagation(); e.preventDefault();
+          previewStartPrompt(x.dataset.pre).catch((err) => {
+            document.getElementById("fl-log").textContent = "Error: " + err.message;
+          });
+        };
+      });
       drawLines();
       renderCrew();
+    }
+
+    async function previewStartPrompt(eid) {
+      const box = document.getElementById("fl-log");
+      const oid = document.getElementById("fl-order").value.trim();
+      if (!oid) { box.textContent = "Enter an order id first."; return; }
+      box.textContent = "Loading start prompt…";
+      const s = await api.get("api/crew/" + eid +
+        "/start-prompt?order=" + encodeURIComponent(oid));
+      box.textContent = "Start prompt (" + eid + ", run " + s.structure_run +
+        ", " + s.parts + " parts" +
+        (s.missing.length ? ", missing: " + s.missing.join(",") : "") +
+        ")\n\n" + s.prompt;
     }
 
     function portXY(el) {

@@ -122,20 +122,35 @@ def _rows_to_md(rows):
 
 
 def _near_caption(page, box):
-    """Printed caption near a figure/table box: scan a band below, then
-    above. Returns (caption_line, number) or ("", "")."""
+    """Nearest printed caption line below a figure/table box, else
+    nearest above (within half/quarter page). Lines come from char
+    tops, not crops, so band edges never clip glyphs away. Returns
+    (caption_line, number) or ("", "")."""
     bottom, top = box[3], box[1]
-    bands = [(0, bottom, page.width, bottom + 70),
-             (0, max(0, top - 70), page.width, top)]
-    for band in bands:
-        try:
-            text = page.crop(band).extract_text() or ""
-        except Exception:  # noqa: BLE001 - weird page, no caption
-            continue
-        for ln in text.splitlines():
-            hit = pc.parse_caption(ln)
-            if hit:
-                return ln.strip(), hit["number"]
+    rows = {}
+    for ch in page.chars:
+        rows.setdefault(round(ch["top"]), []).append(ch)
+    cands = []
+    for y in sorted(rows):
+        cs = sorted(rows[y], key=lambda c: c["x0"])
+        parts = [cs[0]["text"]]
+        for a, b in zip(cs, cs[1:]):
+            if b["x0"] - a["x1"] > 1.5:
+                parts.append(" ")
+            parts.append(b["text"])
+        txt = "".join(parts)
+        if pc.parse_caption(txt):
+            cands.append((y, txt.strip()))
+    below = [(y, t) for y, t in cands
+             if bottom - 4 <= y <= bottom + page.height / 2]
+    if below:
+        _y, t = min(below)
+        return t, pc.parse_caption(t)["number"]
+    above = [(y, t) for y, t in cands
+             if top - page.height / 4 <= y <= top + 4]
+    if above:
+        _y, t = max(above)
+        return t, pc.parse_caption(t)["number"]
     return "", ""
 
 
@@ -770,7 +785,8 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, ValueError, KeyError) as exc:
             return self._json(404, {"error": "PC entry missing: %s" % exc})
         name = "Cleo" if eid == "explain_cleo" else "Rex"
-        text, meta2 = pc.start_prompt_for(name, best[1], entry)
+        mp = pc.load_map_by_ref(ref)
+        text, meta2 = pc.start_prompt_for(name, best[1], entry, mp)
         return self._json(200, {"prompt": text, "parts": meta2["parts"],
                                 "missing": meta2["missing"],
                                 "entry_ref": ref,
@@ -1262,9 +1278,11 @@ class Handler(BaseHTTPRequestHandler):
             meta["files"]["pc_tables"] = ing["tables"]
             meta.pop("pc_error", None)
             self._order_save_meta(d, meta)
-            print("order pc %s %s%s" % (oid, ing["ref"],
-                                        " (duplicate)"
-                                        if ing["duplicate"] else ""),
+            print("order pc %s %s%s (%d sections, %d paras, "
+                  "%d figs, %d tabs)" % (oid, ing["ref"], " (duplicate)"
+                                         if ing["duplicate"] else "",
+                                         ing["sections"], ing["paras"],
+                                         ing["figures"], ing["tables"]),
                   flush=True)
             try:
                 self._pc_maybe_build(ing["doc_id"])
@@ -1638,6 +1656,47 @@ class Handler(BaseHTTPRequestHandler):
         print("order pc worker %s" % doc_id, flush=True)
 
     @staticmethod
+    def _pc_reap_finished():
+        """Print one server-window line per finished PC worker (stage
+        counts + time from its log), then drop it from the job table."""
+        for doc_id, job in list(_PC_JOBS.items()):
+            if job.poll() is None:
+                continue
+            try:
+                with open(os.path.join(pc.entry_dir("source", doc_id),
+                                       "log.jsonl"), encoding="utf-8") as f:
+                    evs = [json.loads(ln) for ln in f.read().splitlines()]
+            except (OSError, ValueError):
+                evs = []
+            parts = []
+            for e in evs:
+                ev = e.get("ev", "")
+                if ev == "describe_done":
+                    parts.append("describe %d ok/%d failed %s %ss"
+                                 % (e.get("described", 0),
+                                    e.get("failed", 0),
+                                    e.get("backend", "?"),
+                                    e.get("seconds", 0)))
+                elif ev == "map_done":
+                    parts.append("map %s %d calls %d tok %ss"
+                                 % (e.get("status", "?"),
+                                    e.get("llm_calls", 0),
+                                    e.get("tokens_est", 0),
+                                    e.get("seconds", 0)))
+                elif ev == "index_done":
+                    parts.append("index %s %d calls %d tok %ss"
+                                 % (e.get("profile", "?"),
+                                    e.get("llm_calls", 0),
+                                    e.get("tokens_est", 0),
+                                    e.get("seconds", 0)))
+                elif ev in ("failed", "map_failed"):
+                    parts.append("%s: %s" % (ev, e.get("error", "")[:100]))
+            print("order pc done %s: %s"
+                  % (doc_id, "; ".join(parts) if parts else "no stages"),
+                  flush=True)
+            del _PC_JOBS[doc_id]
+
+    @staticmethod
     def _pc_indexed(prof, doc_id):
         try:
             with open(os.path.join(pc.index_dir("source", prof),
@@ -1647,6 +1706,7 @@ class Handler(BaseHTTPRequestHandler):
             return False
 
     def _api_pc_entries(self):
+        self._pc_reap_finished()
         out = []
         ed = os.path.join(pc.pc_dir("source"), "entries")
         if os.path.isdir(ed):
@@ -1684,6 +1744,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"entries": out})
 
     def _api_pc_entry(self, doc_id):
+        self._pc_reap_finished()
         if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
             return self._json(404, {"error": "no such PC entry"})
         ed = pc.entry_dir("source", doc_id)

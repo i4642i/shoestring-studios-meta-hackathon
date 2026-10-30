@@ -369,8 +369,9 @@ def _start_prompt_chunk(order_brief, received, run_dir, dest_id):
             return "Start prompt unavailable: order %r has no PC entry." \
                 % order_id
         entry = pc.load_entry_by_ref(ref)
+        mp = pc.load_map_by_ref(ref)
         text, meta = pc.start_prompt_for(START_PROMPT_AGENTS[dest_id],
-                                         struct, entry)
+                                         struct, entry, mp)
         if meta["missing"]:
             text += "\nParts without source: " + ", ".join(meta["missing"])
         return text
