@@ -38,6 +38,36 @@ MAX_PDF_BYTES = 25 * 1024 * 1024
 _INDEX_JOBS = {}  # (eid, profile) -> Popen of a running run_index.py build
 _FLOW_JOBS = {}  # run_id -> live flow run status (threads share memory)
 
+# Served code: the version stamp tracks the last commit touching these.
+VERSION_PATHS = ("index.html", "office_3d.html", "office_editor.html",
+                 "scripts/server.py", "agents/_frame", "api", "vendor",
+                 "data/flows/default.json")
+
+
+def _code_head():
+    """Full hash of the last commit touching served code ("unknown")."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "-1", "--format=%H", "--"] + list(VERSION_PATHS),
+            cwd=ROOT, capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    h = (out.stdout or "").strip()
+    return h if re.fullmatch(r"[0-9a-f]{40}", h) else "unknown"
+
+
+def _is_ancestor(old, new):
+    try:
+        r = subprocess.run(["git", "merge-base", "--is-ancestor", old, new],
+                           cwd=ROOT, capture_output=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0
+
+
+SERVER_COMMIT = _code_head()
+SERVER_STARTED = time.strftime("%Y-%m-%dT%H:%M:%S")
+
 
 def parse_multipart(handler):
     ctype = handler.headers.get("Content-Type", "")
@@ -189,6 +219,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_pcs_list()
         if parts[:2] == ["api", "settings"] and len(parts) == 2:
             return self._api_settings_get()
+        if parts[:2] == ["api", "version"] and len(parts) == 2:
+            return self._api_version()
         if parts[:2] == ["api", "flows"] and len(parts) == 2:
             return self._api_flows_list()
         if parts[:2] == ["api", "flows"] and len(parts) == 3:
@@ -993,6 +1025,21 @@ class Handler(BaseHTTPRequestHandler):
                               if turns[i]["role"] == "user"]
         return self._json(200, meta)
 
+    def _api_version(self):
+        """Code version: commit hash + start time. ?client=<hash> adds a
+        stale verdict: true only when the server is strictly older."""
+        qs = unquote(self.path).split("?", 1)
+        client = ""
+        if len(qs) > 1:
+            client = dict(parse_qsl(qs[1])).get("client", "")
+        stale = bool(re.fullmatch(r"[0-9a-f]{7,40}", client or "")
+                     and SERVER_COMMIT != "unknown"
+                     and client != SERVER_COMMIT
+                     and not _is_ancestor(client, SERVER_COMMIT))
+        return self._json(200, {"commit": SERVER_COMMIT,
+                                "started_at": SERVER_STARTED,
+                                "stale": stale})
+
     def _api_ref(self):
         """open_ref stub: citation links point here until the PCs exist."""
         qs = unquote(self.path).split("?", 1)
@@ -1377,7 +1424,8 @@ def main():
         except OSError as e:
             last = e
             continue
-        print("Shoestring Studios at http://localhost:%d" % port, flush=True)
+        print("Shoestring Studios at http://localhost:%d (code %s)"
+              % (port, SERVER_COMMIT[:12]), flush=True)
         server.serve_forever()
         return
     raise SystemExit("no free port %d-%d: %s"
