@@ -379,6 +379,24 @@ def main():
             ok(wide1 > wide0 + 200 and abs(wide2 - wide0) < 2,
                "chat collapse gives the office its width (%d/%d/%d)"
                % (wide0, wide1, wide2))
+            # tab round-trip: the studio panel must hide elsewhere
+            vis = ("['studio','crew','gallery'].map(p => "
+                   "getComputedStyle(document.getElementById('p-' + p))"
+                   ".display).join(',')")
+            js_eval(cdp, sid, "document.querySelector("
+                    "'nav button[data-p=\"crew\"]'"
+                    ").click()")
+            time.sleep(0.5)
+            hid = js_eval(cdp, sid, vis)
+            js_eval(cdp, sid, "document.querySelector("
+                    "'nav button[data-p=\"studio\"]'"
+                    ").click()")
+            time.sleep(0.5)
+            back = js_eval(cdp, sid, vis)
+            ok(hid == "none,block,none",
+               "crew tab hides the office (%s)" % hid)
+            ok(back == "flex,none,none",
+               "studio tab shows only the office (%s)" % back)
             cdp.call("Target.closeTarget",
                      {"targetId": tgt["targetId"]})
             cdp.close()

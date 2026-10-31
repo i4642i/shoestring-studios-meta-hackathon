@@ -670,6 +670,7 @@ async function spawnCrew() {
     const chBox = new THREE.Box3().setFromObject(model);
     const charS = CHAR_H / (chBox.max.y - chBox.min.y);
     model.scale.setScalar(charS);
+    const standHead = new THREE.Box3().setFromObject(model).max.y - model.position.y;
     model.userData.memberIndex = crew.length;
     scene.add(model);
     const mixer = new THREE.AnimationMixer(model);
@@ -677,13 +678,14 @@ async function spawnCrew() {
     for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
     // Sit-pose hip height, measured once per member from a pure seat pose
     // (stopped right away; walk/idle overwrite the bones on the next update).
-    let hipDrop = null;
+    let hipDrop = null, sitHead = 0;
     {
       const seat = actions[SEAT_CLIP] || actions.sit;
       if (seat) {
         seat.play();
         mixer.update((seat.getClip().duration || 0.2) / 2);
         hipDrop = hipDropOf(model);
+        sitHead = posedBox(model).max.y - model.position.y;
         seat.stop();
         seat.reset();
       }
@@ -691,6 +693,7 @@ async function spawnCrew() {
     const seats = deskSeats[emp.team];
     const mug = { // member record
       emp, group: model, mixer, actions, variant: key, charS, hipDrop, walk,
+      standHead, sitHead: sitHead || standHead * 0.72,
       target: null, route: null, state: "walk", idleUntil: 0, emoteUntil: 0,
       seat: seats.length ? seats[seatIdx[emp.team]++ % seats.length] : null,
       seatTrip: false, chatAt: 0,
@@ -823,7 +826,8 @@ function updateCrew(dt, now) {
       m.bubbleAt = now + BUBBLE_MS;
       setBubble(m, m.lines[m.li]);
     }
-    m.head.set(g.position.x, g.position.y + 0.98 * m.charS, g.position.z).project(camera);
+    const topY = g.position.y + (m.state === "sit" ? m.sitHead : m.standHead) + 0.06;
+    m.head.set(g.position.x, topY, g.position.z).project(camera);
     const behind = m.head.z > 1;
     m.bubble.style.display = behind ? "none" : "block";
     if (!behind) {
@@ -834,18 +838,24 @@ function updateCrew(dt, now) {
     m.bubble.style.opacity = age < 3000 ? "1"
       : String(Math.max(0.25, 1 - (age - 3000) / 2000 * 0.75));
   }
-  // Stack overlapping bubbles downward so none cover each other.
+  // Stack only bubbles that truly overlap in 2D, so the rest stay above heads.
   const vis = [];
   for (const m of crew) {
     if (m.bubble.style.display === "none") continue;
-    vis.push({ m, top: parseFloat(m.bubble.style.top) || 0,
-      h: m.bubble.getBoundingClientRect().height });
+    const r = m.bubble.getBoundingClientRect();
+    vis.push({ m, left: parseFloat(m.bubble.style.left) || 0,
+      top: parseFloat(m.bubble.style.top) || 0, w: r.width, h: r.height });
   }
   vis.sort((a, b) => a.top - b.top);
   for (let pass = 0; pass < 3; pass++) {
     for (let i = 1; i < vis.length; i++) {
-      const minTop = vis[i - 1].top + vis[i].h + 6;
-      if (vis[i].top < minTop) vis[i].top = minTop;
+      for (let j = 0; j < i; j++) {
+        const xOver = Math.abs(vis[i].left - vis[j].left)
+          < (vis[i].w + vis[j].w) / 2 + 8;
+        const vOver = vis[i].top - vis[i].h - 6 < vis[j].top
+          && vis[i].top + 6 > vis[j].top - vis[j].h;
+        if (xOver && vOver) vis[i].top = vis[j].top + vis[i].h + 6;
+      }
     }
   }
   for (const v of vis) v.m.bubble.style.top = v.top + "px";
