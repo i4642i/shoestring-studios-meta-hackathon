@@ -55,7 +55,7 @@
 - [x] 1 J3 Order lounge sign + default camera (10ac785)
 - [x] 2 J4 PDF button inside Sam's bubble (a39b108)
 - [x] 3 J5 Order tab adaptive (0180077)
-- [ ] 4 Flow box (B1/B3/B5 re-test)
+- [x] 4 Flow box (B1/B3/B5 re-test) (c11651b)
 - [ ] 5 J1/J2 Crew portraits
 - [ ] 6 J12 Menu order
 - [ ] 7 J6/J7 Run controls
