@@ -477,6 +477,121 @@ try:
     ok(board.safe_run_path(RUNS, "../r", "slide_remy",
                            "slides/a.png") is None,
        "unsafe run id rejected")
+
+    def wsplit(run):
+        sdir = os.path.join(RUNS, run, "part_split")
+        os.makedirs(sdir, exist_ok=True)
+        with open(os.path.join(sdir, "split.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"version": 1, "parts": [
+                {"no": 1, "part_id": "p1"},
+                {"no": 2, "part_id": "p2"}]}, f)
+
+    def wclone(run, node, no):
+        pdir = os.path.join(RUNS, run, node, "p%d" % no)
+        os.makedirs(pdir, exist_ok=True)
+        with open(os.path.join(pdir, "result.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"producer": "%s@p%d" % (node, no),
+                       "categories": {}}, f)
+
+    for node, cats in FULL[:4] + FULL[4:9]:
+        wres("boardmix1", node, cats)
+    wsplit("boardmix1")
+    wclone("boardmix1", "photo_pia", 1)
+    wclone("boardmix1", "photo_pia", 2)
+    wclone("boardmix1", "image_gene", 1)
+    wclone("boardmix1", "anim_max", 1)
+    wclone("boardmix1", "board_vera", 1)
+    wclone("boardmix1", "board_vera", 2)
+    wclone("boardmix1", "slide_remy", 1)
+    wstatus("boardmix1", {
+        "run_id": "boardmix1", "state": "running", "approved": [
+            "pd_marty", "plan_ash", "voice_wren", "board_penn",
+            "photo_pia@p1", "anim_max@p1", "board_vera@p1",
+            "slide_remy@p1"]})
+    with open(os.path.join(RUNS, "boardmix1", "events.jsonl"),
+              "w", encoding="utf-8") as f:
+        f.write('{"ev": "agent_start", "agent": '
+                '"image_gene@p2"}\n')
+
+    mix = board.build_board("boardmix1", runs_root=RUNS)
+    mk = {s["key"]: s for s in mix["stages"]}
+    ok(mk["pia"]["status"] == "done"
+       and [p["status"] for p in mk["pia"]["parts"]]
+       == ["ok", "done"]
+       and mk["pia"]["parts"][0]["clone"] == "photo_pia@p1",
+       "mixed parts: p1 ok, p2 done")
+    ok([p["status"] for p in mk["gene"]["parts"]]
+       == ["done", "run"]
+       and [p["status"] for p in mk["max"]["parts"]]
+       == ["ok", "wait"]
+       and [p["status"] for p in mk["vera"]["parts"]]
+       == ["ok", "done"]
+       and [p["status"] for p in mk["remy"]["parts"]]
+       == ["ok", "wait"],
+       "per-part pills run/wait/done/ok")
+    ok("parts" not in mk["marty"]
+       and "parts" not in mk["wren"],
+       "story stages carry no part pills")
+    m1 = mix["parts"][0]["scenes"][0]["cuts"][0]
+    m3 = mix["parts"][1]["scenes"][0]["cuts"][0]
+    ok(m1["part"] == 1 and m3["part"] == 2,
+       "cuts carry their part number")
+    ok(m1["cell_status"]["photo"] == "ok"
+       and m1["cell_status"]["image"] == "done"
+       and m1["cell_status"]["anim"] == "ok"
+       and m1["cell_status"]["slide_plan"] == "ok"
+       and m1["cell_status"]["slide_build"] == "ok",
+       "part 1 cells follow their clones")
+    ok(m3["cell_status"]["photo"] == "none"
+       and m3["cell_status"]["image"] == "run"
+       and m3["cell_status"]["anim"] == "wait"
+       and m3["cell_status"]["slide_plan"] == "done"
+       and m3["cell_status"]["slide_build"] == "wait"
+       and m3["cell_status"]["line"] == "ok",
+       "part 2 cells mix none/run/wait/done")
+
+    for node, cats in FULL[:4]:
+        wres("boardcerr1", node, cats)
+    wres("boardcerr1", "photo_pia", {"photo_picks": PHOTO})
+    wsplit("boardcerr1")
+    wclone("boardcerr1", "photo_pia", 1)
+    wstatus("boardcerr1", {"run_id": "boardcerr1",
+                           "state": "failed", "error": "boom",
+                           "approved": ["pd_marty", "plan_ash",
+                                        "voice_wren", "board_penn",
+                                        "photo_pia@p1"]})
+    with open(os.path.join(RUNS, "boardcerr1", "events.jsonl"),
+              "w", encoding="utf-8") as f:
+        f.write('{"ev": "agent_start", "agent": '
+                '"photo_pia@p2"}\n')
+    cerr = board.build_board("boardcerr1", runs_root=RUNS)
+    ck = {s["key"]: s for s in cerr["stages"]}
+    ok([p["status"] for p in ck["pia"]["parts"]]
+       == ["ok", "err"],
+       "crashed clone marks err, sibling stays ok")
+    ok(cerr["parts"][1]["scenes"][0]["cuts"][0]
+       ["cell_status"]["photo"] == "err",
+       "crashed part cell shows err")
+
+    cdir = os.path.join(RUNS, "boardpath1", "photo_pia", "p1")
+    os.makedirs(cdir, exist_ok=True)
+    with open(os.path.join(cdir, "b.png"), "wb") as f:
+        f.write(b"fake-png")
+    ok(board.safe_run_path(RUNS, "boardpath1", "photo_pia@p1",
+                           "b.png") is not None,
+       "clone file resolves into the part folder")
+    ok(board.safe_run_path(RUNS, "boardpath1", "photo_pia@p9",
+                           "b.png") is None
+       and board.safe_run_path(RUNS, "boardpath1",
+                               "pd_marty@p1", "b.png") is None,
+       "bad part and non-clone node rejected")
+    ok(board.clone_run_dir("photo_pia@p2")
+       == os.path.join("photo_pia", "p2")
+       and board.clone_run_dir("photo_pia") == "photo_pia"
+       and board.clone_run_dir("a/b") is None,
+       "clone_run_dir maps ids safely")
 finally:
     _pc.ROOT_OVERRIDE = None
 

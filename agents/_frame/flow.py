@@ -606,7 +606,7 @@ def _sam_stored_result(order_id):
 def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
                     run_agent_fn, emit, note=None,
                     want_summary=False, parallel=False,
-                    flow_settings=None):
+                    flow_settings=None, approved=None, only=None):
     """Run one agent: gather transfers, run, expect result.json, check it,
     promote to checked, refresh the report. Sam reuses his stored
     order result when the chat already ran him (no double spend)."""
@@ -646,7 +646,8 @@ def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
         return _run_clone_node(run_dir, agent_id, order_id,
                                order_brief, incoming, run_agent_fn,
                                emit, agent, note, want_summary,
-                               parallel, flow_settings)
+                               parallel, flow_settings, approved,
+                               only=only)
     flowdecl = agent.get("flow", {}) if isinstance(agent, dict) else {}
     dest_inputs = flowdecl.get("inputs")
     received = []
@@ -781,13 +782,37 @@ def _run_one_clone(run_dir, agent_id, order_id, order_brief,
 def _run_clone_node(run_dir, agent_id, order_id, order_brief, incoming,
                     run_agent_fn, emit, agent, note=None,
                     want_summary=False, parallel=False,
-                    flow_settings=None):
+                    flow_settings=None, approved=None, only=None):
     """One clone per part: sequentially, or on a thread pool capped
-    at 3 workers (flow setting parallel_parts). Each clone dir
-    holds only its part's received cuts; merge joins the parts
-    back into the node's normal result."""
+    at 3 workers (flow setting parallel_parts). Approved clones
+    with a result are skipped; the rest run. only= limits the run
+    to one clone id (a part step target); the merge still joins
+    every part back into the node's normal result. Each clone dir
+    holds only its part's received cuts."""
     plan = parts.load_split(run_dir)
     prog = (plan or {}).get("parts") or []
+    todo = []
+    for p in prog:
+        cid = parts.clone_id(agent_id, p.get("no"))
+        if only is not None and cid != only:
+            continue
+        if _clone_approved(run_dir, approved, cid):
+            emit({"ev": "agent_skip", "agent": cid,
+                  "reason": "approved"})
+            continue
+        todo.append(p)
+    if only is not None:
+        for p in prog:
+            cid = parts.clone_id(agent_id, p.get("no"))
+            if cid == only:
+                continue
+            if not os.path.isfile(os.path.join(
+                    run_dir, agent_id, "p%d" % p.get("no"),
+                    results.RESULT_FILE)):
+                return {"ok": False,
+                        "error": "%s has no result yet: run the whole "
+                                 "%s node before stepping to one part"
+                                 % (cid, agent_id)}
     emit({"ev": "agent_start", "agent": agent_id,
           "split": len(prog)})
     adir = os.path.join(run_dir, agent_id)
@@ -806,15 +831,18 @@ def _run_clone_node(run_dir, agent_id, order_id, order_brief, incoming,
         f.write(node_inputs)
     flowdecl = agent.get("flow", {}) if isinstance(agent, dict) else {}
     dest_inputs = flowdecl.get("inputs")
-    one = lambda p: _run_one_clone(
-        run_dir, agent_id, order_id, order_brief, incoming,
-        run_agent_fn, emit, dest_inputs, plan, p, note,
-        want_summary, flow_settings)
-    if parallel and len(prog) > 1:
-        workers = min(len(prog), 3)
+    def one(p):
+        cid = parts.clone_id(agent_id, p.get("no"))
+        cnote = note if only is None or cid == only else None
+        return _run_one_clone(
+            run_dir, agent_id, order_id, order_brief, incoming,
+            run_agent_fn, emit, dest_inputs, plan, p, cnote,
+            want_summary, flow_settings)
+    if parallel and len(todo) > 1:
+        workers = min(len(todo), 3)
         with ThreadPoolExecutor(max_workers=workers,
                                 thread_name_prefix="clone") as ex:
-            futs = [ex.submit(one, p) for p in prog]
+            futs = [ex.submit(one, p) for p in todo]
             outs = []
             for f in futs:
                 try:
@@ -826,7 +854,7 @@ def _run_clone_node(run_dir, agent_id, order_id, order_brief, incoming,
             if not out["ok"]:
                 return out
     else:
-        for p in prog:
+        for p in todo:
             out = one(p)
             if not out["ok"]:
                 return out
@@ -888,10 +916,11 @@ def _collect_final(run_dir, order_id, incoming, emit):
 
 
 def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
-           runs_root=None):
+           runs_root=None, stop_check=None):
     """Run a validated flow. run_agent_fn(agent_dir, run_dir, brief,
     input_md) follows the runner.run contract ({"ok": bool, ...});
     tests inject a stub. runs_root overrides RUNS_DIR (tests only).
+    stop_check, when given, halts the run at stage boundaries.
 
     Layout: runs/<run_id>/{flow.json, events.jsonl, STATUS.json,
     <agent>/{INPUTS.json, events.jsonl, result.json, report.md},
@@ -942,6 +971,19 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
     code_nodes = {n.get("id") for n in flow.get("nodes", [])
                   if isinstance(n, dict) and n.get("code")}
     for nid in sequence:
+        if stop_check is not None:
+            try:
+                stopped = bool(stop_check())
+            except Exception:  # noqa: BLE001 - a bad flag stops us
+                stopped = True
+            if stopped:
+                _write_json(os.path.join(run_dir, "STATUS.json"),
+                            {"run_id": run_id, "flow_id": flow_id,
+                             "order_id": order_id, "state": "stopped",
+                             "error": ""})
+                emit({"ev": "step_stopped", "at": nid})
+                return {"ok": False, "run_id": run_id,
+                        "error": "stopped: halted before %s" % nid}
         if nid == FINAL_NODE or _is_draft(nid):
             continue
         if nid in code_nodes:
@@ -1312,13 +1354,17 @@ def _node_cost(run_dir, nid):
 
 
 def step_run(flow, order_id, run_agent_fn, target, run_id=None,
-             note=None, runs_root=None, flow_id="adhoc"):
+             note=None, runs_root=None, flow_id="adhoc",
+             stop_check=None):
     """Step mode: run the topo prefix through target, then stop.
 
     Approved nodes with a result.json are skipped; every other node
     up to and including target runs (agents via run_agent_fn with
     want_summary_ko, code nodes directly). target "final" also
     collects. Nothing is auto-approved: call approve_node().
+    A clone id target (photo_pia@p2) runs the prefix through its
+    node. stop_check, when given, is called between stages; a
+    truthy answer halts the run as stopped.
     """
     problems = validate_flow(flow)
     if problems:
@@ -1350,9 +1396,11 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
         return {"ok": False, "run_id": run_id, "error": msg}
 
     st = _read_step_status(run_dir)
-    approved = [n for n in (st.get("approved") or [])
-                if os.path.isfile(os.path.join(
-                    run_dir, n, results.RESULT_FILE))]
+    if st.get("state") == "stopped":
+        return {"ok": False, "run_id": run_id,
+                "error": "run is stopped (invalidate a stage to "
+                         "resume it)"}
+    approved = _approved_ids(run_dir, st.get("approved"))
     order = _order_brief(order_id)
     if not order["ok"]:
         return fail(order["error"])
@@ -1363,21 +1411,46 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
         sequence = topo_order(flow)
     except RuntimeError as exc:
         return fail(str(exc))
-    if target not in sequence and target != FINAL_NODE:
+    base_target, _tno = parts.parse_clone_id(target)
+    if base_target not in sequence and target != FINAL_NODE:
+        return fail("unknown step target: %r" % (target,))
+    if base_target in parts.CLONE_NODES \
+            and parts.load_split(run_dir) \
+            and _clone_result_path(run_dir, target) is None:
         return fail("unknown step target: %r" % (target,))
     code_nodes = {n.get("id") for n in flow.get("nodes", [])
                   if isinstance(n, dict) and n.get("code")}
     emit({"ev": "step_start", "target": target, "run": run_id})
     ran = []
-    stop_at = sequence.index(target) if target in sequence \
+    stop_at = sequence.index(base_target) if base_target in sequence \
         else len(sequence)
     for nid in sequence[:stop_at + 1]:
+        if stop_check is not None:
+            try:
+                stopped = bool(stop_check())
+            except Exception:  # noqa: BLE001 - a bad flag stops us
+                stopped = True
+            if stopped:
+                st = _read_step_status(run_dir)
+                st.update({"run_id": run_id, "flow_id": flow_id,
+                           "order_id": order_id, "state": "stopped",
+                           "error": ""})
+                _write_json(_step_status_path(run_dir), st)
+                emit({"ev": "step_stopped", "target": target,
+                      "at": nid})
+                return {"ok": False, "run_id": run_id,
+                        "error": "stopped: halted before %s" % nid}
         if nid == FINAL_NODE or _is_draft(nid):
             continue
-        if nid in approved:
+        if _node_approved(run_dir, nid, approved):
             emit({"ev": "agent_skip", "agent": nid,
                   "reason": "approved"})
             continue
+        if nid == CODE_NODE:
+            missing = _video_gate(run_dir, approved)
+            if missing:
+                return fail("video_production waits for approval: "
+                            + ", ".join(missing))
         if nid in code_nodes:
             step = _run_code_node(run_dir, nid, order_id,
                                   order["brief"],
@@ -1386,10 +1459,13 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
             step = _run_agent_node(
                 run_dir, nid, order_id, order["brief"],
                 incoming.get(nid, []), run_agent_fn, emit,
-                note=note if nid == target else None,
+                note=note if nid == base_target else None,
                 want_summary=True,
                 parallel=settings.get("parallel_parts", False),
-                flow_settings=settings)
+                flow_settings=settings, approved=approved,
+                only=(target if nid == base_target
+                      and parts.parse_clone_id(target)[1]
+                      is not None else None))
         if not step["ok"]:
             return fail(step["error"])
         ran.append(nid)
@@ -1414,25 +1490,128 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
     return {"ok": True, "run_id": run_id, "last": target, "ran": ran}
 
 
+def _clone_result_path(run_dir, cid):
+    """result.json path for a node id or a clone id (None when the
+    clone names no real part)."""
+    base, no = parts.parse_clone_id(cid)
+    if no is None:
+        return os.path.join(run_dir, base, results.RESULT_FILE)
+    if base not in parts.CLONE_NODES:
+        return None
+    plan = parts.load_split(run_dir)
+    nos = [p.get("no") for p in ((plan or {}).get("parts") or [])]
+    if no not in nos:
+        return None
+    return os.path.join(run_dir, base, "p%d" % no,
+                        results.RESULT_FILE)
+
+
+def _approved_ids(run_dir, approved):
+    """Approved set as stored (clone ids for clones, node ids
+    otherwise), pruned to entries that still have a result."""
+    keep = []
+    for n in approved or []:
+        p = _clone_result_path(run_dir, n)
+        if p is not None and os.path.isfile(p) and n not in keep:
+            keep.append(n)
+    return keep
+
+
+def _node_approved(run_dir, nid, approved):
+    """A stage is approved by its own node id, or - for a split
+    clone node - when every clone is approved (own id or legacy
+    base id, with a result)."""
+    if nid in (approved or []):
+        return True
+    if nid in parts.CLONE_NODES and parts.load_split(run_dir):
+        plan = parts.load_split(run_dir)
+        prog = (plan or {}).get("parts") or []
+        return bool(prog) and all(
+            _clone_approved(run_dir, approved,
+                            parts.clone_id(nid, p.get("no")))
+            for p in prog)
+    return False
+
+
+def _clone_approved(run_dir, approved, cid):
+    """A clone counts as approved by its own id, or legacy by its
+    base node id; either way its result must exist."""
+    base, _no = parts.parse_clone_id(cid)
+    p = _clone_result_path(run_dir, cid)
+    if p is None or not os.path.isfile(p):
+        return False
+    return cid in (approved or []) or base in (approved or [])
+
+
 def approve_node(run_id, node, runs_root=None):
-    """Approve a finished stage; later step_runs skip it."""
+    """Approve a finished stage; later step_runs skip it. Clone ids
+    (photo_pia@p2) approve one part; a split node id approves all
+    its parts at once."""
     run_dir = os.path.join(runs_root or RUNS_DIR, run_id)
-    if not os.path.isfile(os.path.join(run_dir, node,
-                                       results.RESULT_FILE)):
-        return {"ok": False,
-                "error": "%r has no result.json to approve" % node}
+    base, no = parts.parse_clone_id(node)
+    if no is None and base in parts.CLONE_NODES \
+            and parts.load_split(run_dir):
+        if not os.path.isfile(os.path.join(
+                run_dir, base, results.RESULT_FILE)):
+            return {"ok": False,
+                    "error": "%r has no result.json to approve"
+                             % node}
+        plan = parts.load_split(run_dir)
+        ids = [parts.clone_id(base, p.get("no"))
+               for p in plan["parts"]]
+    else:
+        if _clone_result_path(run_dir, node) is None:
+            return {"ok": False,
+                    "error": "%r names no stage or part" % node}
+        if not os.path.isfile(
+                _clone_result_path(run_dir, node)):
+            return {"ok": False,
+                    "error": "%r has no result.json to approve"
+                             % node}
+        ids = [node]
     st = _read_step_status(run_dir)
     approved = st.get("approved") or []
-    if node not in approved:
-        approved.append(node)
+    for cid in ids:
+        if cid not in approved:
+            approved.append(cid)
     st.update({"approved": approved, "state": "step_paused"})
     _write_json(_step_status_path(run_dir), st)
     return {"ok": True, "run_id": run_id, "approved": approved}
 
 
+def stop_run(run_id, node=None, runs_root=None):
+    """Halt a run: further step_runs refuse until a stage is
+    invalidated (which pauses again). Idle runs stop at once;
+    running jobs notice at the next stage boundary."""
+    run_dir = os.path.join(runs_root or RUNS_DIR, run_id)
+    st = _read_step_status(run_dir)
+    if not st:
+        return {"ok": False, "error": "no such run: %r" % run_id}
+    st.update({"state": "stopped", "stopped": node or st.get("last"),
+               "approved": st.get("approved") or []})
+    _write_json(_step_status_path(run_dir), st)
+    return {"ok": True, "run_id": run_id, "state": "stopped"}
+
+
+def _video_gate(run_dir, approved):
+    """Clone ids of remy parts still missing approval (video
+    waits for every remy@pN). Empty when no split is active."""
+    plan = parts.load_split(run_dir)
+    if not plan:
+        return []
+    missing = []
+    for p in plan.get("parts") or []:
+        cid = parts.clone_id("slide_remy", p.get("no"))
+        if not _clone_approved(run_dir, approved or [], cid):
+            missing.append(cid)
+    return missing
+
+
 def invalidate_node(run_id, node, runs_root=None):
     """Re-run support: drop node + every downstream stage (dirs and
-    approvals); they must run again."""
+    approvals); they must run again. A clone id (photo_pia@p2)
+    drops only that part's clones downstream (plus the uncloned
+    video step), never other parts."""
     import shutil
     run_dir = os.path.join(runs_root or RUNS_DIR, run_id)
     try:
@@ -1441,6 +1620,38 @@ def invalidate_node(run_id, node, runs_root=None):
             flow = json.load(f)
     except (OSError, ValueError) as exc:
         return {"ok": False, "error": "no flow.json (%s)" % exc}
+    base, no = parts.parse_clone_id(node)
+    if no is not None:
+        if _clone_result_path(run_dir, node) is None:
+            return {"ok": False,
+                    "error": "%r names no stage or part" % node}
+        gone = []
+        for nid in sorted(_downstream(flow, base)):
+            if nid in parts.CLONE_NODES:
+                pdir = os.path.join(run_dir, nid, "p%d" % no)
+                if os.path.isdir(pdir):
+                    shutil.rmtree(pdir)
+                    gone.append(parts.clone_id(nid, no))
+                ndir = os.path.join(run_dir, nid)
+                for fn in (results.RESULT_FILE, "report.md",
+                           "usage.json"):
+                    fp = os.path.join(ndir, fn)
+                    if os.path.isfile(fp):
+                        os.remove(fp)
+                sdir = os.path.join(ndir, "slides")
+                if os.path.isdir(sdir):
+                    shutil.rmtree(sdir)
+            else:
+                ndir = os.path.join(run_dir, nid)
+                if os.path.isdir(ndir):
+                    shutil.rmtree(ndir)
+                    gone.append(nid)
+        st = _read_step_status(run_dir)
+        st["approved"] = [n for n in (st.get("approved") or [])
+                          if n not in gone]
+        st["state"] = "step_paused"
+        _write_json(_step_status_path(run_dir), st)
+        return {"ok": True, "run_id": run_id, "removed": gone}
     gone = []
     for nid in sorted(_downstream(flow, node)):
         ndir = os.path.join(run_dir, nid)
@@ -1472,6 +1683,31 @@ def step_status(run_id, runs_root=None):
     for nid in sequence:
         cost = _node_cost(run_dir, nid)
         cost["approved"] = nid in approved
+        if nid in parts.CLONE_NODES:
+            plan = parts.load_split(run_dir)
+            if plan:
+                cost["split"] = True
+                detail = {}
+                for p in plan.get("parts") or []:
+                    cid = parts.clone_id(nid, p.get("no"))
+                    pdir = os.path.join(run_dir, nid,
+                                        "p%d" % p.get("no"))
+                    try:
+                        with open(os.path.join(pdir, "usage.json"),
+                                  encoding="utf-8") as f:
+                            usage = json.load(f)
+                    except (OSError, ValueError):
+                        usage = None
+                    detail[cid] = {
+                        "result": os.path.isfile(os.path.join(
+                            pdir, results.RESULT_FILE)),
+                        "approved": _clone_approved(
+                            run_dir, approved, cid),
+                        "usage": usage}
+                cost["parts"] = detail
+                if detail:
+                    cost["approved"] = all(
+                        d["approved"] for d in detail.values())
         nodes[nid] = cost
     st = dict(st)
     st["nodes"] = nodes

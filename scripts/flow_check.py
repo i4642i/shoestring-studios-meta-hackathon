@@ -1,4 +1,4 @@
-"""Flow checks for agents/_frame/flow.py (v8). Stdlib only.
+""" checks for agents/_frame/flow.py (v8). Stdlib only.
 
 Run: python scripts/flow_check.py. Writes only to gitignored scratch
 (directories are patched to temp locations; nothing lands in runs/).
@@ -734,9 +734,19 @@ try:
     nok2 = flow.step_status("nope",
                             runs_root=os.path.join(tmp, "runs"))
     ok(not nok2.get("ok"), "unknown run has no status")
+    s5x = flow.step_run(dflt, "o9", stub, "final", run_id="step1",
+                        runs_root=os.path.join(tmp, "runs"))
+    ok(not s5x.get("ok")
+       and "waits for approval" in s5x.get("error", ""),
+       "final waits for every remy part approval")
+    flow.approve_node("step1", "slide_remy",
+                      runs_root=os.path.join(tmp, "runs"))
+    flow.approve_node("step1", "board_vera",
+                      runs_root=os.path.join(tmp, "runs"))
     s5 = flow.step_run(dflt, "o9", stub, "final", run_id="step1",
                        runs_root=os.path.join(tmp, "runs"))
     ok(s5.get("ok")
+       and s5.get("ran") == ["video_production"]
        and s5.get("received") == ["video", "storyboard_table"],
        "stepping to final finishes the run")
 finally:

@@ -10,7 +10,11 @@ import os
 import re
 from urllib.parse import quote
 
+from . import parts as _parts
 from . import pc as _pc
+
+VIDEO_COLUMNS = ("photo", "image", "anim", "slide_plan",
+                 "slide_build")
 
 STAGES = (
     ("marty", "pd_marty", "Marty", "story", "Part"),
@@ -35,10 +39,27 @@ _COLUMN_STAGE = {"part_time": "marty", "part": "marty", "scene": "ash",
                  "slide_plan": "vera", "slide_build": "remy",
                  "video": "video"}
 
+_KEY_NODE = {key: node for key, node, _w, _t, _l in STAGES}
+
 _STAGE_FILES = ("report.md", "result.json", "INPUTS.md", "INPUTS.json")
 
 _RUN_PATH_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".json",
                   ".md", ".txt", ".srt")
+
+_NODE_RE = re.compile(r"[A-Za-z0-9_\-]+")
+
+
+def clone_run_dir(node):
+    """Run-folder subpath for a stage id: base@pN -> base/pN.
+
+    Plain ids pass through; anything else (bad clone base or part)
+    is None. Only the file endpoints use this."""
+    base, no = _parts.parse_clone_id(node or "")
+    if no is None:
+        return node if _NODE_RE.fullmatch(node or "") else None
+    if base not in _parts.CLONE_NODES or no < 1:
+        return None
+    return os.path.join(base, "p%d" % no)
 
 
 def run_id_ok(run_id):
@@ -54,8 +75,8 @@ def safe_run_path(runs_root, run_id, node, rel):
     non-dashboard extensions. Used by the step file endpoint to
     serve Remy slide PNGs (path mode).
     """
-    if not run_id_ok(run_id) \
-            or not re.fullmatch(r"[A-Za-z0-9_\-]+", node or ""):
+    sub = clone_run_dir(node)
+    if not run_id_ok(run_id) or sub is None:
         return None
     if not rel or not isinstance(rel, str):
         return None
@@ -66,7 +87,7 @@ def safe_run_path(runs_root, run_id, node, rel):
         return None
     if os.path.splitext(norm)[1].lower() not in _RUN_PATH_EXTS:
         return None
-    base = os.path.realpath(os.path.join(runs_root, run_id, node))
+    base = os.path.realpath(os.path.join(runs_root, run_id, sub))
     full = os.path.realpath(os.path.join(base, norm))
     if full != base and not full.startswith(base + os.sep):
         return None
@@ -311,6 +332,16 @@ def _cut_video(seg, line):
     return {"t0": t0, "t1": t1, "subtitle": line}
 
 
+def _clone_have(run_dir, node, no):
+    return os.path.isfile(os.path.join(
+        run_dir, node, "p%d" % no, "result.json"))
+
+
+def _clone_approved(approved, node, no):
+    cid = _parts.clone_id(node, no)
+    return cid in approved or node in approved
+
+
 def build_board(run_id, runs_root=None, pc_root=None, running=False):
     """Dashboard payload for one run. Never raises on partial runs."""
     from . import flow as _flow
@@ -334,23 +365,58 @@ def build_board(run_id, runs_root=None, pc_root=None, running=False):
         cats[node] = _categories(ndir) if os.path.isdir(ndir) else {}
         have[node] = bool(cats[node])
         usage[node] = _load_json(os.path.join(ndir, "usage.json"))
+    live = bool(running) or run_state == "running"
+    split = _parts.load_split(run_dir)
+    split_nos = [p.get("no") for p in ((split or {}).get("parts")
+                                       or [])]
+
+    def _missing(node):
+        if node in _parts.CLONE_NODES and split_nos:
+            return any(not _clone_have(run_dir, node, no)
+                       for no in split_nos)
+        return not have[node]
+
     failed_node = ""
     if run_state == "failed":
         board_nodes = [node for _k, node, _w, _t, _l in STAGES]
-        pend_board = [a for a in pending if a in board_nodes
-                      and not have[a]]
-        if pend_board:
-            failed_node = pend_board[-1]
+        pend_base = []
+        for a in pending:
+            b, _n = _parts.parse_clone_id(a)
+            if b in board_nodes and _missing(b) \
+                    and b not in pend_base:
+                pend_base.append(b)
+        if pend_base:
+            failed_node = pend_base[-1]
         else:
             for node in board_nodes:
-                if not have[node]:
+                if _missing(node):
                     failed_node = node
                     break
-    live = bool(running) or run_state == "running"
+    failed_clones = set()
+    if failed_node in _parts.CLONE_NODES:
+        cands = [_parts.clone_id(failed_node, no)
+                 for no in split_nos
+                 if _parts.clone_id(failed_node, no) in pending
+                 and not _clone_have(run_dir, failed_node, no)]
+        if cands:
+            failed_clones.add(cands[-1])
+        else:
+            for no in split_nos:
+                if not _clone_have(run_dir, failed_node, no):
+                    failed_clones.add(_parts.clone_id(
+                        failed_node, no))
+                    break
     stages = []
     by_key = {}
+    clone_status = {}
     for key, node, who, team, label in STAGES:
-        if have[node] and node in approved:
+        node_approved = node in approved
+        if node in _parts.CLONE_NODES and split_nos:
+            node_approved = all(
+                _clone_approved(approved, node, no)
+                and _clone_have(run_dir, node, no)
+                for no in split_nos)
+        if have[node] and node_approved:
             st = "ok"
         elif have[node]:
             st = "done"
@@ -365,9 +431,29 @@ def build_board(run_id, runs_root=None, pc_root=None, running=False):
         for name in _STAGE_FILES:
             if os.path.isfile(os.path.join(ndir, name)):
                 files[name] = _run_file_url(run_id, node, name)
-        stages.append({"key": key, "who": who, "team": team,
-                       "label": label, "status": st,
-                       "cost": usage[node], "files": files})
+        entry = {"key": key, "who": who, "team": team,
+                 "label": label, "status": st,
+                 "cost": usage[node], "files": files}
+        if node in _parts.CLONE_NODES and split_nos:
+            per = []
+            for no in split_nos:
+                cid = _parts.clone_id(node, no)
+                if _clone_have(run_dir, node, no) \
+                        and _clone_approved(approved, node, no):
+                    cst = "ok"
+                elif _clone_have(run_dir, node, no):
+                    cst = "done"
+                elif cid in failed_clones:
+                    cst = "err"
+                elif live and cid in pending:
+                    cst = "run"
+                else:
+                    cst = "wait"
+                clone_status[cid] = cst
+                per.append({"no": no, "clone": cid,
+                            "status": cst})
+            entry["parts"] = per
+        stages.append(entry)
         by_key[key] = st
     struct = _cat_data(cats["pd_marty"], "structure")
     draft = _cat_data(cats["plan_ash"], "storyboard_draft")
@@ -391,6 +477,15 @@ def build_board(run_id, runs_root=None, pc_root=None, running=False):
     for group in narr_by_scene.values():
         group.sort(key=lambda c: (c.get("start_s") is None,
                                   c.get("start_s")))
+    scene_part = {}
+    for sc in draft.get("scenes", []) or []:
+        if isinstance(sc, dict):
+            scene_part[sc.get("n")] = sc.get("part_id")
+    part_no = {}
+    if split:
+        for p in split.get("parts") or []:
+            if isinstance(p, dict):
+                part_no[p.get("part_id")] = p.get("no")
     penn_map = _cut_map(board.get("cuts"))
     pia_map = _cut_map(picks_photo.get("cuts"))
     gen_map = _cut_map(picks_gen.get("cuts"))
@@ -431,24 +526,35 @@ def build_board(run_id, runs_root=None, pc_root=None, running=False):
                 pcut = penn_map.get(cid) or {}
                 pia = _cut_pia(pia_map.get(cid), pc_root)
                 gene = _cut_gene(gen_map.get(cid), gen_images)
-                cell = {col: by_key[_COLUMN_STAGE[col]]
-                        for col in COLUMNS}
-                if by_key["pia"] in ("done", "ok") and not pia \
+                cut_part = part_no.get(
+                    scene_part.get(ncut.get("scene_n")))
+                cell = {}
+                for col in COLUMNS:
+                    key = _COLUMN_STAGE[col]
+                    if col in VIDEO_COLUMNS and cut_part in \
+                            split_nos:
+                        node = _KEY_NODE[key]
+                        cid2 = _parts.clone_id(node, cut_part)
+                        cell[col] = clone_status.get(
+                            cid2, by_key[key])
+                    else:
+                        cell[col] = by_key[key]
+                if cell["photo"] in ("done", "ok") and not pia \
                         and (pia_map.get(cid) or {}).get(
                             "decision") == "none":
                     cell["photo"] = "none"
-                if by_key["gene"] in ("done", "ok") \
+                if cell["image"] in ("done", "ok") \
                         and gene is None and (gen_map.get(cid)
                                               or {}).get(
                             "decision") == "none":
                     cell["image"] = "none"
-                if by_key["max"] in ("done", "ok") \
+                if cell["anim"] in ("done", "ok") \
                         and (max_map.get(cid) or {}).get(
                             "decision") == "none":
                     cell["anim"] = "none"
                 cuts.append({
                     "cut_id": cid, "line": line, "sec": sec,
-                    "t0": st_s,
+                    "t0": st_s, "part": cut_part,
                     "voice": _cut_voice(ncut, pc_root),
                     "screen": pcut.get("show_what"),
                     "text": pcut.get("on_screen_text") or [],

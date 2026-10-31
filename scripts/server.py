@@ -293,6 +293,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 5 \
                 and parts[2] == "runs" and parts[4] == "invalidate":
             return self._api_flow_invalidate(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "stop":
+            return self._api_flow_stop(parts[3])
         return self._json(404, {"error": "not found"})
 
     def do_DELETE(self):
@@ -918,9 +921,18 @@ class Handler(BaseHTTPRequestHandler):
 
         def _work():
             try:
-                flows.run_flow(flow_obj, order_id, runner.run,
-                               run_id=run_id, flow_id=fid)
-                job["state"] = "done"
+                out = flows.run_flow(
+                    flow_obj, order_id, runner.run,
+                    run_id=run_id, flow_id=fid,
+                    stop_check=lambda: job.get("stop", False))
+                if out.get("ok"):
+                    job["state"] = "done"
+                elif str(out.get("error", "")).startswith(
+                        "stopped:"):
+                    job["state"] = "stopped"
+                else:
+                    job["state"] = "error"
+                    job["error"] = str(out.get("error", ""))[:1000]
             except Exception as exc:  # noqa: BLE001 - status surface
                 job["state"] = "error"
                 job["error"] = str(exc)[:1000]
@@ -1120,13 +1132,18 @@ class Handler(BaseHTTPRequestHandler):
 
         def _work():
             try:
-                out = flows.step_run(flow_obj, order_id, runner.run,
-                                     target, run_id=run_id, note=note,
-                                     flow_id=fid)
+                out = flows.step_run(
+                    flow_obj, order_id, runner.run, target,
+                    run_id=run_id, note=note, flow_id=fid,
+                    stop_check=lambda: job.get("stop", False))
                 job["state"] = "done"
                 if not out.get("ok"):
-                    job["state"] = "error"
-                    job["error"] = str(out.get("error", ""))[:1000]
+                    if str(out.get("error", "")).startswith(
+                            "stopped:"):
+                        job["state"] = "stopped"
+                    else:
+                        job["state"] = "error"
+                        job["error"] = str(out.get("error", ""))[:1000]
             except Exception as exc:  # noqa: BLE001 - status surface
                 job["state"] = "error"
                 job["error"] = str(exc)[:1000]
@@ -1156,6 +1173,24 @@ class Handler(BaseHTTPRequestHandler):
         if not node or not isinstance(node, str):
             return self._json(400, {"error": "need {node}"})
         out = flows.invalidate_node(run_id, node)
+        if not out.get("ok"):
+            return self._json(400, out)
+        return self._json(200, out)
+
+    def _api_flow_stop(self, run_id):
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        body = self._read_json()
+        node = (body or {}).get("node") if isinstance(body, dict) \
+            else None
+        if node is not None and not isinstance(node, str):
+            return self._json(400, {"error": "node must be a string"})
+        job = _FLOW_JOBS.get(run_id)
+        if job is not None and job.get("state") == "running":
+            job["stop"] = True
+            return self._json(200, {"ok": True, "run_id": run_id,
+                                    "state": "stopping"})
+        out = flows.stop_run(run_id, node)
         if not out.get("ok"):
             return self._json(400, out)
         return self._json(200, out)
@@ -1217,11 +1252,12 @@ class Handler(BaseHTTPRequestHandler):
         node, name = q.get("node", ""), q.get("name", "")
         if not name and q.get("path"):
             return self._api_flow_path(run_id, node, q["path"])
-        if not re.fullmatch(r"[A-Za-z0-9_\-]+", node or ""):
+        sub = board.clone_run_dir(node)
+        if sub is None:
             return self._json(404, {"error": "no such node"})
         if name not in self._RUN_FILES:
             return self._json(404, {"error": "no such file"})
-        full = os.path.join(flows.RUNS_DIR, run_id, node, name)
+        full = os.path.join(flows.RUNS_DIR, run_id, sub, name)
         if not os.path.isfile(full):
             return self._json(404, {"error": "no such file"})
         with open(full, "rb") as f:

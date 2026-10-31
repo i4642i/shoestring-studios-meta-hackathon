@@ -536,6 +536,19 @@
 .fl-pclabel.on { display: block; }
 .fl-node.pcnode { border-style: dashed; border-color: #6b7280;
   background: #f3f4f6; }
+.fl-node.clonebox { border: 2px solid #c2571b;
+  box-shadow: 3px 3px 0 #f2d6b8, 6px 6px 0 #fbeedf; }
+.clonebadge { position: absolute; top: -13px; right: -10px;
+  background: #c2571b; color: #fff; font-size: 11px; font-weight: 800;
+  border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+.partrow { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 5px;
+  padding-top: 4px; border-top: 1px dashed #e5c9a8;
+  font-size: 11px; font-weight: 700; color: #7c4a1e; }
+#teamframe { position: absolute; border: 2px dashed #c2571b;
+  border-radius: 12px; pointer-events: none; display: none; }
+#teamframe .teamtag { position: absolute; top: -12px; left: 12px;
+  background: #c2571b; color: #fff; font-size: 11px; font-weight: 800;
+  border-radius: 4px; padding: 1px 8px; white-space: nowrap; }
 .fl-line.bad { stroke: #dc2626; }
 .fl-line.sel { stroke: var(--accent); }
 .fl-hit { fill: none; stroke: rgba(0,0,0,0); stroke-width: 16; cursor: pointer; }
@@ -598,6 +611,7 @@
       <div id="fl-crew"><h4>CREW</h4><div id="fl-crewlist"></div></div>
     <div id="fl-scroll"><div id="fl-zoom"><div id="fl-canvas">
       <svg id="fl-svg" width="1690" height="710"></svg>
+      <div id="teamframe"><span class="teamtag">Video team — per part, parallel</span></div>
       <div id="fl-nodes"></div>
       <div id="fl-linepop"></div>
     </div></div></div>
@@ -613,9 +627,11 @@
     <h3>STEP MODE</h3>
     <div class="addform">
       <select id="fl-target" aria-label="Step target"></select>
+      <select id="fl-part" aria-label="Step part"><option value="">all parts</option></select>
       <button class="cta" id="fl-step">RUN STEP</button>
       <button id="fl-approve">APPROVE</button>
       <button id="fl-rerun">RE-RUN</button>
+      <button id="fl-stop">STOP</button>
       <input id="fl-note" maxlength="500" placeholder="Owner note (re-run)" aria-label="Owner note">
       <span id="fl-stepstate"></span>
     </div>
@@ -1865,6 +1881,8 @@
         positions: { sales_sam: [40, 200], final: [940, 200] } };
     }
 
+    const CLONE_BASES = ["photo_pia", "image_gene", "anim_max",
+      "board_vera", "slide_remy"];
     function render() {
       nodesEl.innerHTML = "";
       S.flow.nodes.forEach(n => {
@@ -1876,7 +1894,8 @@
           (S.badNodes[n.id] ? " bad" : "") +
           (n.pc ? " pcnode" : "") +
           (n.code ? " codenode" : "") +
-          ((agentOf(n.id) || {}).draft ? " draft" : "");
+          ((agentOf(n.id) || {}).draft ? " draft" : "") +
+          (CLONE_BASES.includes(n.id) ? " clonebox" : "");
         div.style.left = p.x + "px";
         div.style.top = p.y + "px";
         div.dataset.n = n.id;
@@ -1888,6 +1907,20 @@
         if (n.temp)
           inner += '<div class="sub" title="' + esc(n.temp) + '">' +
             "temporary inputs</div>";
+        if (CLONE_BASES.includes(n.id) && S.partStat &&
+            S.partStat.n_parts) {
+          inner += '<span class="clonebadge">× ' +
+            S.partStat.n_parts + "</span>";
+          const syms = [];
+          for (let i = 1; i <= S.partStat.n_parts; i++) {
+            const c = ((S.partStat.nodes || {})[n.id] || {})
+              ["p" + i] || {};
+            syms.push("P" + i + " " +
+              (c.approved ? "✓" : (c.result ? "…" : "–")));
+          }
+          inner += '<div class="partrow">' +
+            syms.map(s => "<b>" + esc(s) + "</b>").join("") + "</div>";
+        }
         if (n.pc) {
           inner += '<div class="req">not a runner: dotted lines only</div>';
         } else if (n.code) {
@@ -2103,6 +2136,23 @@
     function drawLines() {
       drawLinesSolid();
       drawDotted();
+      drawTeamFrame();
+    }
+    function drawTeamFrame() {
+      const fr = document.getElementById("teamframe");
+      const boxes = CLONE_BASES.map(id => nodeBox(id))
+        .filter(b => b);
+      if (boxes.length < 2) { fr.style.display = "none"; return; }
+      const pad = 18;
+      const x0 = Math.min(...boxes.map(b => b.x)) - pad;
+      const y0 = Math.min(...boxes.map(b => b.y)) - pad;
+      const x1 = Math.max(...boxes.map(b => b.x + b.w)) + pad;
+      const y1 = Math.max(...boxes.map(b => b.y + b.h)) + pad;
+      fr.style.display = "block";
+      fr.style.left = x0 + "px";
+      fr.style.top = y0 + "px";
+      fr.style.width = (x1 - x0) + "px";
+      fr.style.height = (y1 - y0) + "px";
     }
     function drawLinesSolid() {
       while (svg.firstChild) svg.removeChild(svg.firstChild);
@@ -2588,8 +2638,11 @@
         S.selLine = null;
         S.selNode = null;
         S.stepRun = null;
+        S.partStat = null;
         document.getElementById("fl-steps").innerHTML = "";
         document.getElementById("fl-stepstate").textContent = "";
+        document.getElementById("fl-part").innerHTML =
+          '<option value="">all parts</option>';
         hidePop();
         render();
         fillTargets();
@@ -2631,6 +2684,8 @@
         return "final collected " + e.inputs + " inputs";
       if (e.ev === "step_start") return "STEP to " + e.target;
       if (e.ev === "step_paused") return "PAUSED at " + e.target;
+      if (e.ev === "step_stopped")
+        return "STOPPED: halted before " + (e.at || e.target || "");
       if (e.ev === "agent_skip")
         return "-- " + e.agent + " skipped (" + e.reason + ")";
       if (e.ev === "flow_done") return "DONE " + e.run;
@@ -2687,6 +2742,7 @@
     }
 
     S.stepRun = null;
+    S.partStat = null;
     function stepNodes() {
       return (S.flow.nodes || [])
         .filter(n => !n.pc)
@@ -2706,6 +2762,11 @@
         .join("");
       if (stepNodes().includes(keep2)) fn.value = keep2;
     }
+    function stepTargetId(sel) {
+      const tgt = document.getElementById(sel).value;
+      const p = document.getElementById("fl-part").value;
+      return (p && CLONE_BASES.includes(tgt)) ? tgt + "@p" + p : tgt;
+    }
     function costText(u) {
       if (!u) return "—";
       if (u.reused) return "reused";
@@ -2724,17 +2785,51 @@
         const st = r.status || {};
         lab.textContent = (st.state || "?") +
           (st.last ? " @ " + st.last : "");
+        S.partStat = null;
+        const partNos = [];
+        Object.keys(st.nodes || {}).forEach(id => {
+          const detail = (st.nodes[id] || {}).parts;
+          if (!detail) return;
+          Object.keys(detail).forEach(cid => {
+            const m = /^(.+)@p(\d+)$/.exec(cid);
+            if (!m) return;
+            const no = parseInt(m[2], 10);
+            if (!partNos.includes(no)) partNos.push(no);
+            S.partStat = S.partStat || { nodes: {} };
+            (S.partStat.nodes[id] = S.partStat.nodes[id] || {})
+              ["p" + no] = detail[cid];
+          });
+        });
+        if (S.partStat) {
+          partNos.sort((a, b) => a - b);
+          S.partStat.n_parts = partNos.length;
+        }
+        const fp = document.getElementById("fl-part");
+        const keepp = fp.value;
+        fp.innerHTML = '<option value="">all parts</option>' +
+          partNos.map(n => '<option value="' + n + '">part ' +
+            n + "</option>").join("");
+        if (partNos.map(String).includes(keepp)) fp.value = keepp;
         const rows = Object.keys(st.nodes || {}).map(id => {
           const n = st.nodes[id];
-          const u = n.usage || {};
-          return "<tr><td>" + esc(id) + "</td><td>" +
+          let html = "<tr><td>" + esc(id) + "</td><td>" +
             (n.result ? "yes" : "—") + "</td><td>" +
             (n.approved ? "yes" : "—") + "</td><td>" +
             esc(costText(n.usage)) + "</td></tr>";
+          const detail = n.parts;
+          if (detail) Object.keys(detail).sort().forEach(cid => {
+            const c = detail[cid];
+            html += "<tr><td>&nbsp;&nbsp;↳ " + esc(cid) +
+              "</td><td>" + (c.result ? "yes" : "—") +
+              "</td><td>" + (c.approved ? "yes" : "—") +
+              "</td><td>" + esc(costText(c.usage)) + "</td></tr>";
+          });
+          return html;
         }).join("");
         box.innerHTML = '<table><thead><tr><th>STAGE</th>' +
           "<th>RESULT</th><th>APPROVED</th><th>COST</th></tr></thead>" +
           "<tbody>" + rows + "</tbody></table>";
+        render();
       } catch (e) {
         box.innerHTML = "";
         lab.textContent = "no step status";
@@ -2746,7 +2841,7 @@
         if (S.runTimer) { clearTimeout(S.runTimer); S.runTimer = 0; }
         if (!(await doSave())) return;
         const oid = document.getElementById("fl-order").value.trim();
-        const tgt = document.getElementById("fl-target").value;
+        const tgt = stepTargetId("fl-target");
         const body = { order_id: oid, target: tgt };
         if (S.stepRun) body.run_id = S.stepRun;
         const r = await api.send("POST",
@@ -2761,7 +2856,7 @@
       try {
         errline.textContent = "";
         if (!S.stepRun) { fail(new Error("run a step first")); return; }
-        const tgt = document.getElementById("fl-target").value;
+        const tgt = stepTargetId("fl-target");
         await api.send("POST", "api/flows/runs/" +
           encodeURIComponent(S.stepRun) + "/approve", { node: tgt });
         loadStep(S.stepRun);
@@ -2772,7 +2867,7 @@
         errline.textContent = "";
         if (!S.stepRun) { fail(new Error("run a step first")); return; }
         if (S.runTimer) { clearTimeout(S.runTimer); S.runTimer = 0; }
-        const tgt = document.getElementById("fl-target").value;
+        const tgt = stepTargetId("fl-target");
         const note = document.getElementById("fl-note").value.trim();
         await api.send("POST", "api/flows/runs/" +
           encodeURIComponent(S.stepRun) + "/invalidate",
@@ -2786,11 +2881,21 @@
         pollRun(r.run_id);
       } catch (e) { fail(e); }
     };
+    document.getElementById("fl-stop").onclick = async () => {
+      try {
+        errline.textContent = "";
+        if (!S.stepRun) { fail(new Error("run a step first")); return; }
+        if (S.runTimer) { clearTimeout(S.runTimer); S.runTimer = 0; }
+        await api.send("POST", "api/flows/runs/" +
+          encodeURIComponent(S.stepRun) + "/stop", {});
+        pollRun(S.stepRun);
+      } catch (e) { fail(e); }
+    };
     document.getElementById("fl-view").onclick = async () => {
       try {
         errline.textContent = "";
         if (!S.stepRun) { fail(new Error("run a step first")); return; }
-        const node = document.getElementById("fl-fnode").value;
+        const node = stepTargetId("fl-fnode");
         const name = document.getElementById("fl-fname").value;
         const txt = await api.text("api/flows/runs/" +
           encodeURIComponent(S.stepRun) + "/file?node=" +

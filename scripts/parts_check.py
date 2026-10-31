@@ -877,5 +877,131 @@ finally:
     _pc.ROOT_OVERRIDE = None
     flow.RUNS_DIR = real_runs
 
+# ---- STEP 3: clone step mode ----
+MINI_FLOW = {
+    "nodes": [{"id": n} for n in
+              ["part_split", "photo_pia", "image_gene",
+               "anim_max", "board_vera", "slide_remy",
+               "video_production", "final"]],
+    "lines": [{"id": "m%d" % i, "from": a, "to": b}
+              for i, (a, b) in enumerate([
+                  ("part_split", "photo_pia"),
+                  ("part_split", "image_gene"),
+                  ("part_split", "anim_max"),
+                  ("photo_pia", "board_vera"),
+                  ("image_gene", "board_vera"),
+                  ("anim_max", "board_vera"),
+                  ("board_vera", "slide_remy"),
+                  ("slide_remy", "video_production"),
+                  ("video_production", "final")])]}
+
+flow.RUNS_DIR = RUNS
+_pc.ROOT_OVERRIDE = tmp
+try:
+    rd3 = _setup_split_run("rstep3")
+    _run_all_clones(rd3, False, stub)
+    with open(os.path.join(rd3, "STATUS.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"run_id": "rstep3", "flow_id": "mini",
+                   "order_id": ORDER, "state": "step_paused",
+                   "approved": [], "last": "slide_remy"}, f)
+    with open(os.path.join(rd3, "flow.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(MINI_FLOW, f)
+    a1 = flow.approve_node("rstep3", "photo_pia@p1",
+                           runs_root=RUNS)
+    ok(a1.get("ok"), "approve one clone: %s"
+       % a1.get("error", "ok"))
+    sc = flow.step_status("rstep3", runs_root=RUNS)
+    pdet = sc["status"]["nodes"]["photo_pia"]["parts"]
+    ok(pdet["photo_pia@p1"]["approved"]
+       and not pdet["photo_pia@p2"]["approved"]
+       and pdet["photo_pia@p2"]["result"]
+       and not sc["status"]["nodes"]["photo_pia"]["approved"],
+       "one part approved, node still open")
+    a_all = flow.approve_node("rstep3", "photo_pia",
+                              runs_root=RUNS)
+    ok(a_all.get("ok")
+       and flow.step_status(
+           "rstep3", runs_root=RUNS)["status"]["nodes"]
+       ["photo_pia"]["approved"],
+       "base id approves every part at once")
+    bad = flow.approve_node("rstep3", "photo_pia@p9",
+                            runs_root=RUNS)
+    ok(not bad.get("ok"), "unknown part cannot approve")
+    vdir = os.path.join(rd3, "video_production")
+    os.makedirs(vdir, exist_ok=True)
+    with open(os.path.join(vdir, "result.json"), "w",
+              encoding="utf-8") as f:
+        f.write("{}")
+    inv = flow.invalidate_node("rstep3", "photo_pia@p2",
+                               runs_root=RUNS)
+    ok(inv.get("ok")
+       and set(inv.get("removed", []))
+       == {"photo_pia@p2", "board_vera@p2", "slide_remy@p2",
+           "video_production"},
+       "re-run drops only that part downstream: %s"
+       % sorted(inv.get("removed", [])))
+    ok(not os.path.isdir(os.path.join(rd3, "photo_pia", "p2"))
+       and not os.path.isfile(os.path.join(
+           rd3, "photo_pia", "result.json"))
+       and os.path.isfile(os.path.join(
+           rd3, "photo_pia", "p1", "result.json"))
+       and os.path.isfile(os.path.join(
+           rd3, "image_gene", "p2", "result.json")),
+       "other parts and mates untouched")
+    kept = json.load(open(os.path.join(rd3, "STATUS.json"),
+                          encoding="utf-8"))["approved"]
+    ok("photo_pia@p1" in kept
+       and "photo_pia@p2" not in kept
+       and "board_vera@p2" not in kept,
+       "approvals pruned for the dropped part only")
+    one = flow._run_agent_node(
+        rd3, "photo_pia", ORDER, BRIEF,
+        _incoming2("photo_pia"), stub, lambda ev: None,
+        note="P2NOTE", only="photo_pia@p2")
+    ok(one.get("ok"), "part step re-runs one clone: %s"
+       % one.get("error", "ok"))
+    p2in = open(os.path.join(rd3, "photo_pia", "p2",
+                             "INPUTS.md"),
+                encoding="utf-8").read()
+    p1in = open(os.path.join(rd3, "photo_pia", "p1",
+                             "INPUTS.md"),
+                encoding="utf-8").read()
+    ok("P2NOTE" in p2in and "P2NOTE" not in p1in
+       and os.path.isfile(os.path.join(
+           rd3, "photo_pia", "result.json")),
+       "owner note lands in that part only, merge rebuilt")
+    rd0 = _setup_split_run("ronly3")
+    nope = flow._run_agent_node(
+        rd0, "photo_pia", ORDER, BRIEF,
+        _incoming2("photo_pia"), stub, lambda ev: None,
+        only="photo_pia@p2")
+    ok(not nope.get("ok")
+       and "run the whole" in nope.get("error", ""),
+       "part-first run on a fresh node fails clean")
+    st = flow.stop_run("rstep3", runs_root=RUNS)
+    ok(st.get("ok")
+       and json.load(open(os.path.join(rd3, "STATUS.json"),
+                          encoding="utf-8"))["state"]
+       == "stopped",
+       "STOP parks the run")
+    refused = flow.step_run(flow.load_flow("default"),
+                            ORDER, stub, "photo_pia@p1",
+                            run_id="rstep3", runs_root=RUNS)
+    ok(not refused.get("ok")
+       and "stopped" in refused.get("error", ""),
+       "stopped run refuses the next step")
+    back = flow.invalidate_node("rstep3", "image_gene@p1",
+                                runs_root=RUNS)
+    ok(back.get("ok")
+       and json.load(open(os.path.join(rd3, "STATUS.json"),
+                          encoding="utf-8"))["state"]
+       == "step_paused",
+       "invalidate resumes a stopped run")
+finally:
+    _pc.ROOT_OVERRIDE = None
+    flow.RUNS_DIR = real_runs
+
 print("fails: %d" % fails)
 raise SystemExit(1 if fails else 0)
