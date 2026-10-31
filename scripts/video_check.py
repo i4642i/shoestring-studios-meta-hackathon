@@ -156,14 +156,26 @@ ok(asm["total_s"] == 40.0 and len(asm["segments"]) == 2
    and "concat=n=2:v=1:a=0[v]" in " ".join(asm["ffmpeg_cmd"]),
    "assembly plan joins in order with one ffmpeg command")
 ok(asm["srt"] == srt, "assembly carries the same subtitles")
-props = tools._cut_slide_props(SLIDE["cuts"][0], GUIDE)
+recs, rtot = video.build_cut_records(
+    NARR, {"s1c1": "a.png"}, {"s1c1": "a.wav", "s1c2": "b.wav"},
+    props_map={"s1c1": {"cutId": "s1c1"}},
+    voice_refs={"s1c1": "pc://voice/0123456789ab#s1c1"},
+    slide_status={"s1c2": "remotion_unavailable"})
+ok(rtot == 40.0 and recs[0]["props"] == {"cutId": "s1c1"}
+   and recs[0]["slide_status"] == "rendered"
+   and recs[0]["voice_ref"] == "pc://voice/0123456789ab#s1c1"
+   and recs[1]["props"] is None and recs[1]["slide"] is None
+   and recs[1]["slide_status"] == "remotion_unavailable"
+   and recs[1]["audio"] == "b.wav",
+   "cut records carry props + png + voice, gaps stay null")
+props = video.cut_slide_props(SLIDE["cuts"][0], GUIDE)
 ok(props["cutId"] == "s1c1" and props["seconds"] == 20
    and props["preset"] == "main_side"
    and len(props["blocks"]) == 2
    and props["blocks"][0]["box"]["w"] == 1088
    and props["guide"]["palette"]["accent"] == "#e0a458",
    "cut props carry boxes + guide to Remotion")
-ok(tools._cut_slide_props(
+ok(video.cut_slide_props(
     SLIDE["cuts"][1], GUIDE)["blocks"][0].get("file") == "",
    "unresolved pc:// ref renders an empty slot, never a fake path")
 rmods = os.path.join(tools.REMOTION_DIR, "node_modules")
@@ -246,6 +258,11 @@ try:
        and r1["slide_file"] == "" and r1["renders_n"] == 0
        and "setup_video" in r1.get("note", ""),
        "missing Remotion skips honestly with an install hint")
+    side = os.path.join(rdir, "slides", "s1c1.props.json")
+    ok(r1.get("props_file") == "slides/s1c1.props.json"
+       and os.path.isfile(side)
+       and json.load(open(side, encoding="utf-8"))["cutId"] == "s1c1",
+       "skipped render still records its props")
     render_slide(rctx, {"cut_id": "s1c1"})
     render_slide(rctx, {"cut_id": "s1c1"})
     r4 = render_slide(rctx, {"cut_id": "s1c1"})

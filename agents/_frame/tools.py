@@ -1781,41 +1781,12 @@ def _have_remotion():
     return False
 
 
-def _cut_slide_props(cut, guide):
-    """Cut (slide_draft v2) + style guide -> CutSlide props."""
-    dur = 20
-    try:
-        dur = int(round(float(cut.get("end_s", 20))
-                        - float(cut.get("start_s", 0)))) or 20
-    except (TypeError, ValueError):
-        pass
-    dur = min(max(dur, 1), 30)
-    blocks = []
-    for b in (cut.get("blocks") or []):
-        if not isinstance(b, dict):
-            continue
-        box = b.get("box") or {}
-        nb = {"kind": b.get("kind"),
-              "box": {k: box.get(k) for k in ("x", "y", "w", "h")},
-              "order": b.get("order", 0),
-              "appear_s": b.get("appear_s", 0),
-              "reason": b.get("reason", ""),
-              "font_size": b.get("font_size"),
-              "data": b.get("data") or {}}
-        if b.get("kind") in ("photo", "generated", "source_figure"):
-            ref = b.get("ref") or ""
-            nb["file"] = "" if ref.startswith("pc://") else ref
-        blocks.append(nb)
-    return {"cutId": cut.get("cut_id"), "seconds": dur,
-            "preset": cut.get("preset", "full"), "blocks": blocks,
-            "onScreenText": cut.get("on_screen_text") or [],
-            "guide": guide if isinstance(guide, dict) else {}}
-
-
 def render_slide(ctx, args):
     """Render one cut's slide PNG via the Remotion CutSlide
     composition (last frame of the cut). Max 3 renders per cut per
-    run. Without Remotion the render is skipped honestly: ok True
+    run. Every call records slides/<cut>.props.json (the exact
+    render inputs, guide included) for the assembly records.
+    Without Remotion the render is skipped honestly: ok True
     with status remotion_unavailable (the 3-render cap still
     applies)."""
     from . import video
@@ -1839,18 +1810,26 @@ def render_slide(ctx, args):
         return {"ok": False, "errors": [
             "cut %s already used %d renders"
             % (cut_id, video.RENDER_MAX)]}
+    sdir = os.path.join(ctx["run_dir"], "slides")
+    os.makedirs(sdir, exist_ok=True)
+    props = video.cut_slide_props(cut, guide)
+    sidecar = os.path.join(sdir, "%s.props.json" % cut_id)
+    try:
+        with open(sidecar, "w", encoding="utf-8") as f:
+            json.dump(props, f, ensure_ascii=False, indent=2)
+    except OSError as exc:
+        return {"ok": False, "errors": ["props sidecar failed: %s"
+                                        % exc]}
     if not _have_remotion():
         counts[cut_id] = n
         _counter_save(countp, counts)
         return {"ok": True, "slide_file": "",
                 "status": "remotion_unavailable",
                 "renders_n": 0,
+                "props_file": "slides/%s.props.json" % cut_id,
                 "note": "Remotion is not installed; run "
                         "tools/setup_video.ps1 to install it"}
-    sdir = os.path.join(ctx["run_dir"], "slides")
-    os.makedirs(sdir, exist_ok=True)
     out = os.path.join(sdir, "%s.png" % cut_id)
-    props = _cut_slide_props(cut, guide)
     last_frame = props["seconds"] * 30 - 1
     exe = "npx.cmd" if os.name == "nt" else "npx"
     cmd = [exe, "remotion", "still", "CutSlide", out,
@@ -1869,7 +1848,8 @@ def render_slide(ctx, args):
     counts[cut_id] = n
     _counter_save(countp, counts)
     return {"ok": True, "slide_file": "slides/%s.png" % cut_id,
-            "renders_n": n}
+            "renders_n": n,
+            "props_file": "slides/%s.props.json" % cut_id}
 
 
 TOOLS = {

@@ -423,6 +423,9 @@ def stub(agent_dir, run_dir, brief, input_md):
         with open(os.path.join(sdir, "s1c1.png"), "w",
                   encoding="utf-8") as f:
             f.write("PNG")
+        with open(os.path.join(sdir, "s1c1.props.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"cutId": "s1c1", "probe": True}, f)
     res = results.make_result(producer, brief["order_id"],
                               brief["flow_run_id"], cats)
     results.save_result(run_dir, res)
@@ -506,6 +509,15 @@ ok(os.path.isfile(os.path.join(rdir, "video_production",
    and os.path.isfile(os.path.join(rdir, "video_production",
                                    "storyboard_table.json")),
    "video node writes assembly + srt + table")
+asmj = json.load(open(os.path.join(rdir, "video_production",
+                                  "assembly.json"),
+                      encoding="utf-8"))
+ok(asmj["segments"][0]["props"] == {"cutId": "s1c1",
+                                    "probe": True}
+   and asmj["segments"][0]["slide"].endswith("s1c1.png")
+   and asmj["segments"][0]["slide_status"] == "rendered"
+   and asmj["segments"][0]["voice_ref"].endswith("#s1c1"),
+   "assembly segments record props + png + voice")
 with open(os.path.join(rdir, "video_production", "captions.srt"),
           encoding="utf-8") as f:
     ok(f.read() == "1\n00:00:00,000 --> 00:00:20,000\nHello world\n",

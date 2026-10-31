@@ -928,18 +928,20 @@ def _run_code_node(run_dir, node_id, order_id, order_brief, incoming,
             slides[cid] = ""
         else:
             missing.append("slide for %s" % cid)
-    audio = {}
+    audio, voice_refs = {}, {}
     try:
         doc = pc.content_id("voice:" + order_id)
         edir = pc.entry_dir("voice", doc)
         with open(os.path.join(edir, "entry.json"),
                   encoding="utf-8") as f:
             entry = json.load(f)
+        eref = entry.get("ref", "")
         for cid, clip in ((entry.get("cuts") or {}).items()):
             if isinstance(clip, dict) and clip.get("file"):
                 cand = os.path.join(edir, "audio", clip["file"])
                 if os.path.isfile(cand):
                     audio[cid] = cand
+                    voice_refs[cid] = eref + "#" + cid
     except (OSError, ValueError, KeyError):
         pass
     for cut in cuts:
@@ -949,7 +951,26 @@ def _run_code_node(run_dir, node_id, order_id, order_brief, incoming,
         return {"ok": False,
                 "error": "video_production missing: "
                          + ", ".join(sorted(missing))}
-    asm = video.build_assembly(narration, slides, audio)
+    slide_status = {}
+    props_map = {}
+    for cut in cuts:
+        cid = cut["cut_id"]
+        slide_status[cid] = ("remotion_unavailable"
+                             if cid in unavail else "rendered")
+        props_map[cid] = None
+        side = os.path.join(run_dir, "slide_remy", "slides",
+                            "%s.props.json" % cid)
+        try:
+            with open(side, encoding="utf-8") as f:
+                props = json.load(f)
+        except (OSError, ValueError):
+            props = None
+        if isinstance(props, dict):
+            props_map[cid] = props
+    asm = video.build_assembly(narration, slides, audio,
+                               props_map=props_map,
+                               voice_refs=voice_refs,
+                               slide_status=slide_status)
     srt_text, speech = asm["srt"], {"status": "proportional",
                                     "turns": 0, "mismatches": []}
     try:

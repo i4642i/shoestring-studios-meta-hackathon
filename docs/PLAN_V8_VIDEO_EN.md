@@ -192,9 +192,10 @@ turn (the planned fallback becomes the design).
   (storage + recipients + read tools); make_voice
   (Kokoro adapter + stub engine + duration read);
   Pia/Gene/Max stubs ("none"); Vera layout drafts (v2
-  boxed blocks); Remy Remotion stills (PNG per cut,
-  honest skip without the install); video assembly
-  (join + .srt + table over Remotion PNGs);
+  boxed blocks); Remy Remotion stills (PNG per cut +
+  props sidecar, honest skip without the install); video
+  assembly (join + .srt + table over Remotion PNGs,
+  per-cut records of props + PNG + voice);
   flow v8 file + tab; step mode; fixtures + suites green.
 - Phase B: real Pia (Openverse search+pick), Gene
   (muse-image + reuse), Max (templates + checked values),

@@ -113,25 +113,80 @@ def build_table(narration, storyboard, slide_draft, scene_part=None):
     return {"rows": rows}
 
 
-def build_assembly(narration, slide_files, audio_files, out_name="video"):
-    """Pure assembly plan. slide_files/audio_files map cut_id ->
-    file path. Returns {segments, srt, table-ready cuts, ffmpeg_cmd,
-    total_s}. Execution lives in run_ffmpeg() only."""
-    segments = []
+def cut_slide_props(cut, guide):
+    """Cut (slide_draft v2) + style guide -> Remotion CutSlide
+    props. Shared by render_slide and the assembly records."""
+    dur = 20
+    try:
+        dur = int(round(float(cut.get("end_s", 20))
+                        - float(cut.get("start_s", 0)))) or 20
+    except (TypeError, ValueError):
+        pass
+    dur = min(max(dur, 1), 30)
+    blocks = []
+    for b in (cut.get("blocks") or []):
+        if not isinstance(b, dict):
+            continue
+        box = b.get("box") or {}
+        nb = {"kind": b.get("kind"),
+              "box": {k: box.get(k) for k in ("x", "y", "w", "h")},
+              "order": b.get("order", 0),
+              "appear_s": b.get("appear_s", 0),
+              "reason": b.get("reason", ""),
+              "font_size": b.get("font_size"),
+              "data": b.get("data") or {}}
+        if b.get("kind") in ("photo", "generated", "source_figure"):
+            ref = b.get("ref") or ""
+            nb["file"] = "" if ref.startswith("pc://") else ref
+        blocks.append(nb)
+    return {"cutId": cut.get("cut_id"), "seconds": dur,
+            "preset": cut.get("preset", "full"), "blocks": blocks,
+            "onScreenText": cut.get("on_screen_text") or [],
+            "guide": guide if isinstance(guide, dict) else {}}
+
+
+def build_cut_records(narration, slide_files, audio_files,
+                      props_map=None, voice_refs=None,
+                      slide_status=None):
+    """Per-cut assembly records: props + slide PNG + voice for
+    every cut. Missing sidecars/refs record None, never a guess.
+    Returns (records, total_s)."""
+    props_map = props_map or {}
+    voice_refs = voice_refs or {}
+    slide_status = slide_status or {}
+    records = []
     total = 0.0
     for c in ((narration or {}).get("cuts") or []):
         if not isinstance(c, dict):
             continue
         cid = c.get("cut_id")
         dur = float(c.get("end_s", 0)) - float(c.get("start_s", 0))
-        segments.append({
+        slide = (slide_files or {}).get(cid)
+        records.append({
             "cut_id": cid,
-            "slide": slide_files.get(cid),
-            "audio": audio_files.get(cid),
             "at_s": round(total, 3),
             "dur_s": round(dur, 3),
+            "props": props_map.get(cid),
+            "slide": slide,
+            "slide_status": slide_status.get(
+                cid, "rendered" if slide else "missing"),
+            "audio": (audio_files or {}).get(cid),
+            "voice_ref": voice_refs.get(cid),
         })
         total += dur
+    return records, round(total, 3)
+
+
+def build_assembly(narration, slide_files, audio_files,
+                   out_name="video", props_map=None,
+                   voice_refs=None, slide_status=None):
+    """Pure assembly plan. slide_files/audio_files map cut_id ->
+    file path. Segments are the per-cut records (props + slide
+    PNG + voice). Returns {segments, srt, ffmpeg_cmd, total_s}.
+    Execution lives in run_ffmpeg() only."""
+    segments, total = build_cut_records(
+        narration, slide_files, audio_files, props_map,
+        voice_refs, slide_status)
     cmd = ["ffmpeg", "-y"]
     for seg in segments:
         cmd += ["-loop", "1", "-t", str(seg["dur_s"]), "-i",
@@ -148,7 +203,7 @@ def build_assembly(narration, slide_files, audio_files, out_name="video"):
                 "[a]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-shortest", out_name + ".mp4"]
     return {"segments": segments, "srt": build_srt(narration),
-            "ffmpeg_cmd": cmd, "total_s": round(total, 3)}
+            "ffmpeg_cmd": cmd, "total_s": total}
 
 
 def run_ffmpeg(cmd, timeout_s=120):
