@@ -132,12 +132,20 @@
   .idcard:hover { border-color: var(--ink); }
   .idcard .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 10px;
     border-radius: 12px 0 0 12px; }
+  .idcard .idtop { display: flex; align-items: center; gap: 12px; }
+  .idcard .idpic { flex: none; width: 72px; height: 72px; border-radius: 50%;
+    background: #e5e7eb; overflow: hidden; }
+  .idcard .idpic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .idcard .idtx { min-width: 0; }
   .idcard .nm { display: block; font-size: 18px; font-weight: 800; }
   .idcard .ti { display: block; font-size: 13px; color: var(--dim); margin: 2px 0 8px; }
   .idcard .meta { display: block; font-size: 12px; color: var(--dim); font-family: monospace; }
   .idcard .g { display: block; font-size: 11px; font-weight: 700; margin-top: 8px; color: var(--dim); }
   .idcard .g.on { color: #1e7d32; }
   .idempty { font-size: 14px; color: var(--dim); }
+  @media (max-width: 700px) {
+    .idcard .idpic { width: 56px; height: 56px; }
+  }
   .badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
   .badge.on { background: #1e7d32; color: #fff; border-color: #1e7d32; }
   .badge.off { background: #f4f4f5; color: var(--dim); }
@@ -1739,6 +1747,28 @@ body.tab-flow { padding-bottom: 0; }
     document.querySelectorAll("#crew-tabs [data-ct]").forEach(b => {
       b.onclick = () => crewTab(b.dataset.ct);
     });
+    // Portraits come from the deferred 3D module, which may load
+    // after this classic script; wait for it (grey circle until then).
+    function fillPortrait(pic, appearance, name, tries) {
+      // Note: the card is still detached when this is first called
+      // (it is appended at the end of the loop), so a disconnected
+      // pic only delays the render; it never cancels it.
+      const v = window.CrewViewer3D;
+      if (v && v.portrait && pic.isConnected) {
+        v.portrait(appearance).then((url) => {
+          if (!pic.isConnected || !url) return;
+          const img = document.createElement("img");
+          img.src = url;
+          img.alt = name;
+          pic.appendChild(img);
+        }).catch(() => { /* grey placeholder stays */ });
+        return;
+      }
+      if ((tries || 0) < 150) {
+        setTimeout(() => fillPortrait(pic, appearance, name,
+          (tries || 0) + 1), 200);
+      }
+    }
     async function loadRoster() {
       const list = await api.get("api/crew");
       roster.innerHTML = "";
@@ -1757,12 +1787,21 @@ body.tab-flow { padding-bottom: 0; }
         const stripe = document.createElement("span");
         stripe.className = "stripe";
         stripe.style.background = tint;
+        const top = document.createElement("span");
+        top.className = "idtop";
+        const pic = document.createElement("span");
+        pic.className = "idpic";
+        const tx = document.createElement("span");
+        tx.className = "idtx";
         const nm = document.createElement("span");
         nm.className = "nm";
         nm.textContent = c.name;
         const ti = document.createElement("span");
         ti.className = "ti";
         ti.textContent = c.title;
+        tx.append(nm, ti);
+        top.append(pic, tx);
+        fillPortrait(pic, c.appearance || {}, c.name);
         const meta = document.createElement("span");
         meta.className = "meta";
         meta.textContent = (c.stage === 0 || c.stage ? "S" + c.stage + " · " : "") + c.id + " · " + c.model;
@@ -1770,7 +1809,7 @@ body.tab-flow { padding-bottom: 0; }
         const ready = c.graph === "indexed";
         g.className = "g" + (ready ? " on" : "");
         g.textContent = ready ? "● GRAPH READY" : "○ NO GRAPH";
-        b.append(stripe, nm, ti, meta, g);
+        b.append(stripe, top, meta, g);
         b.onclick = () => show(c.id).catch(fail);
         roster.appendChild(b);
       });
@@ -4812,9 +4851,82 @@ function mountViewer(which, box, appearance) {
     vs.cur = { raf: requestAnimationFrame(tick), renderer, ro };
 }
 
+// Crew card portraits: ONE shared offscreen renderer draws every
+// employee one at a time (never one WebGL context per card).
+// Head-and-shoulders, front-facing, transparent background.
+const _portraitCache = new Map();
+const _portraitGlb = new Map();
+let _portraitQueue = Promise.resolve();
+let _portraitRenderer = null;
+function _portraitLoad(variant) {
+  const v = VARIANTS.includes(variant) ? variant : VARIANTS[0];
+  if (!_portraitGlb.has(v)) {
+    _portraitGlb.set(v, new Promise((res, rej) => {
+      new GLTFLoader().load(encodeURI(CHAR_DIR + v), res,
+        undefined, rej);
+    }));
+  }
+  return _portraitGlb.get(v);
+}
+function renderPortrait(appearance) {
+  const ap = appearance || {};
+  const tint = /^#[0-9a-f]{6}$/i.test(ap.tint || "") ?
+    ap.tint.toLowerCase() : "#ffffff";
+  const key = (ap.variant || "?") + "|" + tint;
+  if (_portraitCache.has(key))
+    return Promise.resolve(_portraitCache.get(key));
+  const job = _portraitQueue.then(() => _portraitLoad(ap.variant))
+    .then((gltf) => {
+      if (_portraitCache.has(key)) return _portraitCache.get(key);
+      if (!_portraitRenderer) {
+        _portraitRenderer = new THREE.WebGLRenderer(
+          { antialias: true, alpha: true });
+        _portraitRenderer.setSize(144, 144, false);
+        _portraitRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      }
+      const scene = new THREE.Scene();
+      scene.add(new THREE.HemisphereLight(0xfff5e8, 0x3a3f4a, 0.9));
+      const keyLight = new THREE.DirectionalLight(0xfff2df, 1.6);
+      keyLight.position.set(1.5, 2.5, 2);
+      scene.add(keyLight);
+      const group = gltf.scene.clone(true);
+      const tinted = [];
+      group.traverse((o) => {
+        if (!o.isMesh) return;
+        if (tint !== "#ffffff") {
+          o.material = o.material.clone();
+          o.material.color.set(tint);
+          tinted.push(o.material);
+        }
+      });
+      scene.add(group);
+      const bb = new THREE.Box3().setFromObject(group);
+      const size = bb.getSize(new THREE.Vector3());
+      const ctr = bb.getCenter(new THREE.Vector3());
+      const fov = 28;
+      const camera = new THREE.PerspectiveCamera(fov, 1, 0.01, 20);
+      const headY = bb.min.y + size.y * 0.775;
+      const frameH = size.y * 0.65;
+      const dist = (frameH / 2) /
+        Math.tan((fov * Math.PI) / 360);
+      camera.position.set(ctr.x, headY + size.y * 0.05,
+        ctr.z + dist);
+      camera.lookAt(ctr.x, headY, ctr.z);
+      _portraitRenderer.render(scene, camera);
+      const url =
+        _portraitRenderer.domElement.toDataURL("image/png");
+      tinted.forEach((m) => m.dispose());
+      _portraitCache.set(key, url);
+      return url;
+    });
+  _portraitQueue = job.catch(() => {});
+  return job;
+}
+
 window.CrewViewer3D = {
   show(box, appearance) { mountViewer("main", box, appearance); },
   showReception(box, appearance, bub) { mountReception(box, appearance, bub); },
+  portrait(appearance) { return renderPortrait(appearance); },
 };
 
 // Reception corner for Order free-chat: sofa, coffee table, rug, lamp,
