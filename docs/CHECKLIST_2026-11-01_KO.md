@@ -19,7 +19,7 @@
 ## STEP 3 Ash
 - [x] E1 handoff에 slide_remy 허용, part_split이 slide_remy@pN 행 생성
 - [x] E2 장면 ≥ 10초 검사
-- [ ] E3 Source/Theory/Article 행이 kind=map + parts인지 코드로 확인·보고
+- [x] E3 Source/Theory/Article 행이 kind=map + parts인지 코드로 확인·보고
 
 ## STEP 4 영상 제작
 - [x] H1 Marty 구성 → video_production 선 제거, 파트 정보는 복사 직원 결과에 붙여 전달, storyboard_table.json 동일
@@ -29,7 +29,7 @@
 - [x] B2 직원 목록·STEP MODE는 접히는 서랍 (기본 접힘, 캔버스 위에 겹침)
 - [x] B3 Fit 가로·세로 모두, 로드·리사이즈 자동, 휠 확대, 배경 드래그 이동
 - [x] B4 70% 미만 줌: 노드 이름·역할만, 선 글자 hover만
-- [ ] B5 1920·1280·390 캡처, 노드 21개 겹침 없음, 페이지 스크롤바 없음
+- [x] B5 1920·1280·390 캡처, 노드 21개 겹침 없음, 페이지 스크롤바 없음
 
 ## STEP 5 Board 화면
 - [x] C1 헤더: 제목, run 선택, 단계 버튼 4개(파트 선택), 범례

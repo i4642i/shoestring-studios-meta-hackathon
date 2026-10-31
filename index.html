@@ -488,6 +488,11 @@
 
 <style>
 #p-flow { max-width: none; margin: 0 12px; }
+body.tab-flow footer { display: none; }
+body.tab-flow { padding-bottom: 0; }
+@media (max-width: 700px) {
+  #p-flow .hint { display: none; }
+}
 #fl-canvas { position: relative; overflow: hidden;
   border: 1px solid var(--line); background: #f7f9fc; border-radius: 12px; }
 #fl-scroll { overflow: auto; }
@@ -1523,6 +1528,8 @@
     document.querySelectorAll(".page").forEach(x => x.classList.remove("active"));
     b.classList.add("active");
     document.getElementById("p-" + b.dataset.p).classList.add("active");
+    document.body.classList.toggle("tab-flow",
+      b.dataset.p === "flow");
     if (b.dataset.p === "flow" && window.__flowShown)
       window.__flowShown();
     if (b.dataset.p === "board" && window.__boardShown)
@@ -2880,7 +2887,14 @@
       const r = scroller.getBoundingClientRect();
       if (r.width < 2) return;
       scroller.style.height =
-        Math.max(320, window.innerHeight - r.top - 24) + "px";
+        Math.max(200, window.innerHeight - r.top - 24) + "px";
+      for (let i = 0; i < 4; i++) {
+        const de = document.documentElement;
+        const over = de.scrollHeight - de.clientHeight;
+        if (over <= 1) break;
+        scroller.style.height =
+          Math.max(200, scroller.clientHeight - over - 2) + "px";
+      }
       if (!S.zoomManual || !S.zoom) fitZoom();
       else applyZoom();
     }

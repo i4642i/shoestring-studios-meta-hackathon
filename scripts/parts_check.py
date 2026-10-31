@@ -1124,6 +1124,47 @@ try:
     ok(not neg.get("ok")
        and "outside plan_ash's listed parts" in neg.get("error", ""),
        "remy handoff outside ash rows fails the split")
+
+    TID = _pc.content_id("theory:parts-paper")
+    AID = _pc.content_id("article:parts-news")
+    TREF = "pc://theory/%s" % TID
+    AREF = "pc://article/%s" % AID
+    for pcname, doc_id, ref in (("theory", TID, TREF),
+                                ("article", AID, AREF)):
+        edir = _pc.entry_dir(pcname, doc_id)
+        os.makedirs(edir, exist_ok=True)
+        with open(os.path.join(edir, "entry.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"pc": pcname, "doc_id": doc_id,
+                       "ref": ref, "recipients": []}, f)
+    DRAFTE = json.loads(json.dumps(DRAFT))
+    DRAFTE["scenes"][0]["materials"].append(
+        {"ref": TREF + "#p1", "from": "theory",
+         "how_used": "background"})
+    DRAFTE["scenes"][1]["materials"].append(
+        {"ref": AREF + "#p2", "from": "article",
+         "how_used": "case"})
+    _setup_split_run("re3", DRAFTE)
+    tentry = _pc.load_entry_by_ref(TREF)
+    aentry = _pc.load_entry_by_ref(AREF)
+    sentry3 = _pc.load_entry_by_ref(SRC)
+    r3t = _pc.entry_access(tentry, "photo_pia@p1", ORDER)
+    r3a = _pc.entry_access(aentry, "anim_max@p2", ORDER)
+    r3s = _pc.entry_access(sentry3, "board_vera@p1", ORDER)
+    ok(r3t is not None and r3t.get("kind") == "map"
+       and r3t.get("parts") == [TREF + "#p1"]
+       and r3t.get("set_by") == "part_split"
+       and _pc.entry_access(tentry, "photo_pia@p2",
+                            ORDER) is None,
+       "theory row is kind=map + parts for p1 only")
+    ok(r3a is not None and r3a.get("kind") == "map"
+       and r3a.get("parts") == [AREF + "#p2"]
+       and r3a.get("set_by") == "part_split",
+       "article row is kind=map + parts for p2 only")
+    ok(r3s is not None and r3s.get("kind") == "map"
+       and SRC + "#s1.1/p1" in (r3s.get("parts") or [])
+       and r3s.get("set_by") == "part_split",
+       "source row is kind=map + parts")
 finally:
     _pc.ROOT_OVERRIDE = None
     flow.RUNS_DIR = real_runs

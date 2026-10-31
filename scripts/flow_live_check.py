@@ -17,6 +17,7 @@ import socket
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
@@ -25,7 +26,9 @@ SERVER_PORT = 8765
 CDP_PORT = 9444
 EDGE = (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 RUNS = os.path.join(ROOT, "runs")
-PNG = os.path.join(RUNS, "flow_live.png")
+PNG1920 = os.path.join(RUNS, "flow_1920.png")
+PNG1280 = os.path.join(RUNS, "flow_1280.png")
+PNG390 = os.path.join(RUNS, "flow_390.png")
 SERVER_LOG = os.path.join(RUNS, "flow_live_server.log")
 
 fails = 0
@@ -288,9 +291,49 @@ PROBE_JS = """(() => {
       svg.querySelectorAll('text.fl-pclabel.on'))
       .map(t => t.textContent),
     solidVisible: visLab.length,
-    labelClash: labelClash
+    labelClash: labelClash,
+    boxes: Array.from(
+      document.querySelectorAll("#fl-nodes .fl-node"))
+      .map(el => { const r = el.getBoundingClientRect();
+        return [Math.round(r.x * 10) / 10,
+                Math.round(r.y * 10) / 10,
+                Math.round(r.width * 10) / 10,
+                Math.round(r.height * 10) / 10]; }),
+    canvas: (() => { const c =
+      document.getElementById("fl-canvas");
+      if (!c) return null;
+      const r = c.getBoundingClientRect();
+      return [Math.round(r.width), Math.round(r.height)];
+    })(),
+    scrollX: document.documentElement.scrollWidth >
+      document.documentElement.clientWidth + 1,
+    scrollY: document.documentElement.scrollHeight >
+      document.documentElement.clientHeight + 1,
+    viewport: [innerWidth, innerHeight],
+    zoomLab: (document.getElementById("fl-zoomlab")
+      || {}).textContent || "",
+    layout: (() => { const s =
+      document.getElementById("fl-scroll");
+      const r = s.getBoundingClientRect();
+      return {top: Math.round(r.top),
+        h: Math.round(r.height),
+        docH: document.documentElement.scrollHeight,
+        winH: innerHeight}; })(),
   };
 })()"""
+
+
+def box_overlaps(boxes):
+    """Node-box pairs whose interiors overlap."""
+    bad = []
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            a, b = boxes[i], boxes[j]
+            if a[0] < b[0] + b[2] and b[0] < a[0] + a[2] \
+                    and a[1] < b[1] + b[3] \
+                    and b[1] < a[1] + a[3]:
+                bad.append((i, j))
+    return bad
 
 
 def stop_proc(proc, name):
@@ -324,7 +367,8 @@ def main():
         print("1 FAILURES")
         return 1
     server, edge, ws = None, None, None
-    profile = os.path.join(RUNS, "flow_live_profile")
+    profile = os.path.join(tempfile.gettempdir(),
+                           "flow_live_profile")
     shutil.rmtree(profile, ignore_errors=True)
     try:
         logf = open(SERVER_LOG, "w", encoding="utf-8")
@@ -355,7 +399,7 @@ def main():
              "--disable-extensions",
              "--remote-debugging-port=%d" % CDP_PORT,
              "--user-data-dir=" + profile,
-             "--window-size=1800,1000", "about:blank"])
+             "--window-size=1920,1080", "about:blank"])
         t0 = time.time()
         targets = None
         while time.time() - t0 < 40:
@@ -427,16 +471,86 @@ def main():
         ok(out.get("shownLabels") == ["full text"],
            "only the full-text dotted label shows (%s)"
            % out.get("shownLabels"))
-        ok(out.get("solidVisible", -1) >= 30
-           and out.get("labelClash", -1) == 0,
-           "solid labels on, dense rest hover-only (%s/%s)"
-           % (out.get("solidVisible"), out.get("labelClash")))
+        ztxt = (out.get("zoomLab") or "").replace("%", "")
+        try:
+            znum = int(ztxt)
+        except ValueError:
+            znum = 100
+        if znum < 70:
+            ok(out.get("solidVisible", -1) == 0
+               and out.get("labelClash", -1) == 0,
+               "zoom %d%% < 70: labels hover-only"
+               % znum)
+        else:
+            ok(out.get("solidVisible", -1) >= 30
+               and out.get("labelClash", -1) == 0,
+               "solid labels on, dense rest hover-only"
+               " (%s/%s)"
+               % (out.get("solidVisible"),
+                  out.get("labelClash")))
+        boxes = out.get("boxes") or []
+        ok(len(boxes) == 21,
+           "21 nodes on the canvas (got %d)"
+           % len(boxes))
+        clash = box_overlaps(boxes)
+        ok(len(boxes) == 21 and not clash,
+           "no node overlap (%s)" % (clash or "ok"))
+        vp = out.get("viewport") or [0, 0]
+        cv = out.get("canvas")
+        print("viewport %sx%s canvas %s"
+              % (vp[0], vp[1], cv), flush=True)
+        ok(out.get("scrollX") is False,
+           "no page h-scroll at 1920")
+        ok(out.get("scrollY") is False,
+           "no page v-scroll at 1920")
         shot = ws.call("Page.captureScreenshot",
                        {"format": "png"})["data"]
-        with open(PNG, "wb") as f:
+        with open(PNG1920, "wb") as f:
             f.write(base64.b64decode(shot))
-        ok(os.path.isfile(PNG) and os.path.getsize(PNG) > 1000,
-           "screenshot saved (%s)" % PNG)
+        ok(os.path.isfile(PNG1920)
+           and os.path.getsize(PNG1920) > 1000,
+           "screenshot saved (%s)" % PNG1920)
+        ws.call("Emulation.setDeviceMetricsOverride",
+                {"width": 1280, "height": 720,
+                 "deviceScaleFactor": 1, "mobile": False})
+        time.sleep(1)
+        js_eval(ws, "window.__flowShown && window.__flowShown()")
+        time.sleep(1)
+        out2 = js_eval(ws, PROBE_JS)
+        print("1280 scroll %s/%s"
+              % (out2.get("scrollX"), out2.get("scrollY")),
+              flush=True)
+        print("1280 layout %s" % out2.get("layout"),
+              flush=True)
+        shot = ws.call("Page.captureScreenshot",
+                       {"format": "png"})["data"]
+        with open(PNG1280, "wb") as f:
+            f.write(base64.b64decode(shot))
+        ok(os.path.isfile(PNG1280)
+           and os.path.getsize(PNG1280) > 1000,
+           "screenshot saved (%s)" % PNG1280)
+        ws.call("Emulation.setDeviceMetricsOverride",
+                {"width": 390, "height": 844,
+                 "deviceScaleFactor": 1, "mobile": False})
+        time.sleep(1)
+        js_eval(ws, "window.__flowShown && window.__flowShown()")
+        time.sleep(1)
+        out3 = js_eval(ws, PROBE_JS)
+        print("390 scroll %s/%s"
+              % (out3.get("scrollX"), out3.get("scrollY")),
+              flush=True)
+        print("390 layout %s" % out3.get("layout"),
+              flush=True)
+        ok(out3.get("scrollX") is False
+           and out3.get("scrollY") is False,
+           "no page scroll at 390")
+        shot = ws.call("Page.captureScreenshot",
+                       {"format": "png"})["data"]
+        with open(PNG390, "wb") as f:
+            f.write(base64.b64decode(shot))
+        ok(os.path.isfile(PNG390)
+           and os.path.getsize(PNG390) > 1000,
+           "screenshot saved (%s)" % PNG390)
     finally:
         if ws is not None:
             ws.close()
