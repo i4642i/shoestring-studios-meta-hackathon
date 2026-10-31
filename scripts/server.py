@@ -22,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
+from agents._frame import board  # noqa: E402
 from agents._frame import flow as flows  # noqa: E402
 from agents._frame import graph  # noqa: E402
 from agents._frame import pdfingest  # noqa: E402
@@ -225,6 +226,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 5 \
                 and parts[2] == "runs" and parts[4] == "file":
             return self._api_flow_file(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "board":
+            return self._api_flow_board(parts[3])
         return self._static(parts)
 
     def do_PUT(self):
@@ -1164,6 +1168,37 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, out)
         return self._json(200, out)
 
+    def _api_flow_board(self, run_id):
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        job = _FLOW_JOBS.get(run_id)
+        out = board.build_board(
+            run_id, running=bool(job) and job.get("state")
+            == "running")
+        if not out.get("ok"):
+            return self._json(404, out)
+        return self._json(200, out)
+
+    def _api_flow_path(self, run_id, node, rel):
+        """Path mode of the step file endpoint: Remy slide PNGs and
+        other small dashboard files inside one stage folder."""
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        full = board.safe_run_path(flows.RUNS_DIR, run_id, node, rel)
+        if full is None:
+            return self._json(404, {"error": "no such file"})
+        with open(full, "rb") as f:
+            data = f.read()
+        if len(data) > 5242880:
+            return self._json(413, {"error": "file too large"})
+        self.send_response(200)
+        self.send_header("Content-Type",
+                         mimetypes.guess_type(full)[0]
+                         or "application/octet-stream")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     _RUN_FILES = {"INPUTS.md": "text/markdown",
                   "INPUTS.json": "application/json",
                   "report.md": "text/markdown",
@@ -1180,6 +1215,8 @@ class Handler(BaseHTTPRequestHandler):
         qs = unquote(self.path).split("?", 1)
         q = dict(parse_qsl(qs[1])) if len(qs) > 1 else {}
         node, name = q.get("node", ""), q.get("name", "")
+        if not name and q.get("path"):
+            return self._api_flow_path(run_id, node, q["path"])
         if not re.fullmatch(r"[A-Za-z0-9_\-]+", node or ""):
             return self._json(404, {"error": "no such node"})
         if name not in self._RUN_FILES:
