@@ -22,7 +22,7 @@ SERVER_PORT = 8765
 CDP_PORT = 9444
 EDGE = (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 RUNS = os.path.join(ROOT, "runs")
-PNG = os.path.join(RUNS, "order_sign.png")
+PNG = os.path.join(RUNS, "order_default_1280.png")
 SERVER_LOG = os.path.join(RUNS, "order_sign_server.log")
 
 fails = 0
@@ -270,7 +270,9 @@ def main():
            "reception canvas mounted")
         sign = js_eval(ws, "window.__orderSign || null")
         ok(isinstance(sign, dict)
-           and sign.get("text") == "MAKE AI PROVE IT.",
+           and sign.get("text") == "MAKE AI PROVE IT."
+           and sign.get("sub")
+           == "META GLOBAL AI DEVELOPER HACKATHON 2026",
            "slogan sign added (%s)" % sign)
         time.sleep(8)
         js_eval(ws, "document.getElementById('o-scene')"
@@ -289,6 +291,24 @@ def main():
                          " c.controls.target.z]; })()")
         ok(cam0 is not None, "debug camera readable")
         print("home cam %s" % (cam0,), flush=True)
+        ndc = js_eval(ws, "(() => { const c = window.__recepCam;"
+                         " const r = document.querySelector("
+                         "'#o-scene canvas').getBoundingClientRect();"
+                         " const b = document.getElementById('o-sambub')"
+                         ".getBoundingClientRect();"
+                         " const nx = (px) => +(((px - r.x) / r.width)"
+                         " * 2 - 1).toFixed(3);"
+                         " return { slogan: c.ndc(0.03, 2.0, 2.0),"
+                         " sloganL: c.ndc(0.03, 2.0, 0.8),"
+                         " sloganR: c.ndc(0.03, 2.0, 3.2),"
+                         " backsign: c.ndc(4.2, 1.7, 0.03),"
+                         " backsignL: c.ndc(3.75, 1.7, 0.03),"
+                         " backsignR: c.ndc(4.65, 1.7, 0.03),"
+                         " sam: c.ndc(2.13, 1.3, 1.19),"
+                         " lamp: c.ndc(0.6, 1.63, 3.42),"
+                         " bubL: nx(b.x), bubR: nx(b.x + b.width) };"
+                         " })()")
+        print("home ndc %s" % (ndc,), flush=True)
         js_eval(ws, "(() => { const c = window.__recepCam;"
                     " c.camera.position.set(3.0, 2.15, 2.3);"
                     " c.controls.target.set(0, 1.85, 2); })()")

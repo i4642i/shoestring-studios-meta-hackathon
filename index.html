@@ -4760,6 +4760,17 @@ function mountReception(box, appearance, bub) {
     homePos.set(RECEP_SAM.x, 0, RECEP_SAM.z)
       .addScaledVector(fwd, 2.9).addScaledVector(side, 0.55);
     homePos.y = 1.7;
+    // Default framing: absolute azimuth + pull-back, tuned against
+    // the owner's reference (slogan upper left, back sign upper
+    // right, Sam centred). Absolute, so seat yaw can never push it
+    // into the OrbitControls azimuth clamp.
+    const off = homePos.clone().sub(homeTgt);
+    const az = 0.65, pull = 1.40;
+    const r = Math.hypot(off.x, off.z) * pull;
+    off.x = r * Math.sin(az);
+    off.z = r * Math.cos(az);
+    off.y *= pull;
+    homePos.copy(homeTgt).add(off);
   }
   recepHome();
   camera.position.copy(homePos);
@@ -4847,7 +4858,8 @@ function mountReception(box, appearance, bub) {
   putBox(0.95, 0.05, 0.04, signFrameMat, 4.2, 1.49, 0.03);
   putBox(0.05, 0.47, 0.04, signFrameMat, 3.75, 1.7, 0.03);
   putBox(0.05, 0.47, 0.04, signFrameMat, 4.65, 1.7, 0.03);
-  // Slogan on the left wall: same canvas-texture technique, 2x canvas.
+  // Slogan on the left wall (owner's choice: it shows when the user
+  // drags to spin). Same canvas-texture technique, 2x canvas.
   // rotation.y = +90deg like the wall: texture +u points to -z, which
   // is the viewer's right when facing the wall, so no mirroring.
   const sloganC = document.createElement("canvas");
@@ -4872,8 +4884,14 @@ function mountReception(box, appearance, bub) {
   sl.fillText(sloganText, 1024, 335);
   sl.fillStyle = "#8a8f9c";
   sl.letterSpacing = "14px";
-  sl.font = '700 68px -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
-  sl.fillText("SHOESTRING STUDIOS", 1024, 472);
+  const sloganSub = "META GLOBAL AI DEVELOPER HACKATHON 2026";
+  let slSub = 68;
+  do {
+    sl.font = '700 ' + slSub + 'px -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+    if (sl.measureText(sloganSub).width <= 1900 || slSub <= 40) break;
+    slSub -= 4;
+  } while (true);
+  sl.fillText(sloganSub, 1024, 472);
   const sloganTex = new THREE.CanvasTexture(sloganC);
   sloganTex.colorSpace = THREE.SRGBColorSpace;
   sloganTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -4887,7 +4905,7 @@ function mountReception(box, appearance, bub) {
   putBox(0.05, 0.06, 2.52, sloganFrameMat, 0.03, 1.62, 2);
   putBox(0.05, 0.82, 0.06, sloganFrameMat, 0.03, 2.0, 0.77);
   putBox(0.05, 0.82, 0.06, sloganFrameMat, 0.03, 2.0, 3.23);
-  window.__orderSign = { text: sloganText, y: 2.0 };
+  window.__orderSign = { text: sloganText, sub: sloganSub, y: 2.0 };
   // Warm glow for the floor lamp by the armchair (soft, small radius).
   const lampGlow = new THREE.PointLight(0xffc98a, 2, 3, 2);
   lampGlow.position.set(0.6, 1.45, 3.42);
@@ -5091,12 +5109,33 @@ function mountReception(box, appearance, bub) {
   renderer.domElement.addEventListener("pointerdown",
     () => { camInteracted = true; camCancel(); });
   if (new URLSearchParams(location.search).has("camdebug")) {
-    window.__recepCam = { camera, controls, homePos, homeTgt };
+    window.__recepCam = { camera, controls, homePos, homeTgt,
+      ndc(x, y, z) {
+        const v = new THREE.Vector3(x, y, z).project(camera);
+        return [+v.x.toFixed(3), +v.y.toFixed(3)];
+      } };
   }
+  window.__orderCam = () => {
+    const p = camera.position, t = controls.target;
+    const ox = p.x - t.x, oy = p.y - t.y, oz = p.z - t.z;
+    const info = {
+      pos: [p.x, p.y, p.z].map(v => +v.toFixed(3)),
+      tgt: [t.x, t.y, t.z].map(v => +v.toFixed(3)),
+      yaw: +Math.atan2(ox, oz).toFixed(3),
+      dist: +Math.hypot(ox, oy, oz).toFixed(3),
+    };
+    console.log("[ordercam] " + JSON.stringify(info));
+    return info;
+  };
+  renderer.domElement.addEventListener("dblclick", () => {
+    camCancel();
+    camera.position.copy(homePos);
+    controls.target.copy(homeTgt);
+  });
   box.appendChild(renderer.domElement);
   const hint = document.createElement("div");
   hint.className = "vhint-below";
-  hint.textContent = "Drag to spin";
+  hint.textContent = "Drag to spin · Double-click to reset";
   box.parentElement.insertBefore(hint, box.nextSibling);
   if (vload) vload.style.display = "none";
   const timer = new THREE.Timer();

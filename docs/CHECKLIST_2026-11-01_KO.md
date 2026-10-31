@@ -46,7 +46,7 @@
 
 ## Order 간판
 - [x] J3 라운지 왼쪽 벽 간판 "MAKE AI PROVE IT." + 1280 기본뷰 캡처
-  left wall, visible after spin (owner's choice)
+  left wall, second line HACKATHON 2026, visible in default view
 
 ## 대기열 (2026-11-01 오후)
 - [ ] 1 J3 sign + default camera
