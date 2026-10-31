@@ -40,11 +40,11 @@ ok("sales_sam" in [a["id"] for a in cat["agents"] if a.get("flow")],
    "workers declare flow I/O")
 ok(sorted(c["name"] for c in cat["categories"])
    == ["anim_picks", "brief", "cases", "concept", "concepts",
-       "gen_picks", "narration", "photo_picks", "render_log",
-       "request", "slide_draft", "source", "split_plan",
-       "storyboard", "storyboard_draft", "storyboard_table",
-       "structure", "style_guide", "video"],
-   "catalog has 19 categories")
+       "gen_picks", "narration", "part_info", "photo_picks",
+       "render_log", "request", "slide_draft", "source",
+       "split_plan", "storyboard", "storyboard_draft",
+       "storyboard_table", "structure", "style_guide", "video"],
+   "catalog has 20 categories")
 ok(all((a.get("color") or "").startswith("#") for a in cat["agents"]),
    "catalog colors")
 ok(all(isinstance(a.get("tools"), list) and a["tools"]
@@ -514,6 +514,20 @@ ok(os.path.isfile(os.path.join(rdir, "video_production",
    and os.path.isfile(os.path.join(rdir, "video_production",
                                    "storyboard_table.json")),
    "video node writes assembly + srt + table")
+tbl = json.load(open(os.path.join(rdir, "video_production",
+                                  "storyboard_table.json"),
+                     encoding="utf-8"))
+ok(tbl == {"rows": [{"part": "p1", "scene_n": 1,
+                     "cut_id": "s1c1", "start_s": 0, "end_s": 20,
+                     "narration": "Hello world", "screen": "Card",
+                     "materials": ["text"]}]},
+   "storyboard table rows exact via merged part info")
+mrem = results.load_result(os.path.join(rdir, "slide_remy",
+                                        "result.json"))
+ok(mrem["categories"]["part_info"]["data"]["parts"]
+   == [{"no": 1, "part_id": "p1", "title": "h", "seconds": 60,
+        "cuts": ["s1c1"]}],
+   "merged remy result carries part info")
 asmj = json.load(open(os.path.join(rdir, "video_production",
                                   "assembly.json"),
                       encoding="utf-8"))
@@ -595,7 +609,8 @@ vmani = json.load(open(os.path.join(rdir, "video_production",
                       encoding="utf-8"))
 ok(sorted((r["sender"], r["category"]) for r in vmani["received"])
    == [("board_penn", "storyboard"), ("board_vera", "slide_draft"),
-       ("pd_marty", "structure"), ("plan_ash", "storyboard_draft"),
+       ("plan_ash", "storyboard_draft"),
+       ("slide_remy", "part_info"),
        ("slide_remy", "render_log"), ("voice_wren", "narration")],
    "video manifest has all six inputs")
 evs = [json.loads(ln) for ln in

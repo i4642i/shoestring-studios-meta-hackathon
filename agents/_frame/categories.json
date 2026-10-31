@@ -1152,6 +1152,49 @@
    }
   }
  },
+ "part_info": {
+  "version": 1,
+  "description": "Part list attached by part_split to every merged clone result: no, part_id, title, seconds, cuts. video_production resolves cut parts from it.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "parts"
+   ],
+   "properties": {
+    "parts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "no",
+       "part_id",
+       "cuts"
+      ],
+      "properties": {
+       "no": {
+        "type": "integer"
+       },
+       "part_id": {
+        "type": "string"
+       },
+       "title": {
+        "type": "string"
+       },
+       "seconds": {
+        "type": "integer"
+       },
+       "cuts": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
  "storyboard_table": {
   "version": 1,
   "description": "Final storyboard table: one row per cut (part, scene, cut, narration, screen, materials). Written by video production.",

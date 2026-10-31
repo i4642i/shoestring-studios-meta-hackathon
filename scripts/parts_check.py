@@ -574,6 +574,15 @@ try:
        and merged["status"] == "checked"
        and merged["producer"] == "photo_pia",
        "merged photo picks run in part order")
+    pinfo = merged["categories"]["part_info"]
+    ok(pinfo["version"] == 1
+       and [(p["no"], p["part_id"], p["title"], p["seconds"])
+            for p in pinfo["data"]["parts"]]
+       == [(1, "p1", "1.1 Beginnings", 30),
+           (2, "p2", "1.2 Middles", 30),
+           (3, "p3", "1.3 Endings", 30)]
+       and pinfo["data"]["parts"][1]["cuts"] == ["s2c1", "s2c2"],
+       "merge attaches part no/title/seconds/cuts")
     gm = results.load_result(
         os.path.join(run_dir, "image_gene", "result.json"))
     gdata = gm["categories"]["gen_picks"]["data"]

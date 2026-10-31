@@ -22,7 +22,7 @@
 - [ ] E3 Source/Theory/Article 행이 kind=map + parts인지 코드로 확인·보고
 
 ## STEP 4 영상 제작
-- [ ] H1 Marty 구성 → video_production 선 제거, 파트 정보는 복사 직원 결과에 붙여 전달, storyboard_table.json 동일
+- [x] H1 Marty 구성 → video_production 선 제거, 파트 정보는 복사 직원 결과에 붙여 전달, storyboard_table.json 동일
 
 ## STEP 4b Flow 탭
 - [ ] B1 캔버스가 화면 높이 전체 (고정 높이 없음, 리사이즈·탭 표시 때 재계산)

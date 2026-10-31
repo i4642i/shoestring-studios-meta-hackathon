@@ -482,10 +482,23 @@ def merge_node(node, run_dir, nparts, order_id=None):
         merged = merge_categories(node, datas)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
+    info = []
+    for p in ((load_split(run_dir) or {}).get("parts") or []):
+        if not isinstance(p, dict):
+            continue
+        entry = {"no": p.get("no"), "part_id": p.get("part_id"),
+                 "title": p.get("title") or "",
+                 "cuts": [c for c in (p.get("cuts") or [])
+                          if isinstance(c, str)]}
+        if isinstance(p.get("seconds"), int) \
+                and not isinstance(p.get("seconds"), bool):
+            entry["seconds"] = p["seconds"]
+        info.append(entry)
     try:
         res = results.make_result(node, order_id or "",
                                   os.path.basename(run_dir),
-                                  {cat: merged})
+                                  {cat: merged,
+                                   "part_info": {"parts": info}})
     except RuntimeError as exc:
         return {"ok": False, "error": str(exc)}
     problems = results.check_result(res, where=node)

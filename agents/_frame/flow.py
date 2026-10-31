@@ -1305,11 +1305,9 @@ def _run_code_node(run_dir, node_id, order_id, order_brief, incoming,
     with open(os.path.join(ndir, "captions.srt"), "w",
               encoding="utf-8") as f:
         f.write(srt_text)
-    scene_part = {}
-    for sc in ((data.get("storyboard_draft") or {}).get("scenes")
-               or []):
-        if isinstance(sc, dict):
-            scene_part[sc.get("n")] = sc.get("part_id", "")
+    scene_part = video.scene_part_map(data.get("part_info"),
+                                        data.get("storyboard_draft"),
+                                        narration)
     table = video.build_table(narration, data.get("storyboard"),
                               data.get("slide_draft"), scene_part)
     _write_json(os.path.join(ndir, "storyboard_table.json"), table)

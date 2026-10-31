@@ -72,6 +72,33 @@ def build_srt(narration):
     return "\n".join(blocks)
 
 
+def scene_part_map(part_info=None, draft=None, narration=None):
+    """scene_n -> part id for the storyboard table. part_info
+    (no/title/seconds/cuts per part, attached by part_split to
+    every merged clone result) wins; the draft scene map is the
+    fallback for runs merged before part_info existed."""
+    cuts = {}
+    for p in ((part_info or {}).get("parts") or []):
+        if not isinstance(p, dict):
+            continue
+        for cid in (p.get("cuts") or []):
+            if isinstance(cid, str):
+                cuts[cid] = p.get("part_id", "")
+    if cuts and isinstance(narration, dict):
+        out = {}
+        for c in (narration.get("cuts") or []):
+            if isinstance(c, dict) and c.get("cut_id") in cuts \
+                    and isinstance(c.get("scene_n"), int):
+                out[c["scene_n"]] = cuts[c["cut_id"]]
+        if out:
+            return out
+    out = {}
+    for sc in ((draft or {}).get("scenes") or []):
+        if isinstance(sc, dict):
+            out[sc.get("n")] = sc.get("part_id", "")
+    return out
+
+
 def build_table(narration, storyboard, slide_draft, scene_part=None):
     """Final storyboard_table v1: one row per cut. scene_part maps
     scene_n -> part id (from Ash's draft); unknown maps to ''."""

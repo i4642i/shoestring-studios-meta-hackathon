@@ -147,6 +147,18 @@ ok(table == {"rows": [
      "screen": "Card", "materials": ["pc://image/0123456789ab",
                                      "pc://source/0123456789ab#fig1.1.1"]}]},
    "storyboard table exact")
+PINFO = {"parts": [{"no": 1, "part_id": "p1", "title": "h",
+                    "seconds": 40, "cuts": ["s1c1", "s1c2"]}]}
+ok(video.scene_part_map(PINFO, None, NARR) == {1: "p1"},
+   "scene map reads part_info first")
+ok(video.scene_part_map(None, {"scenes": [{"n": 1,
+                                           "part_id": "p1"}]},
+                        NARR) == {1: "p1"},
+   "scene map falls back to the draft")
+ok(video.build_table(NARR, BOARD, SLIDE,
+                     video.scene_part_map(PINFO, None, NARR))
+   == table,
+   "table identical via merged part info")
 asm = video.build_assembly(NARR, {"s1c1": "a.png", "s1c2": "b.png"},
                            {"s1c1": "a.wav", "s1c2": "b.wav"})
 ok(asm["total_s"] == 40.0 and len(asm["segments"]) == 2

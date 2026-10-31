@@ -55,6 +55,10 @@
    {
     "category": "render_log",
     "description": "Per-cut render record."
+   },
+   {
+    "category": "part_info",
+    "description": "Part list attached by part_split to the merged result."
    }
   ]
  },

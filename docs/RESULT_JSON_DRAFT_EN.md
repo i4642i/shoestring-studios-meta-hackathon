@@ -1626,7 +1626,7 @@ Solid lines (one category each):
 | c60 | Vera \u2192 video | `slide_draft` |
 | c61 | Remy \u2192 video | `render_log` |
 | c62 | Ash \u2192 video | `storyboard_draft` |
-| c63 | Marty \u2192 video | `structure` |
+| c102 | Remy \u2192 video | `part_info` |
 | c64 | video \u2192 Final video | `video` |
 | c65 | video \u2192 Final video | `storyboard_table` |
 
