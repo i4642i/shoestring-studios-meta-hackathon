@@ -1,4 +1,59 @@
 {
+ "anim_picks": {
+  "version": 1,
+  "description": "Max's per-cut template pick (values from checked source tables/formulas) or none.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "cuts"
+   ],
+   "properties": {
+    "cuts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "cut_id",
+       "decision"
+      ],
+      "properties": {
+       "cut_id": {
+        "type": "string"
+       },
+       "decision": {
+        "enum": [
+         "use",
+         "none"
+        ]
+       },
+       "template": {
+        "enum": [
+         "bar_chart",
+         "line_chart",
+         "step_arrows",
+         "formula_steps",
+         "table_highlight",
+         "none"
+        ]
+       },
+       "values": {
+        "type": "string"
+       },
+       "refs": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "reason": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
  "brief": {
   "description": "Order intake: client answers plus the source file reference. Produced by the Order node.",
   "schema": {
@@ -371,6 +426,287 @@
    }
   }
  },
+ "gen_picks": {
+  "version": 1,
+  "description": "Gene's per-cut generation choice (prompt or none) plus the run's generated images (max 6).",
+  "schema": {
+   "type": "object",
+   "required": [
+    "cuts",
+    "images"
+   ],
+   "properties": {
+    "cuts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "cut_id",
+       "decision"
+      ],
+      "properties": {
+       "cut_id": {
+        "type": "string"
+       },
+       "decision": {
+        "enum": [
+         "generate",
+         "none"
+        ]
+       },
+       "prompt": {
+        "type": "string"
+       },
+       "reason": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "images": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "cut_id",
+       "file",
+       "prompt",
+       "reused"
+      ],
+      "properties": {
+       "cut_id": {
+        "type": "string"
+       },
+       "file": {
+        "type": "string"
+       },
+       "prompt": {
+        "type": "string"
+       },
+       "reused": {
+        "type": "boolean"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "narration": {
+  "version": 2,
+  "description": "Wren's per-cut narration with citations, word counts, Voice PC audio refs and real durations.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "cuts"
+   ],
+   "properties": {
+    "cuts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "cut_id",
+       "scene_n",
+       "start_s",
+       "end_s",
+       "lines",
+       "words",
+       "audio",
+       "attempts"
+      ],
+      "properties": {
+       "cut_id": {
+        "type": "string"
+       },
+       "scene_n": {
+        "type": "integer"
+       },
+       "start_s": {
+        "type": "number"
+       },
+       "end_s": {
+        "type": "number"
+       },
+       "lines": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "text",
+          "citations"
+         ],
+         "properties": {
+          "text": {
+           "type": "string"
+          },
+          "citations": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "required": [
+             "ref",
+             "quote"
+            ],
+            "properties": {
+             "ref": {
+              "type": "string"
+             },
+             "quote": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       },
+       "words": {
+        "type": "integer"
+       },
+       "audio": {
+        "type": "object",
+        "required": [
+         "voice_pc_ref",
+         "seconds"
+        ],
+        "properties": {
+         "voice_pc_ref": {
+          "type": "string"
+         },
+         "seconds": {
+          "type": "number"
+         }
+        }
+       },
+       "attempts": {
+        "type": "integer"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "photo_picks": {
+  "version": 1,
+  "description": "Pia's per-cut photo pick (Source figure or licensed web image) or explicit none.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "cuts"
+   ],
+   "properties": {
+    "cuts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "cut_id",
+       "decision"
+      ],
+      "properties": {
+       "cut_id": {
+        "type": "string"
+       },
+       "decision": {
+        "enum": [
+         "use",
+         "none"
+        ]
+       },
+       "kind": {
+        "enum": [
+         "source_figure",
+         "web",
+         "none"
+        ]
+       },
+       "ref": {
+        "type": "string"
+       },
+       "file": {
+        "type": "string"
+       },
+       "source_url": {
+        "type": "string"
+       },
+       "license": {
+        "type": "string"
+       },
+       "reason": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "render_log": {
+  "version": 1,
+  "description": "Remy's per-cut render record: slide file, layout-only adjustments, render count, issues.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "cuts"
+   ],
+   "properties": {
+    "cuts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "cut_id",
+       "slide_file",
+       "renders_n",
+       "adjustments",
+       "issues"
+      ],
+      "properties": {
+       "cut_id": {
+        "type": "string"
+       },
+       "slide_file": {
+        "type": "string"
+       },
+       "renders_n": {
+        "type": "integer"
+       },
+       "adjustments": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "field",
+          "was",
+          "now"
+         ],
+         "properties": {
+          "field": {
+           "type": "string"
+          },
+          "was": {
+           "type": "string"
+          },
+          "now": {
+           "type": "string"
+          }
+         }
+        }
+       },
+       "issues": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
  "request": {
   "description": "Video production request Sam writes for PD/production from the order consultation.",
   "schema": {
@@ -432,6 +768,93 @@
   },
   "version": 1
  },
+ "slide_draft": {
+  "version": 1,
+  "description": "Vera's per-cut slide plan: 1-2 materials (or text card), layout, on-screen text, cut time, transitions.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "cuts"
+   ],
+   "properties": {
+    "cuts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "cut_id",
+       "start_s",
+       "end_s",
+       "materials",
+       "layout",
+       "on_screen_text",
+       "transitions",
+       "why"
+      ],
+      "properties": {
+       "cut_id": {
+        "type": "string"
+       },
+       "start_s": {
+        "type": "number"
+       },
+       "end_s": {
+        "type": "number"
+       },
+       "materials": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "kind",
+          "use"
+         ],
+         "properties": {
+          "kind": {
+           "enum": [
+            "photo",
+            "generated",
+            "animation",
+            "source_figure",
+            "text_card"
+           ]
+          },
+          "ref": {
+           "type": "string"
+          },
+          "file": {
+           "type": "string"
+          },
+          "use": {
+           "type": "string"
+          }
+         }
+        }
+       },
+       "layout": {
+        "type": "string"
+       },
+       "on_screen_text": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "transitions": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "why": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
  "source": {
   "description": "Source PC entry pointer (Sam produces, lines carry): stable ref, title, size, section count, recipient rows.",
   "schema": {
@@ -464,62 +887,51 @@
   },
   "version": 3
  },
- "structure": {
-  "version": 3,
-  "description": "Structure map Marty writes: parts in source order with Source PC refs, top-level author-intent links, and the duration time plan. Static shape only; input-relative rules are enforced by write_structure.",
+ "storyboard": {
+  "version": 2,
+  "description": "Penn's per-cut screen description: what to show and why, plus on-screen text (max 3 lines).",
   "schema": {
    "type": "object",
    "required": [
-    "source_ref",
-    "parts",
-    "links",
-    "duration"
+    "cuts"
    ],
    "properties": {
-    "source_ref": {
-     "type": "string"
-    },
-    "parts": {
+    "cuts": {
      "type": "array",
      "items": {
-      "type": "object"
-     }
-    },
-    "links": {
-     "type": "array",
-     "items": {
-      "type": "object"
-     }
-    },
-    "duration": {
-     "type": "object",
-     "required": [
-      "total_s",
-      "parts"
-     ],
-     "properties": {
-      "total_s": {
-       "type": "integer"
-      },
-      "parts": {
-       "type": "array",
-       "items": {
-        "type": "object",
-        "required": [
-         "part_id",
-         "seconds",
-         "why"
-        ],
-        "properties": {
-         "part_id": {
-          "type": "string"
-         },
-         "seconds": {
-          "type": "integer"
-         },
-         "why": {
-          "type": "string"
-         }
+      "type": "object",
+      "required": [
+       "cut_id",
+       "scene_n",
+       "start_s",
+       "end_s",
+       "show_what",
+       "show_why",
+       "on_screen_text"
+      ],
+      "properties": {
+       "cut_id": {
+        "type": "string"
+       },
+       "scene_n": {
+        "type": "integer"
+       },
+       "start_s": {
+        "type": "number"
+       },
+       "end_s": {
+        "type": "number"
+       },
+       "show_what": {
+        "type": "string"
+       },
+       "show_why": {
+        "type": "string"
+       },
+       "on_screen_text": {
+        "type": "array",
+        "items": {
+         "type": "string"
         }
        }
       }
@@ -527,114 +939,6 @@
     }
    }
   }
- },
- "video": {
-  "description": "Final video assembly record: file, scenes, per-line citations carried from narration. Produced by the postprocess code step.",
-  "schema": {
-   "properties": {
-    "built_from": {
-     "type": "string"
-    },
-    "duration_s": {
-     "type": "number"
-    },
-    "file": {
-     "properties": {
-      "format": {
-       "type": "string"
-      },
-      "path": {
-       "type": "string"
-      },
-      "resolution": {
-       "type": "string"
-      },
-      "size_bytes": {
-       "type": "integer"
-      }
-     },
-     "required": [
-      "path",
-      "size_bytes",
-      "format",
-      "resolution"
-     ],
-     "type": "object"
-    },
-    "scenes": {
-     "items": {
-      "properties": {
-       "end_s": {
-        "type": "number"
-       },
-       "lines": {
-        "items": {
-         "properties": {
-          "citations": {
-           "items": {
-            "properties": {
-             "quote": {
-              "type": "string"
-             },
-             "ref": {
-              "type": "string"
-             }
-            },
-            "required": [
-             "ref",
-             "quote"
-            ],
-            "type": "object"
-           },
-           "type": "array"
-          },
-          "end_s": {
-           "type": "number"
-          },
-          "start_s": {
-           "type": "number"
-          },
-          "text": {
-           "type": "string"
-          }
-         },
-         "required": [
-          "text",
-          "start_s",
-          "end_s",
-          "citations"
-         ],
-         "type": "object"
-        },
-        "type": "array"
-       },
-       "n": {
-        "type": "integer"
-       },
-       "start_s": {
-        "type": "number"
-       }
-      },
-      "required": [
-       "n",
-       "start_s",
-       "end_s",
-       "lines"
-      ],
-      "type": "object"
-     },
-     "type": "array"
-    }
-   },
-   "required": [
-    "file",
-    "duration_s",
-    "built_from",
-    "scenes"
-   ],
-   "type": "object"
-  },
-  "version": 1
  },
  "storyboard_draft": {
   "version": 1,
@@ -816,71 +1120,56 @@
    }
   }
  },
- "storyboard": {
+ "storyboard_table": {
   "version": 1,
-  "description": "Penn's per-scene composition: layout, on-screen text, visuals, materials, notes for Wren.",
+  "description": "Final storyboard table: one row per cut (part, scene, cut, narration, screen, materials). Written by video production.",
   "schema": {
    "type": "object",
    "required": [
-    "scenes"
+    "rows"
    ],
    "properties": {
-    "scenes": {
+    "rows": {
      "type": "array",
      "items": {
       "type": "object",
       "required": [
+       "part",
        "scene_n",
+       "cut_id",
        "start_s",
        "end_s",
-       "layout",
-       "on_screen_text",
-       "visuals",
-       "materials",
-       "notes_for_wren"
+       "narration",
+       "screen",
+       "materials"
       ],
       "properties": {
+       "part": {
+        "type": "string"
+       },
        "scene_n": {
         "type": "integer"
        },
+       "cut_id": {
+        "type": "string"
+       },
        "start_s": {
-        "type": "integer"
+        "type": "number"
        },
        "end_s": {
-        "type": "integer"
+        "type": "number"
        },
-       "layout": {
+       "narration": {
         "type": "string"
        },
-       "on_screen_text": {
+       "screen": {
         "type": "string"
-       },
-       "visuals": {
-        "type": "array",
-        "items": {
-         "type": "string"
-        }
        },
        "materials": {
         "type": "array",
         "items": {
-         "type": "object",
-         "required": [
-          "ref",
-          "how_used"
-         ],
-         "properties": {
-          "ref": {
-           "type": "string"
-          },
-          "how_used": {
-           "type": "string"
-          }
-         }
+         "type": "string"
         }
-       },
-       "notes_for_wren": {
-        "type": "string"
        }
       }
      }
@@ -888,80 +1177,234 @@
    }
   }
  },
- "narration": {
-  "version": 1,
-  "description": "Wren's per-scene spoken lines with citations, word counts and fit estimates.",
+ "structure": {
+  "version": 3,
+  "description": "Structure map Marty writes: parts in source order with Source PC refs, top-level author-intent links, and the duration time plan. Static shape only; input-relative rules are enforced by write_structure.",
   "schema": {
    "type": "object",
    "required": [
-    "scenes"
+    "source_ref",
+    "parts",
+    "links",
+    "duration"
    ],
    "properties": {
-    "scenes": {
+    "source_ref": {
+     "type": "string"
+    },
+    "parts": {
      "type": "array",
      "items": {
-      "type": "object",
-      "required": [
-       "scene_n",
-       "start_s",
-       "end_s",
-       "lines",
-       "words",
-       "est_seconds"
-      ],
-      "properties": {
-       "scene_n": {
-        "type": "integer"
-       },
-       "start_s": {
-        "type": "integer"
-       },
-       "end_s": {
-        "type": "integer"
-       },
-       "lines": {
-        "type": "array",
-        "items": {
-         "type": "object",
-         "required": [
-          "text",
-          "citations"
-         ],
-         "properties": {
-          "text": {
-           "type": "string"
-          },
-          "citations": {
-           "type": "array",
-           "items": {
-            "type": "object",
-            "required": [
-             "ref",
-             "quote"
-            ],
-            "properties": {
-             "ref": {
-              "type": "string"
-             },
-             "quote": {
-              "type": "string"
-             }
-            }
-           }
-          }
+      "type": "object"
+     }
+    },
+    "links": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     }
+    },
+    "duration": {
+     "type": "object",
+     "required": [
+      "total_s",
+      "parts"
+     ],
+     "properties": {
+      "total_s": {
+       "type": "integer"
+      },
+      "parts": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "part_id",
+         "seconds",
+         "why"
+        ],
+        "properties": {
+         "part_id": {
+          "type": "string"
+         },
+         "seconds": {
+          "type": "integer"
+         },
+         "why": {
+          "type": "string"
          }
         }
-       },
-       "words": {
-        "type": "integer"
-       },
-       "est_seconds": {
-        "type": "integer"
        }
       }
      }
     }
    }
   }
+ },
+ "style_guide": {
+  "version": 1,
+  "description": "Penn's one-per-order visual style: palette, fonts, image tone, rules.",
+  "schema": {
+   "type": "object",
+   "required": [
+    "palette",
+    "fonts",
+    "image_tone",
+    "rules"
+   ],
+   "properties": {
+    "palette": {
+     "type": "object",
+     "required": [
+      "background",
+      "text",
+      "accent"
+     ],
+     "properties": {
+      "background": {
+       "type": "string"
+      },
+      "text": {
+       "type": "string"
+      },
+      "accent": {
+       "type": "string"
+      }
+     }
+    },
+    "fonts": {
+     "type": "object",
+     "required": [
+      "heading",
+      "body"
+     ],
+     "properties": {
+      "heading": {
+       "type": "string"
+      },
+      "body": {
+       "type": "string"
+      }
+     }
+    },
+    "image_tone": {
+     "type": "string"
+    },
+    "rules": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    }
+   }
+  }
+ },
+ "video": {
+  "description": "Final video assembly record: file, scenes, per-line citations carried from narration. Produced by the postprocess code step.",
+  "schema": {
+   "properties": {
+    "built_from": {
+     "type": "string"
+    },
+    "duration_s": {
+     "type": "number"
+    },
+    "file": {
+     "properties": {
+      "format": {
+       "type": "string"
+      },
+      "path": {
+       "type": "string"
+      },
+      "resolution": {
+       "type": "string"
+      },
+      "size_bytes": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "path",
+      "size_bytes",
+      "format",
+      "resolution"
+     ],
+     "type": "object"
+    },
+    "scenes": {
+     "items": {
+      "properties": {
+       "end_s": {
+        "type": "number"
+       },
+       "lines": {
+        "items": {
+         "properties": {
+          "citations": {
+           "items": {
+            "properties": {
+             "quote": {
+              "type": "string"
+             },
+             "ref": {
+              "type": "string"
+             }
+            },
+            "required": [
+             "ref",
+             "quote"
+            ],
+            "type": "object"
+           },
+           "type": "array"
+          },
+          "end_s": {
+           "type": "number"
+          },
+          "start_s": {
+           "type": "number"
+          },
+          "text": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "text",
+          "start_s",
+          "end_s",
+          "citations"
+         ],
+         "type": "object"
+        },
+        "type": "array"
+       },
+       "n": {
+        "type": "integer"
+       },
+       "start_s": {
+        "type": "number"
+       }
+      },
+      "required": [
+       "n",
+       "start_s",
+       "end_s",
+       "lines"
+      ],
+      "type": "object"
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "file",
+    "duration_s",
+    "built_from",
+    "scenes"
+   ],
+   "type": "object"
+  },
+  "version": 1
  }
 }

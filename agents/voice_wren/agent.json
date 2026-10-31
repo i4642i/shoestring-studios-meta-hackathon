@@ -3,8 +3,8 @@
   "max_steps": 10
  },
  "done": [
-  "scene set equals the draft exactly",
-  "lines fit the scene time",
+  "cuts tile every draft scene (10-30 s each)",
+  "audio within 15% of cut time, at most 2 attempts per cut",
   "number lines cited, quotes verbatim",
   "narration written (result.json)"
  ],
@@ -19,7 +19,7 @@
  "model": "meta-models/muse-spark-open-1026",
  "name": "Wren",
  "title": "Narration writer",
- "stage": 6,
+ "stage": 5,
  "tools": [
   "query_graph",
   "read_md_section",
@@ -28,6 +28,7 @@
   "pc_read_article",
   "pc_list_source",
   "pc_read_source",
+  "make_voice",
   "write_narration"
  ],
  "flow": {
@@ -35,13 +36,18 @@
    {
     "category": "storyboard_draft",
     "required": true,
-    "description": "Ash's scene plan to voice."
+    "description": "Ash's scene plan to cut and voice."
+   },
+   {
+    "category": "concept",
+    "required": false,
+    "description": "Marty's concept to carry in tone."
    }
   ],
   "outputs": [
    {
     "category": "narration",
-    "description": "Per-scene narration report."
+    "description": "Per-cut narration report with voice clips."
    }
   ]
  }

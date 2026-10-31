@@ -1,0 +1,50 @@
+{
+ "bounds": {
+  "max_steps": 10
+ },
+ "done": [
+  "at most 6 generated images this run",
+  "every generate cut has an English prompt",
+  "every image stored before saving",
+  "gen_picks written (result.json)"
+ ],
+ "frame_version": 1,
+ "id": "image_gene",
+ "io": {
+  "inputs": [
+   "INPUTS.md"
+  ],
+  "output": "result.json"
+ },
+ "model": "meta-models/muse-spark-open-1026",
+ "name": "Gene",
+ "title": "Image generator",
+ "stage": 7,
+ "tools": [
+  "query_graph",
+  "read_md_section",
+  "open_ref",
+  "pc_read_source",
+  "write_gen_picks"
+ ],
+ "flow": {
+  "inputs": [
+   {
+    "category": "storyboard",
+    "required": true,
+    "description": "Penn's per-cut screen plan to illustrate."
+   },
+   {
+    "category": "style_guide",
+    "required": false,
+    "description": "Image tone to match."
+   }
+  ],
+  "outputs": [
+   {
+    "category": "gen_picks",
+    "description": "Per-cut generated image or none."
+   }
+  ]
+ }
+}

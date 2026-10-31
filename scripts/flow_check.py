@@ -1,4 +1,4 @@
-"""Flow checks for agents/_frame/flow.py (Step 2). Stdlib only.
+"""Flow checks for agents/_frame/flow.py (v8). Stdlib only.
 
 Run: python scripts/flow_check.py. Writes only to gitignored scratch
 (directories are patched to temp locations; nothing lands in runs/).
@@ -13,6 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import flow, results
+from agents._frame import pc as _pc
 
 fails = 0
 
@@ -30,16 +31,18 @@ def msgs(errs):
 
 # ---- catalog / load ----
 cat = flow.load_catalog()
-ok(len(cat["agents"]) >= 9, "catalog lists 9 agents")
+ok(len(cat["agents"]) >= 13, "catalog lists 13 agents")
 drafts = sorted(a["id"] for a in cat["agents"] if a.get("draft"))
-ok(drafts == ["board_vera", "voice_iris"], "2 drafts flagged")
+ok(drafts == ["voice_iris"], "1 draft flagged")
 ok("sales_sam" in [a["id"] for a in cat["agents"] if a.get("flow")],
    "workers declare flow I/O")
 ok(sorted(c["name"] for c in cat["categories"])
-   == ["brief", "cases", "concept", "concepts", "narration", "request",
-       "source", "storyboard", "storyboard_draft", "structure",
-       "video"],
-   "catalog has 11 categories")
+   == ["anim_picks", "brief", "cases", "concept", "concepts",
+       "gen_picks", "narration", "photo_picks", "render_log",
+       "request", "slide_draft", "source", "storyboard",
+       "storyboard_draft", "storyboard_table", "structure",
+       "style_guide", "video"],
+   "catalog has 18 categories")
 ok(all((a.get("color") or "").startswith("#") for a in cat["agents"]),
    "catalog colors")
 ok(all(isinstance(a.get("tools"), list) and a["tools"]
@@ -69,8 +72,11 @@ ok(bool(_stamp) and bool(_head) and (_stamp == _head or _anc),
    "page stamp tracks served code")
 ok("order" not in cat, "catalog has no order node")
 ok([p["id"] for p in cat.get("pcs", [])]
-   == ["pc_source", "pc_theory", "pc_article"],
-   "catalog lists the three PCs")
+   == ["pc_source", "pc_theory", "pc_article", "pc_image",
+       "pc_generated", "pc_voice"],
+   "catalog lists the six PCs")
+ok([c["id"] for c in cat.get("code", [])] == ["video_production"],
+   "catalog lists the video code node")
 samdecl = next(a for a in cat["agents"] if a["id"] == "sales_sam")
 ok(samdecl["flow"]["inputs"] == []
    and [o["category"] for o in samdecl["flow"]["outputs"]]
@@ -80,24 +86,28 @@ ok(samdecl["flow"]["inputs"] == []
 dflt = flow.load_flow("default")
 ok([n["id"] for n in dflt["nodes"]]
    == ["sales_sam", "pd_marty", "explain_cleo", "case_rex", "plan_ash",
-       "board_penn", "voice_wren", "final", "pc_source", "pc_theory",
-       "pc_article"]
-   and dflt["name"] == "Order to storyboard",
-   "default flow is sam->marty->cleo,rex->ash->penn,wren->final")
+       "voice_wren", "board_penn", "photo_pia", "image_gene", "anim_max",
+       "board_vera", "slide_remy", "final", "video_production",
+       "pc_source", "pc_theory", "pc_article", "pc_image",
+       "pc_generated", "pc_voice"]
+   and dflt["name"] == "Order to video",
+   "default flow is sam->..->wren->penn->helpers->vera->remy->video")
 ok(not next(n for n in dflt["nodes"]
             if n["id"] == "final").get("temp")
-   and sorted(ln["id"] for ln in dflt["lines"])
-   == ["c1", "c10", "c2a", "c2b", "c3a", "c3b", "c4a", "c4b", "c5",
-       "c6", "c7", "c8", "c9"]
-   and len(dflt.get("pc_lines", [])) == 29,
-   "final takes storyboard+narration, 13 solid + 29 dotted")
+   and len(dflt["lines"]) == 37
+   and len(dflt.get("pc_lines", [])) == 44,
+   "final takes video+storyboard_table, 37 solid + 44 dotted")
+ok(next(n for n in dflt["nodes"]
+        if n["id"] == "video_production").get("code") is True,
+   "video node is marked code")
 ok(all(isinstance(n.get("pc"), str)
        for n in dflt["nodes"] if n["id"].startswith("pc_")),
    "PC nodes carry their pc name")
 ok(all(n.get("pc") for n in dflt["nodes"]
-       if n["id"] in ("pc_source", "pc_theory", "pc_article")),
-   "all three PCs are on the canvas")
-W, H, CW, CH = 206, 140, 1690, 710
+       if n["id"] in ("pc_source", "pc_theory", "pc_article", "pc_image",
+                      "pc_generated", "pc_voice")),
+   "all six PCs are on the canvas")
+W, H, CW, CH = 206, 140, 3282, 900
 boxes = {}
 for n in dflt["nodes"]:
     p = dflt.get("positions", {}).get(n["id"])
@@ -117,10 +127,10 @@ ok(not clash, "default nodes do not overlap (%s)"
 crew = {n["id"] for n in dflt["nodes"] if not n.get("pc")}
 solids = dflt["lines"]
 dots = dflt.get("pc_lines", [])
-ok(len(solids) == 13 and len(dots) == 29
+ok(len(solids) == 37 and len(dots) == 44
    and all(ln["from"] in crew and ln["to"] in crew for ln in solids)
    and all(pl["from"] in boxes and pl["to"] in boxes for pl in dots),
-   "42 lines would draw (13 solid + 29 dotted)")
+   "81 lines would draw (37 solid + 44 dotted)")
 # No PC-row gap rule: the owner's drawn layout (source of truth)
 # interleaves PCs with crew (Source PC sits above Sam).
 try:
@@ -154,13 +164,18 @@ ok(any("no incoming line" in e["message"] for e in errs)
    "agent without input + node id")
 starter = {"nodes": [{"id": "sales_sam"}, {"id": "final"}],
            "lines": [{"id": "l1", "from": "sales_sam", "to": "final",
-                      "categories": ["storyboard"]}],
+                      "categories": ["video"]}],
            "positions": {}}
 ok(flow.validate_flow(starter) == [], "sam starts without lines")
 bad = json.loads(json.dumps(dflt))
 bad["lines"] = [ln for ln in bad["lines"] if ln["id"] != "c3b"]
 ok(any("misses required input 'structure'" in e["message"]
        for e in flow.validate_flow(bad)), "missing required input")
+bad = json.loads(json.dumps(dflt))
+bad["lines"] = [ln for ln in bad["lines"] if ln["id"] != "c61"]
+ok(any("misses required input 'render_log'" in e["message"]
+       for e in flow.validate_flow(bad)),
+   "code node misses required input")
 mflow = json.loads(json.dumps(dflt))
 for ln in mflow["lines"]:
     if ln["id"] == "c2a":
@@ -179,17 +194,17 @@ cyc = {"nodes": [{"id": "sales_sam"},
                  {"id": "l3", "from": "pd_marty", "to": "sales_sam",
                   "categories": ["structure"]},
                  {"id": "l4", "from": "pd_marty", "to": "final",
-                  "categories": ["storyboard"]}],
+                  "categories": ["video"]}],
        "positions": {}}
 ok(any(e["message"].startswith("cycle:")
        for e in flow.validate_flow(cyc)), "cycle caught")
 bad = json.loads(json.dumps(dflt))
-bad["nodes"].append({"id": "board_vera"})
-bad["lines"].append({"id": "ld", "from": "sales_sam", "to": "board_vera",
+bad["nodes"].append({"id": "voice_iris"})
+bad["lines"].append({"id": "ld", "from": "sales_sam", "to": "voice_iris",
                       "categories": ["request"]})
 errs = flow.validate_flow(bad)
 ok(any("is a draft" in e["message"] for e in errs)
-   and any(e.get("node") == "board_vera" for e in errs),
+   and any(e.get("node") == "voice_iris" for e in errs),
    "connected draft rejected")
 old = {"nodes": [{"id": "order"}, {"id": "sales_sam"},
                  {"id": "final"}],
@@ -202,7 +217,7 @@ ok(any("has no agent.json" in e["message"]
 multi = {"nodes": [{"id": "sales_sam"}, {"id": "pd_marty"},
                    {"id": "explain_cleo"}, {"id": "case_rex"},
                    {"id": "plan_ash"}, {"id": "board_penn"},
-                   {"id": "final"}],
+                   {"id": "voice_wren"}, {"id": "final"}],
          "lines": [{"id": "l1", "from": "sales_sam", "to": "pd_marty",
                     "categories": ["request", "source"]},
                    {"id": "l2", "from": "pd_marty", "to": "explain_cleo",
@@ -219,16 +234,22 @@ multi = {"nodes": [{"id": "sales_sam"}, {"id": "pd_marty"},
                     "categories": ["cases"]},
                    {"id": "l6", "from": "plan_ash", "to": "board_penn",
                     "categories": ["storyboard_draft"]},
+                   {"id": "l10", "from": "plan_ash", "to": "voice_wren",
+                    "categories": ["storyboard_draft"]},
+                   {"id": "l11", "from": "voice_wren", "to": "board_penn",
+                    "categories": ["narration"]},
                    {"id": "l5", "from": "board_penn", "to": "final",
-                    "categories": ["storyboard"]}],
+                    "categories": ["video"]}],
          "positions": {}}
+# l5 carries video: final acceptance is validated, sender-output
+# match is a run-time transfer check.
 ok(flow.validate_flow(multi) == [], "multi-sender intake validates")
 bad = json.loads(json.dumps(dflt))
 bad["lines"].append({"id": "lx", "from": "explain_cleo", "to": "final",
                       "categories": ["concepts"]})
 ok(any("final takes only" in e["message"]
        for e in flow.validate_flow(bad)),
-   "final rejects non-storyboard input")
+   "final rejects non-video input")
 bad = {"nodes": [{"id": "sales_sam"}, {"id": "pd_marty"},
                  {"id": "pc_source", "pc": "source"},
                  {"id": "final"}],
@@ -269,10 +290,16 @@ ok(all(pl["from"] not in pcnodes and pl["to"] not in pcnodes
 seq = flow.topo_order(dflt)
 ok(seq.index("sales_sam") < seq.index("pd_marty")
    < seq.index("explain_cleo") < seq.index("plan_ash")
-   < seq.index("board_penn") < seq.index("final") == len(seq) - 1
+   < seq.index("voice_wren") < seq.index("board_penn")
+   < seq.index("photo_pia") < seq.index("board_vera")
+   < seq.index("slide_remy") < seq.index("video_production")
+   < seq.index("final") == len(seq) - 1
    and seq.index("pd_marty") < seq.index("case_rex")
-   < seq.index("plan_ash") < seq.index("voice_wren")
-   < seq.index("final")
+   < seq.index("plan_ash")
+   and seq.index("board_penn") < seq.index("image_gene")
+   < seq.index("board_vera")
+   and seq.index("board_penn") < seq.index("anim_max")
+   < seq.index("board_vera")
    and not (pcnodes & set(seq)),
    "topo order respects lines, final last, PCs excluded")
 ok(flow.new_run_id().startswith("flow-"), "run id shape")
@@ -329,24 +356,72 @@ SAM_SOURCE = {"ref": "pc://source/abc123abc123", "title": "s",
               "recipients": [{"agent": "pd_marty", "order_id": "o9",
                               "set_by": "sales_sam", "at": "t"}]}
 DRAFT = {"total_s": 60, "scenes": [], "unused_picks": []}
-BOARD = {"total_s": 60, "scenes": [], "coverage": []}
-LINES = {"total_s": 60, "scenes": [], "total_words": 0}
+BOARD = {"cuts": [{"cut_id": "s1c1", "scene_n": 1, "start_s": 0,
+                   "end_s": 20, "show_what": "Card",
+                   "show_why": "Intro",
+                   "on_screen_text": ["Hello"]}]}
+GUIDE = {"palette": {"background": "#101418", "text": "#f5f2ea",
+                     "accent": "#e0a458"},
+         "fonts": {"heading": "sans", "body": "sans"},
+         "image_tone": "plain", "rules": []}
+PHOTO = {"cuts": [{"cut_id": "s1c1", "decision": "none",
+                   "kind": "none", "reason": "stub"}]}
+GEN = {"cuts": [{"cut_id": "s1c1", "decision": "none",
+                 "reason": "stub"}],
+       "images": []}
+ANIM = {"cuts": [{"cut_id": "s1c1", "decision": "none",
+                  "template": "none", "reason": "stub"}]}
+SLIDE = {"cuts": [{"cut_id": "s1c1", "start_s": 0, "end_s": 20,
+                   "materials": [{"kind": "text_card",
+                                  "use": "Card"}],
+                   "layout": "center", "on_screen_text": ["Hello"],
+                   "transitions": [], "why": "stub"}]}
+RLOG = {"cuts": [{"cut_id": "s1c1",
+                  "slide_file": "slides/s1c1.svg", "renders_n": 1,
+                  "adjustments": [], "issues": []}]}
 PAY = {"sales_sam": ("sales_sam", {"request": REQ}),
        "pd_marty": ("pd_marty", {"concept": CONCEPT,
-                                        "structure": STRUCT}),
+                                 "structure": STRUCT}),
        "explain_cleo": ("explain_cleo", {"concepts": CONCEPTS}),
        "case_rex": ("case_rex", {"cases": CASES}),
        "plan_ash": ("plan_ash", {"storyboard_draft": DRAFT}),
-       "board_penn": ("board_penn", {"storyboard": BOARD}),
-       "voice_wren": ("voice_wren", {"narration": LINES})}
+       "board_penn": ("board_penn", {"storyboard": BOARD,
+                                     "style_guide": GUIDE}),
+       "photo_pia": ("photo_pia", {"photo_picks": PHOTO}),
+       "image_gene": ("image_gene", {"gen_picks": GEN}),
+       "anim_max": ("anim_max", {"anim_picks": ANIM}),
+       "board_vera": ("board_vera", {"slide_draft": SLIDE}),
+       "slide_remy": ("slide_remy", {"render_log": RLOG})}
 
 
 def stub(agent_dir, run_dir, brief, input_md):
     who = os.path.basename(run_dir)
-    producer, cats = PAY[who]
+    if who == "voice_wren":
+        saved = _pc.voice_save(brief["order_id"], "s1c1",
+                               b"\x00" * 32, "Hello world", 20, 1,
+                               "stub")
+        cats = {"narration": {"cuts": [{
+            "cut_id": "s1c1", "scene_n": 1, "start_s": 0, "end_s": 20,
+            "lines": [{"text": "Hello world", "citations": []}],
+            "words": 2,
+            "audio": {"voice_pc_ref": saved["ref"], "seconds": 20},
+            "attempts": 1}]}}
+        producer = "voice_wren"
+    else:
+        producer, cats = PAY[who]
+    if who == "slide_remy":
+        sdir = os.path.join(run_dir, "slides")
+        os.makedirs(sdir, exist_ok=True)
+        with open(os.path.join(sdir, "s1c1.svg"), "w",
+                  encoding="utf-8") as f:
+            f.write("<svg/>")
     res = results.make_result(producer, brief["order_id"],
                               brief["flow_run_id"], cats)
     results.save_result(run_dir, res)
+    if brief.get("want_summary_ko"):
+        with open(os.path.join(run_dir, "summary_ko.md"), "w",
+                  encoding="utf-8") as f:
+            f.write("Fixture summary for %s." % who)
     return {"ok": True}
 
 
@@ -358,16 +433,20 @@ with open(os.path.join(od, "meta.json"), "w", encoding="utf-8") as f:
                "files": {"source": "s.pdf"}}, f)
 real_orders = flow.ORDERS_DIR
 flow.ORDERS_DIR = os.path.join(tmp, "orders")
+_pc.ROOT_OVERRIDE = tmp
 try:
     out = flow.run_flow(dflt, "o9", stub, runs_root=os.path.join(tmp, "runs"),
                         run_id="rid1", flow_id="default")
 finally:
     flow.ORDERS_DIR = real_orders
+    _pc.ROOT_OVERRIDE = None
 ok(out.get("ok"), "stubbed e2e run ok")
 rdir = os.path.join(tmp, "runs", "rid1")
 st = json.load(open(os.path.join(rdir, "STATUS.json"), encoding="utf-8"))
 ok(st["state"] == "done" and st["flow_id"] == "default"
-   and st["order_id"] == "o9", "STATUS done with ids")
+   and st["order_id"] == "o9"
+   and st["received"] == ["video", "storyboard_table"],
+   "STATUS done with ids")
 sam = results.load_result(os.path.join(rdir, "sales_sam", "result.json"))
 ok(sam["status"] == "checked"
    and sam["categories"]["request"]["version"] == 1
@@ -390,11 +469,39 @@ ok(ash["status"] == "checked"
 penn = results.load_result(os.path.join(rdir, "board_penn",
                                         "result.json"))
 ok(penn["status"] == "checked"
-   and penn["categories"]["storyboard"]["version"] == 1, "penn checked")
+   and penn["categories"]["storyboard"]["version"] == 2
+   and penn["categories"]["style_guide"]["version"] == 1,
+   "penn checked")
 wren = results.load_result(os.path.join(rdir, "voice_wren",
                                         "result.json"))
 ok(wren["status"] == "checked"
-   and wren["categories"]["narration"]["version"] == 1, "wren checked")
+   and wren["categories"]["narration"]["version"] == 2, "wren checked")
+for _aid, _cat in (("photo_pia", "photo_picks"),
+                   ("image_gene", "gen_picks"),
+                   ("anim_max", "anim_picks"),
+                   ("board_vera", "slide_draft"),
+                   ("slide_remy", "render_log")):
+    _res = results.load_result(os.path.join(rdir, _aid, "result.json"))
+    ok(_res["status"] == "checked"
+       and _res["categories"][_cat]["version"] == 1,
+       "%s checked" % _aid)
+vid = results.load_result(os.path.join(rdir, "video_production",
+                                       "result.json"))
+ok(vid["status"] == "checked"
+   and vid["categories"]["video"]["version"] == 1
+   and vid["categories"]["storyboard_table"]["version"] == 1,
+   "video code node checked")
+ok(os.path.isfile(os.path.join(rdir, "video_production",
+                               "assembly.json"))
+   and os.path.isfile(os.path.join(rdir, "video_production",
+                                   "captions.srt"))
+   and os.path.isfile(os.path.join(rdir, "video_production",
+                                   "storyboard_table.json")),
+   "video node writes assembly + srt + table")
+with open(os.path.join(rdir, "video_production", "captions.srt"),
+          encoding="utf-8") as f:
+    ok(f.read() == "1\n00:00:00,000 --> 00:00:20,000\nHello world\n",
+       "subtitle timing exact")
 leg = os.path.join(tmp, "orders", "o9leg")
 os.makedirs(leg)
 results.save_result(leg, results.make_result(
@@ -418,6 +525,15 @@ ok(os.path.isfile(os.path.join(rdir, "pd_marty", "INPUTS.md"))
 ok(os.path.isfile(os.path.join(rdir, "sales_sam", "report.md"))
    and os.path.isfile(os.path.join(rdir, "pd_marty", "INPUTS.json")),
    "reports + manifests written")
+ok(os.path.isfile(os.path.join(rdir, "pd_marty", "usage.json")),
+   "per-stage usage written")
+muse = json.load(open(os.path.join(rdir, "pd_marty", "usage.json"),
+                      encoding="utf-8"))
+ok(muse["llm_calls"] == 0 and muse["tools"] == {},
+   "stub usage counts zero")
+ok(not open(os.path.join(rdir, "pd_marty", "report.md"),
+            encoding="utf-8").read().startswith("# Stage summary"),
+   "full runs carry no KO summary")
 mani = json.load(open(os.path.join(rdir, "pd_marty", "INPUTS.json"),
                       encoding="utf-8"))
 ok(mani["received"] == [{"sender": "sales_sam", "category": "request",
@@ -436,11 +552,24 @@ ok([(r["sender"], r["category"]) for r in amani["received"]]
    == [("pd_marty", "concept"), ("pd_marty", "structure"),
        ("explain_cleo", "concepts"), ("case_rex", "cases")],
    "ash manifest has concept + structure + reports")
+wmani = json.load(open(os.path.join(rdir, "voice_wren", "INPUTS.json"),
+                      encoding="utf-8"))
+ok([(r["sender"], r["category"]) for r in wmani["received"]]
+   == [("plan_ash", "storyboard_draft"), ("pd_marty", "concept")],
+   "wren manifest has draft + concept")
+vmani = json.load(open(os.path.join(rdir, "video_production",
+                                   "INPUTS.json"),
+                      encoding="utf-8"))
+ok(sorted((r["sender"], r["category"]) for r in vmani["received"])
+   == [("board_penn", "storyboard"), ("board_vera", "slide_draft"),
+       ("pd_marty", "structure"), ("plan_ash", "storyboard_draft"),
+       ("slide_remy", "render_log"), ("voice_wren", "narration")],
+   "video manifest has all six inputs")
 evs = [json.loads(ln) for ln in
        open(os.path.join(rdir, "events.jsonl"), encoding="utf-8")]
 kinds = [e["ev"] for e in evs]
 ok(kinds[0] == "flow_start" and kinds[-1] == "flow_done"
-   and "order_ready" not in kinds and kinds.count("line") == 13
+   and "order_ready" not in kinds and kinds.count("line") == 37
    and "final_ready" in kinds, "event trail complete")
 line1 = next(e for e in evs if e.get("line") == "c1")
 ok(line1["categories"] == ["request"]
@@ -455,12 +584,14 @@ def stub2(agent_dir, run_dir, brief, input_md):
 
 
 flow.ORDERS_DIR = os.path.join(tmp, "orders")
+_pc.ROOT_OVERRIDE = tmp
 try:
     out = flow.run_flow(dflt, "o9", stub2,
                         runs_root=os.path.join(tmp, "runs"),
                         run_id="rid1b")
 finally:
     flow.ORDERS_DIR = real_orders
+    _pc.ROOT_OVERRIDE = None
 evs2 = [json.loads(ln) for ln in
         open(os.path.join(tmp, "runs", "rid1b", "events.jsonl"),
              encoding="utf-8")]
@@ -469,6 +600,10 @@ ok(out.get("ok") and "sales_sam" not in calls
            and e.get("agent") == "sales_sam"
            and e.get("reused") for e in evs2),
    "sam reuses stored order result")
+reuse_use = json.load(open(os.path.join(tmp, "runs", "rid1b",
+                                        "sales_sam", "usage.json"),
+                           encoding="utf-8"))
+ok(reuse_use.get("reused") is True, "reused stage costs nothing")
 
 flow.ORDERS_DIR = os.path.join(tmp, "orders")
 try:
@@ -491,7 +626,89 @@ finally:
     flow.ORDERS_DIR = real_orders
 ok(not out.get("ok") and "misses answers" in out.get("error", ""),
    "order without answers fails fast")
-from agents._frame import pc as _pc  # noqa: E402
+
+# ---- step mode ----
+flow.ORDERS_DIR = os.path.join(tmp, "orders")
+_pc.ROOT_OVERRIDE = tmp
+try:
+    s1 = flow.step_run(dflt, "o9", stub, "plan_ash",
+                       run_id="step1",
+                       runs_root=os.path.join(tmp, "runs"))
+    ok(s1.get("ok") and s1.get("last") == "plan_ash"
+       and s1.get("ran") == ["sales_sam", "pd_marty", "case_rex",
+                             "explain_cleo", "plan_ash"],
+       "step run stops at the target")
+    sdir = os.path.join(tmp, "runs", "step1")
+    sst = json.load(open(os.path.join(sdir, "STATUS.json"),
+                         encoding="utf-8"))
+    ok(sst["state"] == "step_paused" and sst["approved"] == []
+       and not os.path.isdir(os.path.join(sdir, "voice_wren")),
+       "paused run approves nothing, runs nothing further")
+    for _n in s1["ran"]:
+        _ap = flow.approve_node("step1", _n,
+                                runs_root=os.path.join(tmp, "runs"))
+        ok(_ap.get("ok"), "approve %s" % _n)
+    s2 = flow.step_run(dflt, "o9", stub, "board_vera",
+                       run_id="step1",
+                       runs_root=os.path.join(tmp, "runs"))
+    ok(s2.get("ok") and s2.get("ran") == ["voice_wren", "board_penn",
+                                          "anim_max", "image_gene",
+                                          "photo_pia", "board_vera"],
+       "approved stages are skipped, pair runs together")
+    ok(open(os.path.join(sdir, "board_vera", "report.md"),
+            encoding="utf-8").read().startswith("# Stage summary (KO)"),
+       "step report starts with the KO summary")
+    ok("want_summary_ko" not in json.load(
+        open(os.path.join(sdir, "board_vera", "INPUTS.json"),
+             encoding="utf-8")).get("received", [{}])[0],
+       "manifest keeps only transfers")
+    for _n in s2["ran"]:
+        _ap = flow.approve_node("step1", _n,
+                                runs_root=os.path.join(tmp, "runs"))
+        ok(_ap.get("ok"), "approve %s" % _n)
+    s2b = flow.step_run(dflt, "o9", stub, "slide_remy",
+                        run_id="step1",
+                        runs_root=os.path.join(tmp, "runs"))
+    ok(s2b.get("ok") and s2b.get("ran") == ["slide_remy"],
+       "step continues to the next stage")
+    flow.approve_node("step1", "slide_remy",
+                      runs_root=os.path.join(tmp, "runs"))
+    inv = flow.invalidate_node("step1", "board_vera",
+                               runs_root=os.path.join(tmp, "runs"))
+    ok(inv.get("ok")
+       and set(inv.get("removed", []))
+       == {"board_vera", "slide_remy"}
+       and not os.path.isdir(os.path.join(sdir, "board_vera")),
+       "re-run invalidates later stages")
+    s3 = flow.step_run(dflt, "o9", stub, "board_vera",
+                       run_id="step1", note="OWNER-NOTE-7",
+                       runs_root=os.path.join(tmp, "runs"))
+    ok(s3.get("ok") and s3.get("ran") == ["board_vera"]
+       and "OWNER-NOTE-7" in open(os.path.join(sdir, "board_vera",
+                                               "INPUTS.md"),
+                                  encoding="utf-8").read(),
+       "re-run carries the owner note")
+    sc = flow.step_status("step1", runs_root=os.path.join(tmp, "runs"))
+    ok(sc.get("ok") and sc["status"]["nodes"]["pd_marty"]["approved"]
+       and sc["status"]["nodes"]["pd_marty"]["usage"]["llm_calls"]
+       == 0
+       and not sc["status"]["nodes"]["board_vera"]["approved"],
+       "step status shows approval + cost per stage")
+    nok = flow.approve_node("step1", "slide_remy",
+                            runs_root=os.path.join(tmp, "runs"))
+    ok(not nok.get("ok"), "unrun stage cannot approve")
+    nok2 = flow.step_status("nope",
+                            runs_root=os.path.join(tmp, "runs"))
+    ok(not nok2.get("ok"), "unknown run has no status")
+    s5 = flow.step_run(dflt, "o9", stub, "final", run_id="step1",
+                       runs_root=os.path.join(tmp, "runs"))
+    ok(s5.get("ok")
+       and s5.get("received") == ["video", "storyboard_table"],
+       "stepping to final finishes the run")
+finally:
+    flow.ORDERS_DIR = real_orders
+    _pc.ROOT_OVERRIDE = None
+
 sp = os.path.join(tmp, "runs", "rid9", "explain_cleo")
 os.makedirs(sp)
 mp_ = os.path.join(tmp, "runs", "rid9", "pd_marty")

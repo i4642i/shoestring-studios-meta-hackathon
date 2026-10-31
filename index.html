@@ -555,6 +555,7 @@
 .fl-member button { flex: none; font-size: 11px; padding: 3px 8px; }
 .fl-member.on { opacity: .45; }
 .fl-member.draftm { border-style: dashed; }
+.fl-node.codenode { border-color: #fab005; border-style: double; }
 </style>
 <div class="page" id="p-flow">
   <div class="card">
@@ -591,6 +592,26 @@
       <input id="fl-order" maxlength="64" placeholder="Order id" aria-label="Order id">
       <button class="cta" id="fl-run">RUN FLOW</button>
       <span id="fl-runstate"></span>
+    </div>
+    <h3>STEP MODE</h3>
+    <div class="addform">
+      <select id="fl-target" aria-label="Step target"></select>
+      <button class="cta" id="fl-step">RUN STEP</button>
+      <button id="fl-approve">APPROVE</button>
+      <button id="fl-rerun">RE-RUN</button>
+      <input id="fl-note" maxlength="500" placeholder="Owner note (re-run)" aria-label="Owner note">
+      <span id="fl-stepstate"></span>
+    </div>
+    <div id="fl-steps"></div>
+    <div class="addform">
+      <select id="fl-fnode" aria-label="Stage"></select>
+      <select id="fl-fname" aria-label="File">
+        <option>report.md</option><option>INPUTS.md</option>
+        <option>result.json</option><option>usage.json</option>
+        <option>summary_ko.md</option><option>captions.srt</option>
+        <option>assembly.json</option><option>storyboard_table.json</option>
+      </select>
+      <button id="fl-view">VIEW FILE</button>
     </div>
     <pre id="fl-log">No run yet.</pre>
     <h3>RUN HISTORY</h3>
@@ -775,6 +796,11 @@
       const r = await fetch(p);
       if (!r.ok) throw new Error(p + " -> " + r.status);
       return r.json();
+    },
+    async text(p) {
+      const r = await fetch(p);
+      if (!r.ok) throw new Error(p + " -> " + r.status);
+      return r.text();
     },
     async send(m, p, body, form) {
       const o = { method: m };
@@ -1754,6 +1780,9 @@
       return (S.catalog.agents || []).find(a => a.id === id);
     }
     function outputsOf(id) {
+      const n = (S.flow.nodes || []).find(x => x.id === id);
+      if (n && n.code) return [{ category: "video" },
+        { category: "storyboard_table" }];
       const a = agentOf(id);
       return ((a && a.flow) || {}).outputs || [];
     }
@@ -1769,9 +1798,14 @@
         .filter(Boolean).includes(want)) || rows[0];
     }
     function titleOf(id) {
-      if (id === "final") return ["Final storyboard",
-        "collects Penn storyboard + Wren narration"];
+      if (id === "final") return ["Final video",
+        "collects video.mp4 + storyboard table"];
       const n = (S.flow.nodes || []).find(x => x.id === id);
+      if (n && n.code) {
+        const c = (S.catalog.code || []).find(x => x.id === id);
+        return [c ? c.title : id,
+          "code step: join + subtitles + table"];
+      }
       if (n && n.pc) {
         const p = (S.catalog.pcs || []).find(x => x.id === id);
         return [p ? p.title : (n.pc + " PC"),
@@ -1805,6 +1839,7 @@
           (S.selNode === n.id ? " sel" : "") +
           (S.badNodes[n.id] ? " bad" : "") +
           (n.pc ? " pcnode" : "") +
+          (n.code ? " codenode" : "") +
           ((agentOf(n.id) || {}).draft ? " draft" : "");
         div.style.left = p.x + "px";
         div.style.top = p.y + "px";
@@ -1819,6 +1854,8 @@
             "temporary inputs</div>";
         if (n.pc) {
           inner += '<div class="req">not a runner: dotted lines only</div>';
+        } else if (n.code) {
+          inner += '<div class="req">needs: narration*, render_log*</div>';
         } else if (n.id !== "final") {
           const a = agentOf(n.id);
           const reqs = (((a && a.flow) || {}).inputs || [])
@@ -2190,11 +2227,46 @@
         row.appendChild(b);
         list.appendChild(row);
       });
+      const cch = document.createElement("h4");
+      cch.textContent = "CODE STEPS";
+      cch.style.marginTop = "10px";
+      list.appendChild(cch);
+      (S.catalog.code || []).forEach(c => {
+        const onCanvas = S.flow.nodes.some(n => n.id === c.id);
+        const row = document.createElement("div");
+        row.className = "fl-member" + (onCanvas ? " on" : "");
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        dot.style.background = c.color || "#fab005";
+        const who = document.createElement("span");
+        who.className = "who";
+        const nm = document.createElement("span");
+        nm.className = "nm";
+        nm.textContent = c.title;
+        const ti = document.createElement("span");
+        ti.className = "ti";
+        ti.textContent = "program step";
+        who.appendChild(nm);
+        who.appendChild(ti);
+        row.appendChild(dot);
+        row.appendChild(who);
+        const b = document.createElement("button");
+        b.textContent = "Add";
+        b.disabled = onCanvas;
+        b.title = onCanvas ? "On canvas" : "Add " + c.title;
+        b.onclick = (e) => {
+          e.stopPropagation();
+          addAgent(c.id, null, null, null, true);
+        };
+        row.appendChild(b);
+        list.appendChild(row);
+      });
     }
-    function addAgent(id, x, y, pc) {
+    function addAgent(id, x, y, pc, code) {
       if (S.flow.nodes.some(n => n.id === id)) return;
       const node = { id: id };
       if (pc) node.pc = pc;
+      if (code) node.code = true;
       S.flow.nodes.push(node);
       if (x == null || y == null) {
         const k = S.flow.nodes.length;
@@ -2479,8 +2551,12 @@
         document.getElementById("fl-list").value = f.id;
         S.selLine = null;
         S.selNode = null;
+        S.stepRun = null;
+        document.getElementById("fl-steps").innerHTML = "";
+        document.getElementById("fl-stepstate").textContent = "";
         hidePop();
         render();
+        fillTargets();
         scheduleValidate();
         return true;
       } catch (e) { fail(e); return false; }
@@ -2517,6 +2593,10 @@
         return "<< " + e.agent + " done: " + (e.outputs || []).join(",");
       if (e.ev === "final_ready")
         return "final collected " + e.inputs + " inputs";
+      if (e.ev === "step_start") return "STEP to " + e.target;
+      if (e.ev === "step_paused") return "PAUSED at " + e.target;
+      if (e.ev === "agent_skip")
+        return "-- " + e.agent + " skipped (" + e.reason + ")";
       if (e.ev === "flow_done") return "DONE " + e.run;
       if (e.ev === "flow_error") return "ERROR: " + e.error;
       return JSON.stringify(e);
@@ -2534,6 +2614,7 @@
         } else {
           S.runTimer = 0;
           loadRuns();
+          loadStep(runId);
         }
       } catch (e) {
         document.getElementById("fl-runstate").textContent = "poll failed";
@@ -2569,6 +2650,119 @@
       }
     }
 
+    S.stepRun = null;
+    function stepNodes() {
+      return (S.flow.nodes || [])
+        .filter(n => !n.pc)
+        .map(n => n.id);
+    }
+    function fillTargets() {
+      const sel = document.getElementById("fl-target");
+      const keep = sel.value;
+      sel.innerHTML = stepNodes().map(id =>
+        '<option value="' + esc(id) + '">' + esc(id) + "</option>")
+        .join("");
+      if (stepNodes().includes(keep)) sel.value = keep;
+      const fn = document.getElementById("fl-fnode");
+      const keep2 = fn.value;
+      fn.innerHTML = stepNodes().map(id =>
+        '<option value="' + esc(id) + '">' + esc(id) + "</option>")
+        .join("");
+      if (stepNodes().includes(keep2)) fn.value = keep2;
+    }
+    function costText(u) {
+      if (!u) return "—";
+      if (u.reused) return "reused";
+      if (u.code) return "code";
+      return (u.llm_calls || 0) + " calls, " +
+        (u.prompt_tokens || 0) + "+" + (u.completion_tokens || 0) +
+        " tok";
+    }
+    async function loadStep(runId) {
+      const box = document.getElementById("fl-steps");
+      const lab = document.getElementById("fl-stepstate");
+      if (!runId) { box.innerHTML = ""; lab.textContent = ""; return; }
+      try {
+        const r = await api.get("api/flows/runs/" +
+          encodeURIComponent(runId) + "/status");
+        const st = r.status || {};
+        lab.textContent = (st.state || "?") +
+          (st.last ? " @ " + st.last : "");
+        const rows = Object.keys(st.nodes || {}).map(id => {
+          const n = st.nodes[id];
+          const u = n.usage || {};
+          return "<tr><td>" + esc(id) + "</td><td>" +
+            (n.result ? "yes" : "—") + "</td><td>" +
+            (n.approved ? "yes" : "—") + "</td><td>" +
+            esc(costText(n.usage)) + "</td></tr>";
+        }).join("");
+        box.innerHTML = '<table><thead><tr><th>STAGE</th>' +
+          "<th>RESULT</th><th>APPROVED</th><th>COST</th></tr></thead>" +
+          "<tbody>" + rows + "</tbody></table>";
+      } catch (e) {
+        box.innerHTML = "";
+        lab.textContent = "no step status";
+      }
+    }
+    document.getElementById("fl-step").onclick = async () => {
+      try {
+        errline.textContent = "";
+        if (S.runTimer) { clearTimeout(S.runTimer); S.runTimer = 0; }
+        if (!(await doSave())) return;
+        const oid = document.getElementById("fl-order").value.trim();
+        const tgt = document.getElementById("fl-target").value;
+        const body = { order_id: oid, target: tgt };
+        if (S.stepRun) body.run_id = S.stepRun;
+        const r = await api.send("POST",
+          "api/flows/" + encodeURIComponent(S.flow.id) + "/step", body);
+        S.stepRun = r.run_id;
+        document.getElementById("fl-runstate").textContent =
+          "stepping " + r.run_id;
+        pollRun(r.run_id);
+      } catch (e) { fail(e); }
+    };
+    document.getElementById("fl-approve").onclick = async () => {
+      try {
+        errline.textContent = "";
+        if (!S.stepRun) { fail(new Error("run a step first")); return; }
+        const tgt = document.getElementById("fl-target").value;
+        await api.send("POST", "api/flows/runs/" +
+          encodeURIComponent(S.stepRun) + "/approve", { node: tgt });
+        loadStep(S.stepRun);
+      } catch (e) { fail(e); }
+    };
+    document.getElementById("fl-rerun").onclick = async () => {
+      try {
+        errline.textContent = "";
+        if (!S.stepRun) { fail(new Error("run a step first")); return; }
+        if (S.runTimer) { clearTimeout(S.runTimer); S.runTimer = 0; }
+        const tgt = document.getElementById("fl-target").value;
+        const note = document.getElementById("fl-note").value.trim();
+        await api.send("POST", "api/flows/runs/" +
+          encodeURIComponent(S.stepRun) + "/invalidate",
+          { node: tgt });
+        const oid = document.getElementById("fl-order").value.trim();
+        const r = await api.send("POST",
+          "api/flows/" + encodeURIComponent(S.flow.id) + "/step",
+          { order_id: oid, target: tgt, run_id: S.stepRun,
+            note: note || null });
+        document.getElementById("fl-note").value = "";
+        pollRun(r.run_id);
+      } catch (e) { fail(e); }
+    };
+    document.getElementById("fl-view").onclick = async () => {
+      try {
+        errline.textContent = "";
+        if (!S.stepRun) { fail(new Error("run a step first")); return; }
+        const node = document.getElementById("fl-fnode").value;
+        const name = document.getElementById("fl-fname").value;
+        const txt = await api.text("api/flows/runs/" +
+          encodeURIComponent(S.stepRun) + "/file?node=" +
+          encodeURIComponent(node) + "&name=" +
+          encodeURIComponent(name));
+        document.getElementById("fl-log").textContent = txt;
+      } catch (e) { fail(e); }
+    };
     document.getElementById("fl-list").onchange = (e) => loadFlow(e.target.value);
     document.getElementById("fl-save").onclick = doSave;
     document.getElementById("fl-new").onclick = () => {
@@ -2767,9 +2961,12 @@
     const rows = document.getElementById("pc-rows");
     const errline = document.getElementById("pcerr");
     if (!rows) return;
-    const PCS = ["source", "theory", "article"];
+    const PCS = ["source", "theory", "article", "image",
+      "generated", "voice"];
     const PC_NAMES = { source: "Source PC", theory: "Theory PC",
-      article: "Article PC" };
+      article: "Article PC", image: "Image PC",
+      generated: "Generated PC", voice: "Voice PC" };
+    const MEDIA_PCS = ["image", "generated", "voice"];
     let cur = { pc: "", id: "", ref: "", order: "" };
     function fail(e) { errline.textContent = "Error: " + e.message; }
     function fmtSize(n) {
@@ -2869,16 +3066,34 @@
         a.onclick = (ev) => { ev.preventDefault(); showDetail(pc, e2.id).catch(fail); };
         td0.appendChild(a);
         tr.appendChild(td0);
+        const mc = e2.media || {};
+        const mid = MEDIA_PCS.indexOf(pc) >= 0
+          ? (pc === "voice"
+            ? String(mc.cuts || 0) + " cuts, " +
+              String(mc.seconds || 0) + "s"
+            : (mc.file || "—") + " · " +
+              (mc.license || mc.model || "—"))
+          : null;
         [[e2.ref], [(e2.order_id || e2.added_by || "—")],
-         [String(e2.sections)],
-         [String(e2.figures || 0) + "/" + String(e2.tables || 0)],
-         [e2.map + (e2.building ? " (building…)" : "")],
-         [idxText(e2.index)]].forEach((kv) => {
+         [mid !== null ? mid : String(e2.sections)],
+         [mid !== null ? "—"
+           : String(e2.figures || 0) + "/" +
+             String(e2.tables || 0)],
+         [mid !== null ? "n/a"
+           : e2.map + (e2.building ? " (building…)" : "")],
+         [mid !== null ? "n/a"
+           : idxText(e2.index)]].forEach((kv) => {
           const td = document.createElement("td");
           td.textContent = kv[0];
           tr.appendChild(td);
         });
         const tdB = document.createElement("td");
+        if (MEDIA_PCS.indexOf(pc) >= 0) {
+          tdB.textContent = "—";
+          tr.appendChild(tdB);
+          rows.appendChild(tr);
+          return;
+        }
         const rb = document.createElement("button");
         rb.textContent = "INDEX";
         rb.title = "Rebuild index for this entry";
@@ -2895,10 +3110,15 @@
         rows.appendChild(tr);
       });
       if (!(e.entries || []).length) {
-        rows.innerHTML = "<tr><td colspan=\"8\">" + (pc === "source"
+        const emptyMsg = pc === "source"
           ? "No entries yet — upload a PDF in an order."
+          : MEDIA_PCS.indexOf(pc) >= 0
+          ? "No " + (PC_NAMES[pc] || pc) + " entries yet — they " +
+            "appear when the crew runs."
           : "No picks yet — " + (pc === "theory" ? "Cleo" : "Rex") +
-            " picks from web search.") + "</td></tr>";
+            " picks from web search.";
+        rows.innerHTML = "<tr><td colspan=\"8\">" + emptyMsg +
+          "</td></tr>";
       }
     }
 
@@ -2933,7 +3153,10 @@
       box.textContent = "Opening " + ref + "…";
       const p = await api.get("api/ref?ref=" + encodeURIComponent(ref));
       const prov = p.provenance || {};
-      let head = p.kind === "figure" ? "Figure file: " + p.file : p.text;
+      let head = p.kind === "figure" ? "Figure file: " + p.file
+        : p.kind === "voice_clip" ? "Audio: " + (p.file || "") +
+          " (" + (p.seconds || "?") + "s)"
+        : p.text || (p.file ? "File: " + p.file : "");
       if (p.kind === "equation") head = p.latex || "";
       if (p.kind === "table") head = p.markdown || p.caption || "";
       head = head || "";
@@ -3219,6 +3442,69 @@
         } catch (e) { dp.textContent = "Error: " + e.message; }
       };
     }
+    function renderMedia(d, pc, id) {
+      const orig = document.getElementById("pc-dorig");
+      orig.innerHTML = "";
+      const m = d.entry.media || {};
+      const base = "api/pcs/" + pc + "/entries/" +
+        encodeURIComponent(id) + "/media/";
+      if (pc === "voice") {
+        (m.cuts || []).forEach(c => {
+          const p = document.createElement("p");
+          const a = document.createElement("a");
+          a.href = base + encodeURIComponent(c.file);
+          a.textContent = c.cut_id + " — " + c.file;
+          a.target = "_blank";
+          a.rel = "noopener";
+          p.appendChild(a);
+          p.appendChild(document.createTextNode(" · " + c.seconds +
+            "s · try " + c.attempt + " · " + c.engine));
+          orig.appendChild(p);
+          const q = document.createElement("p");
+          q.textContent = c.text || "";
+          orig.appendChild(q);
+        });
+        if (!(m.cuts || []).length) orig.textContent = "No cuts yet.";
+      } else {
+        if (m.file) {
+          const a = document.createElement("a");
+          a.href = base + encodeURIComponent(m.file);
+          a.target = "_blank";
+          a.rel = "noopener";
+          const img = document.createElement("img");
+          img.src = a.href;
+          img.alt = m.file;
+          img.style.maxWidth = "320px";
+          a.appendChild(img);
+          orig.appendChild(a);
+        }
+        const ul = document.createElement("ul");
+        const items = pc === "image"
+          ? [["License", m.license], ["Source", m.source_url],
+             ["Reason", m.reason]]
+          : [["Prompt", m.prompt], ["Model", m.model],
+             ["Cost USD", m.cost_usd]];
+        items.forEach(kv => {
+          const li = document.createElement("li");
+          li.textContent = kv[0] + ": " + kv[1];
+          ul.appendChild(li);
+        });
+        orig.appendChild(ul);
+      }
+      const ag = document.getElementById("pc-dagents");
+      ag.innerHTML = "";
+      const h = document.createElement("h4");
+      h.textContent = "RECIPIENTS";
+      ag.appendChild(h);
+      const ul = document.createElement("ul");
+      ((d.entry || {}).recipients || []).forEach(r => {
+        const li = document.createElement("li");
+        li.textContent = r.agent + " / " + r.order_id +
+          " by " + r.set_by;
+        ul.appendChild(li);
+      });
+      ag.appendChild(ul);
+    }
     async function showDetail(pc, id) {
       const dmsg = document.getElementById("pc-dmsg");
       dmsg.textContent = "";
@@ -3242,9 +3528,18 @@
         : "none");
       document.getElementById("pc-dmeta").textContent = meta;
       pcTab("orig");
-      renderOrig(d, pc, id);
-      renderMap(d);
-      await renderViewAs(pc, d);
+      if (MEDIA_PCS.indexOf(pc) >= 0) {
+        renderMedia(d, pc, id);
+        document.getElementById("pc-viewas").innerHTML = "";
+        document.getElementById("pc-vanote").textContent =
+          "Media entries carry files, not text prompts.";
+        document.getElementById("pc-vapicks").innerHTML = "";
+        document.getElementById("pc-dprompt").style.display = "none";
+      } else {
+        renderOrig(d, pc, id);
+        renderMap(d);
+        await renderViewAs(pc, d);
+      }
       document.getElementById("pc-rebuild").onclick = async () => {
         try {
           dmsg.textContent = "Starting…";

@@ -1,0 +1,55 @@
+{
+ "bounds": {
+  "max_steps": 12
+ },
+ "done": [
+  "every cut rendered from Vera's draft",
+  "at most 3 renders per cut",
+  "content fields equal Vera's exactly",
+  "render_log written (result.json)"
+ ],
+ "frame_version": 1,
+ "id": "slide_remy",
+ "io": {
+  "inputs": [
+   "INPUTS.md"
+  ],
+  "output": "result.json"
+ },
+ "model": "meta-models/muse-spark-open-1026",
+ "name": "Remy",
+ "title": "Slide builder",
+ "stage": 9,
+ "tools": [
+  "query_graph",
+  "read_md_section",
+  "open_ref",
+  "render_slide",
+  "write_render_log"
+ ],
+ "flow": {
+  "inputs": [
+   {
+    "category": "slide_draft",
+    "required": true,
+    "description": "Vera's per-cut slide plan to build."
+   },
+   {
+    "category": "style_guide",
+    "required": true,
+    "description": "Look to render with."
+   },
+   {
+    "category": "narration",
+    "required": false,
+    "description": "Wren's cut times for reference."
+   }
+  ],
+  "outputs": [
+   {
+    "category": "render_log",
+    "description": "Per-cut render record."
+   }
+  ]
+ }
+}

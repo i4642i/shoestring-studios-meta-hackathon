@@ -674,131 +674,141 @@ def _draft_scene_map(draft):
     return out
 
 
-def validate_storyboard(obj, draft):
-    """Penn's composition: shape + exact scene match vs the draft.
-    Ref readability lives in write_storyboard. Returns [errors]."""
+def validate_storyboard(obj, narration):
+    """Penn's cut descriptions v2: exact cut match vs Wren's
+    narration, text ≤3 lines. Returns [errors]."""
     errors = []
     if not isinstance(obj, dict):
         return ["storyboard must be an object"]
-    want = _draft_scene_map(draft)
-    scenes = obj.get("scenes")
-    if isinstance(scenes, list):
-        got = []
-        for i, sc in enumerate(scenes):
-            where = "scenes[%d]" % i
-            if not isinstance(sc, dict):
-                errors.append("%s must be an object" % where)
-                continue
-            for k in ("scene_n", "start_s", "end_s", "layout",
-                      "on_screen_text", "visuals", "materials",
-                      "notes_for_wren"):
-                if k not in sc:
-                    errors.append("%s missing: %s" % (where, k))
-            n = sc.get("scene_n")
-            got.append(n)
-            if n not in want:
-                errors.append("%s.scene_n %r is not in the draft"
-                              % (where, n))
-            elif (sc.get("start_s"), sc.get("end_s")) != want[n]:
-                errors.append("%s times %r != draft %r"
-                              % (where, (sc.get("start_s"),
-                                         sc.get("end_s")), want[n]))
-            _nonempty(errors, sc, "layout", where)
-            if not isinstance(sc.get("on_screen_text"), str):
-                errors.append("%s.on_screen_text must be a string"
-                              % where)
-            vis = sc.get("visuals")
-            if not isinstance(vis, list) or not vis \
-                    or any(not isinstance(v, str) or not v.strip()
-                           for v in vis):
-                errors.append("%s.visuals must be a non-empty string "
-                              "list" % where)
-            mats = sc.get("materials")
-            if not isinstance(mats, list):
-                errors.append("%s.materials must be a list" % where)
-            else:
-                for j, m in enumerate(mats):
-                    if not isinstance(m, dict) or "ref" not in m \
-                            or not m.get("how_used"):
-                        errors.append("%s.materials[%d] needs "
-                                      "{ref, how_used}" % (where, j))
-            _nonempty(errors, sc, "notes_for_wren", where)
-        if sorted(g for g in got if isinstance(g, int)) \
-                != sorted(want):
-            errors.append("scene set must equal the draft's: %r"
-                          % (sorted(want),))
-    elif "scenes" in obj:
-        errors.append("scenes must be a list")
+    want = {}
+    for cid, c in _cut_id_map(
+            (narration or {}).get("cuts")).items():
+        want[cid] = (c.get("start_s"), c.get("end_s"))
+    cuts = obj.get("cuts")
+    if not isinstance(cuts, list):
+        return errors + ["cuts must be a list"]
+    got = []
+    for i, cut in enumerate(cuts):
+        where = "cuts[%d]" % i
+        if not isinstance(cut, dict):
+            errors.append("%s must be an object" % where)
+            continue
+        for k in ("cut_id", "scene_n", "start_s", "end_s",
+                  "show_what", "show_why", "on_screen_text"):
+            if k not in cut:
+                errors.append("%s missing: %s" % (where, k))
+        got.append(cut.get("cut_id"))
+        _check_cut_times(errors, where, cut, want)
+        _nonempty(errors, cut, "show_what", where)
+        _nonempty(errors, cut, "show_why", where)
+        ost = cut.get("on_screen_text")
+        if not isinstance(ost, list) or len(ost) > 3 \
+                or any(not isinstance(t, str) or not t.strip()
+                       for t in ost):
+            errors.append("%s.on_screen_text must hold 0-3 "
+                          "non-empty lines" % where)
+    if sorted(got) != sorted(want):
+        errors.append("cut set must equal the narration's")
     return errors
 
 
 def validate_narration(obj, draft):
-    """Wren's lines: shape + scene match + fit math. Citation rules
-    live in write_narration. Returns [errors]."""
+    """Wren's lines v2: cuts tile their scenes (10-30 s), words
+    counted, audio within ±15% of the cut, attempts 1-2. Citation
+    rules live in write_narration. Returns [errors]."""
     errors = []
     if not isinstance(obj, dict):
         return ["narration must be an object"]
     want = _draft_scene_map(draft)
-    scenes = obj.get("scenes")
-    if isinstance(scenes, list):
-        got = []
-        for i, sc in enumerate(scenes):
-            where = "scenes[%d]" % i
-            if not isinstance(sc, dict):
-                errors.append("%s must be an object" % where)
-                continue
-            for k in ("scene_n", "start_s", "end_s", "lines",
-                      "words", "est_seconds"):
-                if k not in sc:
-                    errors.append("%s missing: %s" % (where, k))
-            n = sc.get("scene_n")
-            got.append(n)
-            dur = None
-            if n not in want:
-                errors.append("%s.scene_n %r is not in the draft"
-                              % (where, n))
-            elif (sc.get("start_s"), sc.get("end_s")) != want[n]:
-                errors.append("%s times %r != draft %r"
-                              % (where, (sc.get("start_s"),
-                                         sc.get("end_s")), want[n]))
-            else:
-                dur = want[n][1] - want[n][0]
-            lines = sc.get("lines")
-            words = 0
-            if not isinstance(lines, list) or not lines:
-                errors.append("%s.lines must be non-empty" % where)
-            else:
-                for j, ln in enumerate(lines):
-                    if not isinstance(ln, dict):
-                        errors.append("%s.lines[%d] must be an object"
-                                      % (where, j))
-                        continue
-                    _nonempty(errors, ln, "text",
-                              "%s.lines[%d]" % (where, j))
-                    words += len(str(ln.get("text", "")).split())
-                    if not isinstance(ln.get("citations"), list):
-                        errors.append("%s.lines[%d].citations must be "
-                                      "a list" % (where, j))
-            if sc.get("words") != words:
-                errors.append("%s.words %r != counted %d"
-                              % (where, sc.get("words"), words))
-            est = sc.get("est_seconds")
-            if not isinstance(est, int) or isinstance(est, bool) \
-                    or est <= 0:
-                errors.append("%s.est_seconds must be a positive "
-                              "integer" % where)
-            elif words and abs(est - words / 2.5) > words / 2.5 * 0.15:
-                errors.append("%s.est_seconds %d strays from "
-                              "words/2.5 (±15%%)" % (where, est))
-            elif isinstance(dur, int) and est > dur:
-                errors.append("%s.est_seconds %d exceeds scene "
-                              "seconds %d" % (where, est, dur))
-        if sorted(g for g in got if isinstance(g, int)) \
-                != sorted(want):
-            errors.append("scene set must equal the draft's: %r"
-                          % (sorted(want),))
-    elif "scenes" in obj:
-        errors.append("scenes must be a list")
+    cuts = obj.get("cuts")
+    if not isinstance(cuts, list) or not cuts:
+        return errors + ["cuts must be a non-empty list"]
+    seen = set()
+    by_scene = {}
+    for i, cut in enumerate(cuts):
+        where = "cuts[%d]" % i
+        if not isinstance(cut, dict):
+            errors.append("%s must be an object" % where)
+            continue
+        for k in ("cut_id", "scene_n", "start_s", "end_s",
+                  "lines", "words", "audio", "attempts"):
+            if k not in cut:
+                errors.append("%s missing: %s" % (where, k))
+        cid = cut.get("cut_id")
+        if cid in seen:
+            errors.append("%s.cut_id %r repeats" % (where, cid))
+        seen.add(cid)
+        n = cut.get("scene_n")
+        st, en = cut.get("start_s"), cut.get("end_s")
+        if n not in want:
+            errors.append("%s.scene_n %r is not in the draft"
+                          % (where, n))
+        dur = None
+        if isinstance(st, (int, float)) and isinstance(en,
+                                                       (int, float)):
+            dur = en - st
+            if dur < CUT_MIN_S or dur > CUT_MAX_S:
+                errors.append("%s lasts %ss, want %d-%d s"
+                              % (where, dur, CUT_MIN_S,
+                                 CUT_MAX_S))
+        by_scene.setdefault(n, []).append(cut)
+        lines = cut.get("lines")
+        words = 0
+        if not isinstance(lines, list) or not lines:
+            errors.append("%s.lines must be non-empty" % where)
+        else:
+            for j, ln in enumerate(lines):
+                if not isinstance(ln, dict):
+                    errors.append("%s.lines[%d] must be an object"
+                                  % (where, j))
+                    continue
+                _nonempty(errors, ln, "text",
+                          "%s.lines[%d]" % (where, j))
+                words += len(str(ln.get("text", "")).split())
+                if not isinstance(ln.get("citations"), list):
+                    errors.append("%s.lines[%d].citations must be "
+                                  "a list" % (where, j))
+        if cut.get("words") != words:
+            errors.append("%s.words %r != counted %d"
+                          % (where, cut.get("words"), words))
+        att = cut.get("attempts")
+        if not isinstance(att, int) or isinstance(att, bool) \
+                or not (1 <= att <= VOICE_MAX_ATTEMPTS):
+            errors.append("%s.attempts must be 1-%d"
+                          % (where, VOICE_MAX_ATTEMPTS))
+        audio = cut.get("audio")
+        if not isinstance(audio, dict) \
+                or not audio.get("voice_pc_ref") \
+                or not isinstance(audio.get("seconds"),
+                                   (int, float)):
+            errors.append("%s.audio needs {voice_pc_ref, seconds}"
+                          % where)
+        elif isinstance(dur, (int, float)) and dur > 0:
+            sec = audio["seconds"]
+            if abs(sec - dur) > dur * TTS_FIT:
+                errors.append("%s.audio %ss strays from cut %ss "
+                              "(±15%%)" % (where, sec, dur))
+    for n, group in by_scene.items():
+        if n not in want:
+            continue
+        ordered = sorted(
+            (c for c in group
+             if isinstance(c.get("start_s"), (int, float))),
+            key=lambda c: c["start_s"])
+        d0, d1 = want[n]
+        if not ordered or ordered[0]["start_s"] != d0 \
+                or ordered[-1]["end_s"] != d1:
+            errors.append("scene %r cuts must tile %r" % (n,
+                                                          want[n]))
+            continue
+        for a, b in zip(ordered, ordered[1:]):
+            if b["start_s"] != a["end_s"]:
+                errors.append("scene %r cuts gap/overlap at %s"
+                              % (n, b["start_s"]))
+    got_scenes = sorted(s for s in by_scene if isinstance(s, int))
+    if got_scenes != sorted(want):
+        errors.append("scene set must equal the draft's: %r"
+                      % (sorted(want),))
     return errors
 
 
@@ -1080,3 +1090,503 @@ def _parent_part(number, parts):
         if isinstance(p, dict) and _num_prefix(str(p.get("heading", ""))) == prefix:
             return p
     return parts[0] if parts and isinstance(parts[0], dict) else None
+
+
+CUT_MIN_S = 10
+CUT_MAX_S = 30
+TTS_FIT = 0.15  # cut audio must sit within ±15% of the cut plan
+VOICE_MAX_ATTEMPTS = 2
+GEN_IMAGES_MAX = 6
+REMY_MAX_RENDERS = 3
+VERA_MAX_MATERIALS = 2
+PICK_LICENSES = ("cc0", "pdm", "by", "by-sa")
+LAYOUT_FIELDS = ("position", "size", "font_size", "alignment",
+                 "crop", "zoom", "padding", "accent", "x", "y",
+                 "width", "height", "font")
+
+
+def _cut_id_map(cuts):
+    """{cut_id: cut} for a cuts list."""
+    out = {}
+    for c in cuts or []:
+        if isinstance(c, dict) and c.get("cut_id") is not None:
+            out[c["cut_id"]] = c
+    return out
+
+
+def _check_cut_times(errors, where, cut, want):
+    cid = cut.get("cut_id")
+    if cid not in want:
+        errors.append("%s.cut_id %r is not received" % (where, cid))
+    elif (cut.get("start_s"), cut.get("end_s")) != want[cid]:
+        errors.append("%s times %r != received %r"
+                      % (where, (cut.get("start_s"),
+                                 cut.get("end_s")), want[cid]))
+
+
+def validate_style_guide(obj):
+    """Penn's visual style: palette, fonts, tone, rules."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["style_guide must be an object"]
+    pal = obj.get("palette")
+    if not isinstance(pal, dict):
+        errors.append("palette must be an object")
+    else:
+        for k in ("background", "text", "accent"):
+            if not pal.get(k) or not isinstance(pal[k], str):
+                errors.append("palette.%s must be a non-empty "
+                              "string" % k)
+    fonts = obj.get("fonts")
+    if not isinstance(fonts, dict):
+        errors.append("fonts must be an object")
+    else:
+        for k in ("heading", "body"):
+            if not fonts.get(k) or not isinstance(fonts[k], str):
+                errors.append("fonts.%s must be a non-empty "
+                              "string" % k)
+    _nonempty(errors, obj, "image_tone", "style_guide")
+    rules = obj.get("rules")
+    if not isinstance(rules, list) or not rules \
+            or any(not isinstance(r, str) or not r.strip()
+                   for r in rules):
+        errors.append("rules must be a non-empty string list")
+    return errors
+
+
+def validate_photo_picks(obj, storyboard):
+    """Pia's picks: cut match vs Penn, licensed use-picks."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["photo_picks must be an object"]
+    want = _cut_id_map((storyboard or {}).get("cuts"))
+    cuts = obj.get("cuts")
+    if not isinstance(cuts, list):
+        return errors + ["cuts must be a list"]
+    got = []
+    for i, cut in enumerate(cuts):
+        where = "cuts[%d]" % i
+        if not isinstance(cut, dict):
+            errors.append("%s must be an object" % where)
+            continue
+        if "cut_id" not in cut or "decision" not in cut:
+            errors.append("%s needs {cut_id, decision}" % where)
+            continue
+        got.append(cut["cut_id"])
+        if cut["cut_id"] not in want:
+            errors.append("%s.cut_id %r is not in the storyboard"
+                          % (where, cut["cut_id"]))
+        if cut.get("decision") == "use":
+            for k in ("kind", "ref", "file", "source_url",
+                      "license", "reason"):
+                if not cut.get(k) or not isinstance(cut[k], str):
+                    errors.append("%s.%s must be a non-empty string "
+                                  "for a use pick" % (where, k))
+            if cut.get("kind") not in ("source_figure", "web"):
+                errors.append("%s.kind must be source_figure or web"
+                              % where)
+            if str(cut.get("license", "")).lower() \
+                    not in PICK_LICENSES:
+                errors.append("%s.license %r is not reuse-permitted "
+                              "(%s)" % (where, cut.get("license"),
+                                        "/".join(PICK_LICENSES)))
+        elif cut.get("decision") != "none":
+            errors.append("%s.decision must be use or none" % where)
+    if sorted(got) != sorted(want):
+        errors.append("cut set must equal the storyboard's")
+    return errors
+
+
+def validate_gen_picks(obj, storyboard):
+    """Gene's choices: cut match, prompt per generate cut, ≤6 images."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["gen_picks must be an object"]
+    want = _cut_id_map((storyboard or {}).get("cuts"))
+    cuts = obj.get("cuts")
+    if not isinstance(cuts, list):
+        return errors + ["cuts must be a list"]
+    gen = set()
+    got = []
+    for i, cut in enumerate(cuts):
+        where = "cuts[%d]" % i
+        if not isinstance(cut, dict):
+            errors.append("%s must be an object" % where)
+            continue
+        if "cut_id" not in cut or "decision" not in cut:
+            errors.append("%s needs {cut_id, decision}" % where)
+            continue
+        got.append(cut["cut_id"])
+        if cut["cut_id"] not in want:
+            errors.append("%s.cut_id %r is not in the storyboard"
+                          % (where, cut["cut_id"]))
+        if cut.get("decision") == "generate":
+            gen.add(cut["cut_id"])
+            for k in ("prompt", "reason"):
+                if not cut.get(k) or not isinstance(cut[k], str):
+                    errors.append("%s.%s must be a non-empty string "
+                                  "for a generate cut" % (where, k))
+        elif cut.get("decision") != "none":
+            errors.append("%s.decision must be generate or none"
+                          % where)
+    if sorted(got) != sorted(want):
+        errors.append("cut set must equal the storyboard's")
+    images = obj.get("images")
+    if not isinstance(images, list):
+        errors.append("images must be a list")
+    else:
+        if len(images) > GEN_IMAGES_MAX:
+            errors.append("at most %d images per run, got %d"
+                          % (GEN_IMAGES_MAX, len(images)))
+        covered = set()
+        for i, im in enumerate(images):
+            where = "images[%d]" % i
+            if not isinstance(im, dict):
+                errors.append("%s must be an object" % where)
+                continue
+            for k in ("cut_id", "file", "prompt", "reused"):
+                if k not in im:
+                    errors.append("%s missing: %s" % (where, k))
+            if im.get("cut_id") not in gen:
+                errors.append("%s.cut_id %r has no generate "
+                              "decision" % (where, im.get("cut_id")))
+            covered.add(im.get("cut_id"))
+        if gen - covered:
+            errors.append("generate cuts without images: %r"
+                          % (sorted(gen - covered),))
+    return errors
+
+
+def validate_anim_picks(obj, storyboard):
+    """Max's picks: cut match, template + values + refs per use."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["anim_picks must be an object"]
+    want = _cut_id_map((storyboard or {}).get("cuts"))
+    cuts = obj.get("cuts")
+    if not isinstance(cuts, list):
+        return errors + ["cuts must be a list"]
+    got = []
+    for i, cut in enumerate(cuts):
+        where = "cuts[%d]" % i
+        if not isinstance(cut, dict):
+            errors.append("%s must be an object" % where)
+            continue
+        if "cut_id" not in cut or "decision" not in cut:
+            errors.append("%s needs {cut_id, decision}" % where)
+            continue
+        got.append(cut["cut_id"])
+        if cut["cut_id"] not in want:
+            errors.append("%s.cut_id %r is not in the storyboard"
+                          % (where, cut["cut_id"]))
+        if cut.get("decision") == "use":
+            if cut.get("template") in (None, "", "none"):
+                errors.append("%s.template must name a template "
+                              "for a use pick" % where)
+            for k in ("values", "reason"):
+                if not cut.get(k) or not isinstance(cut[k], str):
+                    errors.append("%s.%s must be a non-empty string "
+                                  "for a use pick" % (where, k))
+            if not isinstance(cut.get("refs"), list) \
+                    or not cut["refs"]:
+                errors.append("%s.refs must be a non-empty list "
+                              "for a use pick" % where)
+        elif cut.get("decision") != "none":
+            errors.append("%s.decision must be use or none" % where)
+    if sorted(got) != sorted(want):
+        errors.append("cut set must equal the storyboard's")
+    return errors
+
+
+def validate_slide_draft(obj, narration):
+    """Vera's slide plan: cut+time match vs Wren, 1-2 materials."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["slide_draft must be an object"]
+    want = {}
+    for cid, c in _cut_id_map((narration or {}).get("cuts")).items():
+        want[cid] = (c.get("start_s"), c.get("end_s"))
+    cuts = obj.get("cuts")
+    if not isinstance(cuts, list):
+        return errors + ["cuts must be a list"]
+    got = []
+    for i, cut in enumerate(cuts):
+        where = "cuts[%d]" % i
+        if not isinstance(cut, dict):
+            errors.append("%s must be an object" % where)
+            continue
+        for k in ("cut_id", "start_s", "end_s", "materials",
+                  "layout", "on_screen_text", "transitions",
+                  "why"):
+            if k not in cut:
+                errors.append("%s missing: %s" % (where, k))
+        got.append(cut.get("cut_id"))
+        _check_cut_times(errors, where, cut, want)
+        mats = cut.get("materials")
+        if not isinstance(mats, list) or not (1 <= len(mats)
+                                             <= VERA_MAX_MATERIALS):
+            errors.append("%s.materials must hold 1-%d items"
+                          % (where, VERA_MAX_MATERIALS))
+        else:
+            for j, m in enumerate(mats):
+                if not isinstance(m, dict) or not m.get("kind") \
+                        or not m.get("use"):
+                    errors.append("%s.materials[%d] needs "
+                                  "{kind, use}" % (where, j))
+        _nonempty(errors, cut, "layout", where)
+        _nonempty(errors, cut, "why", where)
+        for k in ("on_screen_text", "transitions"):
+            if not isinstance(cut.get(k), list):
+                errors.append("%s.%s must be a list" % (where, k))
+    if sorted(got) != sorted(want):
+        errors.append("cut set must equal the narration's")
+    return errors
+
+
+def validate_render_log(obj, slide_draft):
+    """Remy's render record: cut match, ≤3 renders, layout-only
+    adjustments. Content equality lives in the render tool."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["render_log must be an object"]
+    want = set(_cut_id_map((slide_draft or {}).get("cuts")))
+    cuts = obj.get("cuts")
+    if not isinstance(cuts, list):
+        return errors + ["cuts must be a list"]
+    got = []
+    for i, cut in enumerate(cuts):
+        where = "cuts[%d]" % i
+        if not isinstance(cut, dict):
+            errors.append("%s must be an object" % where)
+            continue
+        for k in ("cut_id", "slide_file", "renders_n",
+                  "adjustments", "issues"):
+            if k not in cut:
+                errors.append("%s missing: %s" % (where, k))
+        got.append(cut.get("cut_id"))
+        if cut.get("cut_id") not in want:
+            errors.append("%s.cut_id %r is not in the slide draft"
+                          % (where, cut.get("cut_id")))
+        _nonempty(errors, cut, "slide_file", where)
+        n = cut.get("renders_n")
+        if not isinstance(n, int) or isinstance(n, bool) \
+                or not (1 <= n <= REMY_MAX_RENDERS):
+            errors.append("%s.renders_n must be 1-%d"
+                          % (where, REMY_MAX_RENDERS))
+        adjs = cut.get("adjustments")
+        if not isinstance(adjs, list):
+            errors.append("%s.adjustments must be a list" % where)
+        else:
+            for j, a in enumerate(adjs):
+                if not isinstance(a, dict):
+                    errors.append("%s.adjustments[%d] must be an "
+                                  "object" % (where, j))
+                    continue
+                for k in ("field", "was", "now"):
+                    if k not in a:
+                        errors.append("%s.adjustments[%d] missing: "
+                                      "%s" % (where, j, k))
+                if a.get("field") not in LAYOUT_FIELDS:
+                    errors.append("%s.adjustments[%d].field %r is "
+                                  "not a layout value"
+                                  % (where, j, a.get("field")))
+        if not isinstance(cut.get("issues"), list):
+            errors.append("%s.issues must be a list" % where)
+    if sorted(got) != sorted(want):
+        errors.append("cut set must equal the slide draft's")
+    return errors
+
+
+def validate_storyboard_table(obj):
+    """Final table: one row per cut with narration/screen/materials."""
+    errors = []
+    if not isinstance(obj, dict):
+        return ["storyboard_table must be an object"]
+    rows = obj.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return errors + ["rows must be a non-empty list"]
+    for i, r in enumerate(rows):
+        where = "rows[%d]" % i
+        if not isinstance(r, dict):
+            errors.append("%s must be an object" % where)
+            continue
+        for k in ("part", "scene_n", "cut_id", "start_s",
+                  "end_s", "narration", "screen", "materials"):
+            if k not in r:
+                errors.append("%s missing: %s" % (where, k))
+        if not isinstance(r.get("materials"), list):
+            errors.append("%s.materials must be a list" % where)
+    return errors
+
+
+def render_narration_v2_md(obj):
+    """Wren's cuts (narration v2) as markdown."""
+    lines = ["# Narration — %d cuts" % len(obj.get("cuts", [])),
+             ""]
+    for c in obj.get("cuts", []):
+        a = c.get("audio", {})
+        lines.append("## Cut %s (scene %s, %s–%s s, %d words, "
+                     "audio %ss, %d attempt(s))"
+                     % (c.get("cut_id"), c.get("scene_n"),
+                        c.get("start_s"), c.get("end_s"),
+                        c.get("words"), a.get("seconds"),
+                        c.get("attempts")))
+        lines.append("")
+        for ln in c.get("lines", []):
+            lines.append("- %s" % ln.get("text"))
+            for cit in ln.get("citations", []):
+                lines.append("  [%s](api/ref?ref=%s): %s"
+                             % (cit.get("ref"), cit.get("ref"),
+                                (cit.get("quote", "") or "")[:120]))
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_storyboard_v2_md(obj):
+    """Penn's cut descriptions (storyboard v2) as markdown."""
+    lines = ["# Cut screens — %d cuts" % len(obj.get("cuts", [])),
+             ""]
+    for c in obj.get("cuts", []):
+        lines += ["## Cut %s (scene %s, %s–%s s)"
+                  % (c.get("cut_id"), c.get("scene_n"),
+                     c.get("start_s"), c.get("end_s")),
+                  "", "- Show: %s" % c.get("show_what"),
+                  "- Why: %s" % c.get("show_why"),
+                  "- On screen: %s"
+                  % (" / ".join(c.get("on_screen_text", []))
+                     or "—"), ""]
+    return "\n".join(lines)
+
+
+def render_style_guide_md(obj):
+    """Penn's style guide as markdown."""
+    pal = obj.get("palette", {})
+    fonts = obj.get("fonts", {})
+    lines = ["# Style guide", "",
+             "- Palette: %s / %s / %s"
+             % (pal.get("background"), pal.get("text"),
+                pal.get("accent")),
+             "- Fonts: %s / %s"
+             % (fonts.get("heading"), fonts.get("body")),
+             "- Image tone: %s" % obj.get("image_tone"), "",
+             "## Rules", ""]
+    for r in obj.get("rules", []):
+        lines.append("- %s" % r)
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_pick_cuts_md(title, cuts, fmt):
+    lines = ["# %s — %d cuts" % (title, len(cuts)), ""]
+    for c in cuts:
+        lines.append("## Cut %s: %s"
+                     % (c.get("cut_id"), c.get("decision")))
+        lines.append("")
+        lines.append(fmt(c))
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_photo_picks_md(obj):
+    """Pia's picks as markdown."""
+    def fmt(c):
+        if c.get("decision") == "none":
+            return "No photo for this cut."
+        return "- Kind: %s\n- File: %s\n- Source: %s\n- License: " \
+               "%s\n- Why: %s" % (c.get("kind"), c.get("file"),
+                                  c.get("source_url"),
+                                  c.get("license"), c.get("reason"))
+    return _render_pick_cuts_md("Photo picks",
+                                obj.get("cuts", []), fmt)
+
+
+def render_gen_picks_md(obj):
+    """Gene's choices as markdown."""
+    def fmt(c):
+        if c.get("decision") == "none":
+            return "No generated image for this cut."
+        return "- Prompt: %s\n- Why: %s" % (c.get("prompt"),
+                                            c.get("reason"))
+    lines = [_render_pick_cuts_md("Generation choices",
+                                  obj.get("cuts", []), fmt)]
+    lines.append("## Images (%d)" % len(obj.get("images", [])))
+    lines.append("")
+    for im in obj.get("images", []):
+        lines.append("- Cut %s: %s%s"
+                     % (im.get("cut_id"), im.get("file"),
+                        " (reused)" if im.get("reused") else ""))
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_anim_picks_md(obj):
+    """Max's picks as markdown."""
+    def fmt(c):
+        if c.get("decision") == "none":
+            return "No animation for this cut."
+        return "- Template: %s\n- Values: %s\n- Refs: %s\n- Why: " \
+               "%s" % (c.get("template"), c.get("values"),
+                       ", ".join(c.get("refs", [])),
+                       c.get("reason"))
+    return _render_pick_cuts_md("Animation picks",
+                                obj.get("cuts", []), fmt)
+
+
+def render_slide_draft_md(obj):
+    """Vera's slide plan as markdown."""
+    lines = ["# Slide plan — %d cuts" % len(obj.get("cuts", [])),
+             ""]
+    for c in obj.get("cuts", []):
+        lines += ["## Cut %s (%s–%s s)"
+                  % (c.get("cut_id"), c.get("start_s"),
+                     c.get("end_s")),
+                  "", "- Layout: %s" % c.get("layout"),
+                  "- On screen: %s"
+                  % (" / ".join(c.get("on_screen_text", []))
+                     or "—"),
+                  "- Transitions: %s"
+                  % (", ".join(c.get("transitions", [])) or "—"),
+                  "- Why: %s" % c.get("why")]
+        for m in c.get("materials", []):
+            lines.append("- Material [%s]: %s (%s)"
+                         % (m.get("kind"), m.get("file") or
+                            m.get("ref") or "—", m.get("use")))
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_render_log_md(obj):
+    """Remy's render record as markdown."""
+    lines = ["# Render log — %d cuts" % len(obj.get("cuts", [])),
+             ""]
+    for c in obj.get("cuts", []):
+        lines += ["## Cut %s: %s (%d render(s))"
+                  % (c.get("cut_id"), c.get("slide_file"),
+                     c.get("renders_n")),
+                  ""]
+        for a in c.get("adjustments", []):
+            lines.append("- %s: %s -> %s"
+                         % (a.get("field"), a.get("was"),
+                            a.get("now")))
+        for issue in c.get("issues", []):
+            lines.append("- Issue: %s" % issue)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def render_storyboard_table_md(obj):
+    """Final storyboard table as markdown."""
+    lines = ["# Storyboard table — %d cuts"
+             % len(obj.get("rows", [])), "",
+             "| Part | Scene | Cut | Time | Narration | Screen | "
+             "Materials |",
+             "|---|---|---|---|---|---|---|"]
+    for r in obj.get("rows", []):
+        lines.append("| %s | %s | %s | %s–%s | %s | %s | %s |"
+                     % (r.get("part"), r.get("scene_n"),
+                        r.get("cut_id"), r.get("start_s"),
+                        r.get("end_s"), r.get("narration"),
+                        r.get("screen"),
+                        "; ".join(r.get("materials", []))))
+    lines.append("")
+    return "\n".join(lines)

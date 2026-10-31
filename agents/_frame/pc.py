@@ -10,7 +10,8 @@ import re
 import time
 
 MAP_VERSION = 2  # has items carry kind (+file for figures) and equations
-PCS = ("source", "theory", "article")
+PCS = ("source", "theory", "article", "image", "generated",
+       "voice")
 MIN_FIG_PT = 50  # images smaller than this (both sides, PDF points) are decor
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -48,7 +49,7 @@ def entry_ref(pc, doc_id):
     return "pc://%s/%s" % (pc, doc_id)
 
 
-_REF_RE = re.compile(r"^pc://(source|theory|article)/([0-9a-f]{12})"
+_REF_RE = re.compile(r"^pc://(source|theory|article|image|generated|voice)/([0-9a-f]{12})"
                      r"(?:#(.*))?$")
 
 
@@ -1038,6 +1039,8 @@ def open_ref(entry, ref, grant=None):
     pc, doc_id, frag = parse_ref(ref)
     if doc_id != entry.get("doc_id") or pc != entry.get("pc", "source"):
         raise KeyError("no such entry: %r" % ref)
+    if pc in ("voice", "image", "generated"):
+        return _open_media_ref(entry, ref, pc, frag)
     base = entry.get("ref", entry_ref(pc, doc_id))
     if not frag:
         return {"kind": "entry", "ref": base, "title": entry.get("title"),
@@ -2170,3 +2173,157 @@ def blank_map(entry, llm_model):
                           "subsections": list(s.get("subsections", []))}
                          for s in entry.get("sections", [])
                          if not s.get("non_content")]}
+
+# ---- media PCs: voice, image, generated (v8) ----
+MEDIA_CONSUMERS = {
+    "voice": ["voice_wren"],
+    "image": ["photo_pia", "board_vera", "slide_remy"],
+    "generated": ["image_gene", "board_vera", "slide_remy"],
+}
+
+
+def voice_save(order_id, cut_id, wav_bytes, text, seconds, attempt,
+               engine, root=None):
+    """Store one cut's narration audio in this order's Voice entry
+    (one entry per order). Returns {ref, doc_id, file}."""
+    doc_id = content_id("voice:" + order_id)
+    edir = entry_dir("voice", doc_id, root)
+    os.makedirs(os.path.join(edir, "audio"), exist_ok=True)
+    ep = os.path.join(edir, "entry.json")
+    if os.path.isfile(ep):
+        with open(ep, encoding="utf-8") as f:
+            entry = json.load(f)
+    else:
+        now = time.strftime("%Y-%m-%dT%H:%M:%S")
+        entry = {"pc": "voice", "doc_id": doc_id,
+                 "ref": entry_ref("voice", doc_id),
+                 "order_id": order_id, "parsed_at": now,
+                 "added_by": "voice_wren", "cuts": {},
+                 "recipients": []}
+        for a in MEDIA_CONSUMERS["voice"]:
+            entry["recipients"].append(
+                {"agent": a, "order_id": order_id, "kind": "full",
+                 "parts": [], "set_by": "voice_wren", "at": now})
+    fname = "%s-t%d.wav" % (cut_id, attempt)
+    with open(os.path.join(edir, "audio", fname), "wb") as f:
+        f.write(wav_bytes)
+    entry["cuts"][cut_id] = {
+        "file": fname, "text": text, "seconds": seconds,
+        "attempt": attempt, "engine": engine,
+        "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    with open(ep, "w", encoding="utf-8") as f:
+        json.dump(entry, f, ensure_ascii=False, indent=2)
+    return {"ref": entry["ref"] + "#" + cut_id, "doc_id": doc_id,
+            "file": fname}
+
+
+def image_store_pick(order_id, source_url, blob, license, reason,
+                     set_by="photo_pia", suffix=".jpg", root=None):
+    """Store one licensed web pick (one entry per URL: same URL is
+    the same entry, recipients gain rows per order)."""
+    doc_id = content_id("image:" + source_url)
+    edir = entry_dir("image", doc_id, root)
+    os.makedirs(os.path.join(edir, "files"), exist_ok=True)
+    ep = os.path.join(edir, "entry.json")
+    new = not os.path.isfile(ep)
+    if new:
+        entry = {"pc": "image", "doc_id": doc_id,
+                 "ref": entry_ref("image", doc_id),
+                 "source_url": source_url, "license": license,
+                 "added_by": set_by, "recipients": []}
+    else:
+        with open(ep, encoding="utf-8") as f:
+            entry = json.load(f)
+    fname = "pick%s" % suffix
+    with open(os.path.join(edir, "files", fname), "wb") as f:
+        f.write(blob)
+    entry["file"] = fname
+    entry["reason"] = reason
+    rows = recipients_of(entry) or []
+    have = {(r.get("agent"), r.get("order_id")) for r in rows
+            if isinstance(r, dict)}
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    for a in MEDIA_CONSUMERS["image"]:
+        if (a, order_id) not in have:
+            rows.append({"agent": a, "order_id": order_id,
+                         "kind": "full", "parts": [],
+                         "set_by": set_by, "at": now})
+    entry["recipients"] = rows
+    with open(ep, "w", encoding="utf-8") as f:
+        json.dump(entry, f, ensure_ascii=False, indent=2)
+    return {"ref": entry["ref"], "doc_id": doc_id, "file": fname,
+            "reused_entry": not new}
+
+
+def generated_store(order_id, prompt, blob, cost_usd, model,
+                    set_by="image_gene", root=None):
+    """Store one generated image (one entry per prompt: the same
+    prompt reuses the stored image)."""
+    doc_id = content_id("generated:" + prompt)
+    edir = entry_dir("generated", doc_id, root)
+    os.makedirs(os.path.join(edir, "files"), exist_ok=True)
+    ep = os.path.join(edir, "entry.json")
+    new = not os.path.isfile(ep)
+    if new:
+        entry = {"pc": "generated", "doc_id": doc_id,
+                 "ref": entry_ref("generated", doc_id),
+                 "prompt": prompt, "model": model,
+                 "cost_usd": cost_usd, "added_by": set_by,
+                 "recipients": []}
+        fname = "gen.png"
+        with open(os.path.join(edir, "files", fname), "wb") as f:
+            f.write(blob)
+        entry["file"] = fname
+    else:
+        with open(ep, encoding="utf-8") as f:
+            entry = json.load(f)
+    rows = recipients_of(entry) or []
+    have = {(r.get("agent"), r.get("order_id")) for r in rows
+            if isinstance(r, dict)}
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    for a in MEDIA_CONSUMERS["generated"]:
+        if (a, order_id) not in have:
+            rows.append({"agent": a, "order_id": order_id,
+                         "kind": "full", "parts": [],
+                         "set_by": set_by, "at": now})
+    entry["recipients"] = rows
+    with open(ep, "w", encoding="utf-8") as f:
+        json.dump(entry, f, ensure_ascii=False, indent=2)
+    return {"ref": entry["ref"], "doc_id": doc_id,
+            "file": entry["file"], "reused_entry": not new}
+
+
+def _open_media_ref(entry, ref, pcname, frag):
+    """Passages for voice/image/generated entries."""
+    if pcname == "voice":
+        if not frag:
+            return {"kind": "entry", "ref": entry["ref"],
+                    "cuts": sorted(entry.get("cuts", {})),
+                    "provenance": _provenance(entry)}
+        cut = entry.get("cuts", {}).get(frag)
+        if cut is None:
+            raise KeyError("no such cut: %r" % ref)
+        return {"kind": "voice_clip", "ref": ref,
+                "file": cut["file"], "path": "audio/" + cut["file"],
+                "text": cut["text"], "seconds": cut["seconds"],
+                "attempt": cut["attempt"], "engine": cut["engine"],
+                "provenance": _provenance(entry)}
+    if pcname == "image":
+        if frag:
+            raise KeyError("no such fragment: %r" % ref)
+        return {"kind": "image_pick", "ref": ref,
+                "file": entry.get("file", ""),
+                "path": "files/" + entry.get("file", ""),
+                "source_url": entry.get("source_url", ""),
+                "license": entry.get("license", ""),
+                "reason": entry.get("reason", ""),
+                "provenance": _provenance(entry)}
+    if frag:
+        raise KeyError("no such fragment: %r" % ref)
+    return {"kind": "generated_image", "ref": ref,
+            "file": entry.get("file", ""),
+            "path": "files/" + entry.get("file", ""),
+            "prompt": entry.get("prompt", ""),
+            "model": entry.get("model", ""),
+            "cost_usd": entry.get("cost_usd", 0),
+            "provenance": _provenance(entry)}

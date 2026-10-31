@@ -198,6 +198,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "pcs"] and len(parts) == 7 \
                 and parts[3] == "entries" and parts[5] == "figures":
             return self._api_pc_figure(parts[2], parts[4], parts[6])
+        if parts[:2] == ["api", "pcs"] and len(parts) == 7 \
+                and parts[3] == "entries" and parts[5] == "media":
+            return self._api_pc_media(parts[2], parts[4], parts[6])
         if parts[:2] == ["api", "pcs"] and len(parts) == 6 \
                 and parts[3] == "entries" and parts[5] == "picks":
             return self._api_pc_entry_picks(parts[2], parts[4])
@@ -216,6 +219,12 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 4 \
                 and parts[2] == "runs":
             return self._api_flow_run_get(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "status":
+            return self._api_flow_step_status(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "file":
+            return self._api_flow_file(parts[3])
         return self._static(parts)
 
     def do_PUT(self):
@@ -271,6 +280,15 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 4 \
                 and parts[3] == "run":
             return self._api_flow_run(parts[2])
+        if parts[:2] == ["api", "flows"] and len(parts) == 4 \
+                and parts[3] == "step":
+            return self._api_flow_step(parts[2])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "approve":
+            return self._api_flow_approve(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "invalidate":
+            return self._api_flow_invalidate(parts[3])
         return self._json(404, {"error": "not found"})
 
     def do_DELETE(self):
@@ -947,6 +965,7 @@ class Handler(BaseHTTPRequestHandler):
                     except ValueError:
                         continue
         job = _FLOW_JOBS.get(run_id)
+        approved, last = [], ""
         if job is not None and job["state"] == "running":
             state, err = "running", ""
         else:
@@ -956,9 +975,14 @@ class Handler(BaseHTTPRequestHandler):
                           encoding="utf-8") as f:
                     d = json.load(f)
                 state, err = d.get("state", "unknown"), d.get("error", "")
+                approved, last = d.get("approved", []), d.get("last", "")
             except (OSError, ValueError):
                 pass
         out = {"run_id": run_id, "state": state, "events": events}
+        if approved:
+            out["approved"] = approved
+        if last:
+            out["last"] = last
         if err:
             out["error"] = err
         if job is not None:
@@ -1053,6 +1077,124 @@ class Handler(BaseHTTPRequestHandler):
                               for i in range(0, len(turns), 2)
                               if turns[i]["role"] == "user"]
         return self._json(200, meta)
+
+    @staticmethod
+    def _run_id_ok(run_id):
+        return bool(run_id) and "/" not in run_id \
+            and "\\" not in run_id \
+            and not run_id.startswith(".")
+
+    def _api_flow_step(self, fid):
+        try:
+            flow_obj = flows.load_flow(fid)
+        except (ValueError, OSError):
+            return self._json(404, {"error": "no such flow"})
+        errs = flows.validate_flow(flow_obj)
+        if errs:
+            return self._json(400, {"error": "invalid flow",
+                                    "errors": errs})
+        body = self._read_json()
+        if not isinstance(body, dict):
+            return self._json(400, {"error": "need JSON object"})
+        order_id = body.get("order_id")
+        target = body.get("target")
+        if not order_id or not isinstance(order_id, str):
+            return self._json(400, {"error": "need {order_id}"})
+        if not target or not isinstance(target, str):
+            return self._json(400, {"error": "need {target}"})
+        if not os.path.isfile(os.path.join(ROOT, "orders", order_id,
+                                            "meta.json")):
+            return self._json(404, {"error": "no such order"})
+        run_id = body.get("run_id") or flows.new_run_id()
+        if not self._run_id_ok(run_id):
+            return self._json(400, {"error": "bad run_id"})
+        note = body.get("note") or None
+        job = {"run_id": run_id, "flow_id": fid, "order_id": order_id,
+               "state": "running", "error": ""}
+        _FLOW_JOBS[run_id] = job
+
+        def _work():
+            try:
+                out = flows.step_run(flow_obj, order_id, runner.run,
+                                     target, run_id=run_id, note=note,
+                                     flow_id=fid)
+                job["state"] = "done"
+                if not out.get("ok"):
+                    job["state"] = "error"
+                    job["error"] = str(out.get("error", ""))[:1000]
+            except Exception as exc:  # noqa: BLE001 - status surface
+                job["state"] = "error"
+                job["error"] = str(exc)[:1000]
+
+        threading.Thread(target=_work, daemon=True).start()
+        return self._json(200, {"started": True, "run_id": run_id})
+
+    def _api_flow_approve(self, run_id):
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        body = self._read_json()
+        node = (body or {}).get("node") if isinstance(body, dict) \
+            else None
+        if not node or not isinstance(node, str):
+            return self._json(400, {"error": "need {node}"})
+        out = flows.approve_node(run_id, node)
+        if not out.get("ok"):
+            return self._json(400, out)
+        return self._json(200, out)
+
+    def _api_flow_invalidate(self, run_id):
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        body = self._read_json()
+        node = (body or {}).get("node") if isinstance(body, dict) \
+            else None
+        if not node or not isinstance(node, str):
+            return self._json(400, {"error": "need {node}"})
+        out = flows.invalidate_node(run_id, node)
+        if not out.get("ok"):
+            return self._json(400, out)
+        return self._json(200, out)
+
+    def _api_flow_step_status(self, run_id):
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        out = flows.step_status(run_id)
+        if not out.get("ok"):
+            return self._json(404, out)
+        return self._json(200, out)
+
+    _RUN_FILES = {"INPUTS.md": "text/markdown",
+                  "INPUTS.json": "application/json",
+                  "report.md": "text/markdown",
+                  "summary_ko.md": "text/markdown",
+                  "result.json": "application/json",
+                  "usage.json": "application/json",
+                  "captions.srt": "text/plain",
+                  "assembly.json": "application/json",
+                  "storyboard_table.json": "application/json"}
+
+    def _api_flow_file(self, run_id):
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        qs = unquote(self.path).split("?", 1)
+        q = dict(parse_qsl(qs[1])) if len(qs) > 1 else {}
+        node, name = q.get("node", ""), q.get("name", "")
+        if not re.fullmatch(r"[A-Za-z0-9_\-]+", node or ""):
+            return self._json(404, {"error": "no such node"})
+        if name not in self._RUN_FILES:
+            return self._json(404, {"error": "no such file"})
+        full = os.path.join(flows.RUNS_DIR, run_id, node, name)
+        if not os.path.isfile(full):
+            return self._json(404, {"error": "no such file"})
+        with open(full, "rb") as f:
+            data = f.read()
+        if len(data) > 1048576:
+            return self._json(413, {"error": "file too large"})
+        self.send_response(200)
+        self.send_header("Content-Type", self._RUN_FILES[name])
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def _api_version(self):
         """Code version: commit hash + start time. ?client=<hash> adds a
@@ -1567,8 +1709,48 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, ValueError):
             return False
 
+    @staticmethod
+    def _pc_media_summary(pcname, e):
+        if pcname == "voice":
+            cuts = e.get("cuts", {}) or {}
+            return {"cuts": len(cuts),
+                    "seconds": round(sum(
+                        c.get("seconds", 0) for c in cuts.values()
+                        if isinstance(c, dict)), 1)}
+        if pcname == "image":
+            return {"file": e.get("file", ""),
+                    "license": e.get("license", "")}
+        if pcname == "generated":
+            return {"file": e.get("file", ""),
+                    "model": e.get("model", ""),
+                    "cost_usd": e.get("cost_usd", 0)}
+        return {}
+
+    @staticmethod
+    def _pc_media_detail(pcname, e):
+        if pcname == "voice":
+            return {"cuts": [
+                {"cut_id": cid, "file": c.get("file", ""),
+                 "seconds": c.get("seconds", 0),
+                 "attempt": c.get("attempt", 1),
+                 "engine": c.get("engine", ""),
+                 "text": c.get("text", "")}
+                for cid, c in sorted((e.get("cuts", {}) or {}).items())
+                if isinstance(c, dict)]}
+        if pcname == "image":
+            return {"file": e.get("file", ""),
+                    "source_url": e.get("source_url", ""),
+                    "license": e.get("license", ""),
+                    "reason": e.get("reason", "")}
+        if pcname == "generated":
+            return {"file": e.get("file", ""),
+                    "prompt": e.get("prompt", ""),
+                    "model": e.get("model", ""),
+                    "cost_usd": e.get("cost_usd", 0)}
+        return {}
+
     def _api_pc_entries(self, pcname):
-        if pcname not in ("source", "theory", "article"):
+        if pcname not in ("source", "theory", "article", "image", "generated", "voice"):
             return self._json(404, {"error": "no such PC"})
 
         self._pc_reap_finished()
@@ -1582,9 +1764,13 @@ class Handler(BaseHTTPRequestHandler):
                     with open(os.path.join(ed, doc_id, "entry.json"),
                               encoding="utf-8") as f:
                         e = json.load(f)
-                    with open(os.path.join(ed, doc_id, "map.json"),
-                              encoding="utf-8") as f:
-                        mstatus = json.load(f).get("status", "pending")
+                    if pcname in ("image", "generated", "voice"):
+                        mstatus = "n/a"
+                    else:
+                        with open(os.path.join(ed, doc_id, "map.json"),
+                                  encoding="utf-8") as f:
+                            mstatus = json.load(f).get("status",
+                                                       "pending")
                 except (OSError, ValueError):
                     continue
                 job = _PC_JOBS.get(doc_id)
@@ -1600,6 +1786,7 @@ class Handler(BaseHTTPRequestHandler):
                             "chars": e.get("chars", 0),
                             "figures": len(e.get("figures", [])),
                             "tables": len(e.get("tables", [])),
+                            "media": self._pc_media_summary(pcname, e),
                             "map": mstatus,
                             "building": job is not None
                             and job.poll() is None,
@@ -1613,7 +1800,7 @@ class Handler(BaseHTTPRequestHandler):
         self._pc_reap_finished()
         if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
             return self._json(404, {"error": "no such PC entry"})
-        if pcname not in ("source", "theory", "article"):
+        if pcname not in ("source", "theory", "article", "image", "generated", "voice"):
             return self._json(404, {"error": "no such PC"})
         ed = pc.entry_dir(pcname, doc_id)
         if not os.path.isfile(os.path.join(ed, "entry.json")):
@@ -1624,7 +1811,10 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(ed, "map.json"), encoding="utf-8") as f:
                 m = json.load(f)
         except (OSError, ValueError):
-            m = {"status": "pending", "sections": []}
+            m = {"status": ("n/a" if pcname in
+                             ("image", "generated", "voice")
+                             else "pending"),
+                 "sections": []}
         entry = {k: e.get(k) for k in ("ref", "title", "origin_file",
                                        "order_id", "parsed_at",
                                        "added_by", "chars", "url",
@@ -1640,6 +1830,7 @@ class Handler(BaseHTTPRequestHandler):
         entry["tables"] = e.get("tables", [])
         entry["equations"] = e.get("equations", [])
         entry["recipients"] = e.get("recipients")
+        entry["media"] = self._pc_media_detail(pcname, e)
         job = _PC_JOBS.get(doc_id)
         entry["building"] = job is not None and job.poll() is None
         entry["index"] = {p: self._pc_indexed(p, pcname, doc_id)
@@ -1689,6 +1880,27 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _api_pc_media(self, pcname, doc_id, file):
+        if pcname not in ("image", "generated", "voice"):
+            return self._json(404, {"error": "no media on this PC"})
+        if not re.fullmatch(r"[0-9a-f]{12}", doc_id or ""):
+            return self._json(404, {"error": "no such PC entry"})
+        if not re.fullmatch(r"[A-Za-z0-9][\w.\-]*", file or ""):
+            return self._json(404, {"error": "no such file"})
+        sub = "audio" if pcname == "voice" else "files"
+        full = os.path.join(pc.entry_dir(pcname, doc_id), sub, file)
+        if not os.path.isfile(full):
+            return self._json(404, {"error": "no such file"})
+        with open(full, "rb") as f:
+            data = f.read()
+        mime = mimetypes.guess_type(file)[0] \
+            or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _api_pc_build(self, pcname, doc_id):
         return self._api_pc_spawn(pcname, doc_id, "all")
 
@@ -1731,6 +1943,18 @@ class Handler(BaseHTTPRequestHandler):
          "add": "Rex (case researcher) picks only",
          "tools": ["pc_search_articles", "pc_pick_article",
                    "pc_read_article", "open_ref"]},
+        {"id": "image", "name": "Image PC", "media": True,
+         "holds": "Licensed web photos Pia picked: file, URL, license.",
+         "add": "Pia (photo researcher) picks only",
+         "tools": ["open_ref"]},
+        {"id": "generated", "name": "Generated PC", "media": True,
+         "holds": "Gene's generated concept images: file, prompt, model.",
+         "add": "Gene (image generator) only",
+         "tools": ["open_ref"]},
+        {"id": "voice", "name": "Voice PC", "media": True,
+         "holds": "Wren's cut narration audio: file, text, seconds.",
+         "add": "Wren (narration writer) via make_voice",
+         "tools": ["open_ref"]},
     )
     _PC_TOOLS = {"source": {"list": "pc_list_source",
                              "read": "pc_read_source"},
@@ -1739,7 +1963,10 @@ class Handler(BaseHTTPRequestHandler):
                             "read": "pc_read_theory"},
                  "article": {"search": "pc_search_articles",
                              "pick": "pc_pick_article",
-                             "read": "pc_read_article"}}
+                             "read": "pc_read_article"},
+                 "image": {"read": "open_ref"},
+                 "generated": {"read": "open_ref"},
+                 "voice": {"read": "open_ref"}}
 
     @staticmethod
     def _pc_grants(pcname):
@@ -1808,8 +2035,11 @@ class Handler(BaseHTTPRequestHandler):
                              else "not built yet"))
             row["grants"] = self._pc_grants(pid)
             readers = row["grants"].get("read", [])
-            row["read"] = ("Full text: " + ", ".join(readers)
-                           if readers else "Full text: —")
+            if info.get("media"):
+                row["read"] = "Per-entry recipients (open_ref)"
+            else:
+                row["read"] = ("Full text: " + ", ".join(readers)
+                               if readers else "Full text: —")
             row["size_bytes"] = self._pc_size(pid)
             row["profile"] = prof
             row["index"] = {p: self._pc_index_info(pid, p)

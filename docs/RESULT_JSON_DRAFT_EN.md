@@ -272,7 +272,7 @@ line carries `source` anymore: listings deliver it. The v2 transitional
 `file`/`head` sidecar is dropped: every agent reads through PC
 tools. v1/v2 stay registered so old runs still validate and render.
 
-## 5. Crew plan (stages 0–7): who makes and takes what
+## 5. Crew plan (stages 0–9 + code): who makes and takes what
 
 One result JSON per agent run (§1). Each role below lists the
 categories it produces and the categories it receives. Receives are
@@ -289,10 +289,15 @@ the new categories follow once the category set is approved.
 | 2 | Concept explainer (Cleo) | `concept`, `structure` + Source PC `map` rows | `concepts` (§5.1) |
 | 2 | Case researcher (Rex) | `concept`, `structure` + Source PC `map` rows | `cases` (§5.2) |
 | 3 | Planning PD (Ash) | `concept`, `structure`, `concepts`, `cases` + PC `map` rows | `storyboard_draft` (§5.3) |
-| 4 | Storyboard writer (Penn) | `storyboard_draft` + handed `map` rows | `storyboard` (§5.4) |
-| 5 | Storyboard reviewer (Vera, draft) | `storyboard` + PC rows via listing | `storyboard_checked` |
-| 6 | Narration writer (Wren) | `storyboard_draft` + handed `map` rows | `narration` (§5.5) |
+| 5 | Narration writer (Wren) | `storyboard_draft` + `concept` + handed rows | `narration` v2 (§16) |
+| 6 | Storyboard writer (Penn) | `narration` + `storyboard_draft` + `concept` + handed rows | `storyboard` v2 + `style_guide` (§16) |
+| 7 | Photo researcher (Pia) | `storyboard` + `style_guide` + figures | `photo_picks` (§16) |
+| 7 | Image generator (Gene) | `storyboard` + `style_guide` | `gen_picks` (§16) |
+| 7 | Animation planner (Max) | `storyboard` + `style_guide` + checked tables | `anim_picks` (§16) |
 | 7 | Narration reviewer (Iris, draft) | `narration`, `storyboard` + PC rows via listing | `narration_checked` |
+| 8 | Slide planner (Vera) | `narration` + `storyboard` + `style_guide` + picks | `slide_draft` (§16) |
+| 9 | Slide builder (Remy) | `slide_draft` + `style_guide` + `narration` | `render_log` (§16) |
+| code | Video production (program step) | `narration` + `render_log` + table inputs | `video` + `storyboard_table` (§16) |
 
 New category payloads (field sketches, schemas later):
 
@@ -727,6 +732,10 @@ inside held parts, §8.9); the picks add Cleo/Rex's reasons.
 
 ## 5.4 Penn (`board_penn`): `storyboard` v1
 
+RETIRED by design v8 (see §16): Penn now runs after Wren
+and writes per-cut descriptions (`storyboard` v2) plus one
+`style_guide`. Old v1 results still load.
+
 Produces `{storyboard}`. Consumes `storyboard_draft` only (works
 in parallel with Wren). Writes the composition for each scene Ash
 requested: what is on screen, in order. Reads ONLY what Ash
@@ -789,6 +798,10 @@ the handed parts; every ref must be listed for Penn.
   by Iris at narration review (and by Wren's later revisions).
 
 ## 5.5 Wren (`voice_wren`): `narration` v1
+
+RETIRED by design v8 (see §16): Wren now splits scenes
+into 10–30 s cuts and voices each cut (`narration` v2).
+Old v1 results still load.
 
 Produces `{narration}`. Consumes `storyboard_draft` only (works
 in parallel with Penn). Writes the spoken lines for each scene
@@ -1511,6 +1524,8 @@ At write time, the writer tool verifies, in order:
 
 ## 15. Workflow design v7 (target data flow)
 
+Superseded by §16 (design v8); kept for history.
+
 The default flow, exactly as drawn in the Flow tab: solid lines
 carry result categories, dotted lines show PC links. 11 nodes, 13
 solid lines, 29 dotted lines. No Order node: the flow starts at
@@ -1567,3 +1582,99 @@ of this — PC nodes on the canvas, dotted lines with labels, and a
 per-agent "Preview start prompt" built by the same chunk builder
 real runs use. Layout follows the owner's drawn design (kept
 private).
+
+## 16. Workflow design v8 (storyboard team + video production team)
+
+The default flow, exactly as drawn in the Flow tab: solid lines
+carry result categories, dotted lines show PC links. 20 nodes
+(12 crew + 1 code step + 6 PCs + final), 37 solid lines, 44
+dotted lines. No Order node: the flow starts at Sam. Layout
+follows the owner's drawn design (kept private).
+
+Solid lines (one category each):
+
+| Line | From \u2192 To | Categories |
+|---|---|---|
+| c1 | Sam \u2192 Marty | `request` |
+| c2a/c2b | Marty \u2192 Cleo | `concept`, `structure` |
+| c3a/c3b | Marty \u2192 Rex | `concept`, `structure` |
+| c4a/c4b | Marty \u2192 Ash | `concept`, `structure` |
+| c5 | Cleo \u2192 Ash | `concepts` |
+| c6 | Rex \u2192 Ash | `cases` |
+| c7 | Ash \u2192 Penn | `storyboard_draft` |
+| c8 | Ash \u2192 Wren | `storyboard_draft` |
+| c40 | Marty \u2192 Wren | `concept` |
+| c41 | Marty \u2192 Penn | `concept` |
+| c42 | Wren \u2192 Penn | `narration` |
+| c43 | Wren \u2192 Vera | `narration` |
+| c44 | Wren \u2192 video | `narration` |
+| c45 | Wren \u2192 Remy | `narration` |
+| c46\u2013c49 | Penn \u2192 Pia/Gene/Max/Vera | `storyboard` |
+| c50 | Penn \u2192 video | `storyboard` |
+| c51\u2013c55 | Penn \u2192 Pia/Gene/Max/Vera/Remy | `style_guide` |
+| c56 | Pia \u2192 Vera | `photo_picks` |
+| c57 | Gene \u2192 Vera | `gen_picks` |
+| c58 | Max \u2192 Vera | `anim_picks` |
+| c59 | Vera \u2192 Remy | `slide_draft` |
+| c60 | Vera \u2192 video | `slide_draft` |
+| c61 | Remy \u2192 video | `render_log` |
+| c62 | Ash \u2192 video | `storyboard_draft` |
+| c63 | Marty \u2192 video | `structure` |
+| c64 | video \u2192 Final video | `video` |
+| c65 | video \u2192 Final video | `storyboard_table` |
+
+Wren's two design ports (lines, times) merge into one
+`narration` v2 line: times are embedded per cut. The final node
+takes ONLY `video` + `storyboard_table`.
+
+New categories (all versioned, writer-checked):
+
+- `narration` v2 (Wren): `cuts[]` with `cut_id, scene_n,
+  start_s, end_s` (10\u201330 s, tiling their scenes),
+  `lines[]` (text + citations), `words`, `audio
+  {voice_pc_ref, seconds}` (within \u00b115% of cut time),
+  `attempts` (\u22642/cut). Facts cited verbatim.
+- `storyboard` v2 (Penn): `cuts[]` with `cut_id, scene_n,
+  start_s, end_s, show_what, show_why, on_screen_text[\u22643
+  lines]`. Cut set/times equal Wren's exactly.
+- `style_guide` v1 (Penn): `palette, fonts, image_tone,
+  rules[]`.
+- `photo_picks` v1 (Pia): per cut `use|none` with `kind
+  (source_figure|web), ref|file, source_url, license, reason`.
+  Licenses: cc0/pdm/by/by-sa, never nd; unviewed never used.
+- `gen_picks` v1 (Gene): per cut `generate|none` with prompt;
+  `images[]` (\u22646/run, prompt reuse by hash). Concept-only.
+- `anim_picks` v1 (Max): per cut `use|none` with template +
+  values + refs. Values trace to checked source tables/formulas
+  only.
+- `slide_draft` v1 (Vera): per cut `materials[1..2], layout,
+  on_screen_text, cut_time, transitions[], why`. Times match
+  Wren; materials backed by helper picks or opened refs.
+- `render_log` v1 (Remy): per cut `slide_file,
+  adjustments[]` (layout values only), `renders_n \u22643`,
+  `issues[]`. Content equals Vera's.
+- `storyboard_table` v1 (video step): rows of `part, scene_n,
+  cut_id, start_s, end_s, narration, screen, materials`.
+
+New PCs (same recipients mechanism, \u00a78.9):
+
+- Image PC: licensed web picks (file, source URL, license,
+  reason). Search results are never stored.
+- Generated PC: generated images (file, prompt, model, cost).
+  Same prompt reuses the stored image.
+- Voice PC: one entry per order; cut clips (file, text,
+  seconds, attempt, engine).
+
+The `video_production` code node (never an LLM runner) joins
+cut slides with Voice audio into the `video` record
+(`file/duration_s/built_from/scenes`), `captions.srt`
+(Wren's exact text, proportional line timing), and the
+storyboard table. `assembly.json` holds the ffmpeg command;
+no MP4 is rendered by the flow itself.
+
+Step mode: run ONE node, then stop. Each stage shows its
+report (starting with a one-paragraph Korean summary),
+INPUTS, and cost (LLM calls, tokens, tools). Buttons:
+Approve and run next / Re-run this stage (optional owner
+note added to its prompt) / Stop. Nothing runs past a stage
+until approved. Re-running a stage invalidates later stages.

@@ -1,0 +1,51 @@
+{
+ "bounds": {
+  "max_steps": 10
+ },
+ "done": [
+  "every cut answered use or none",
+  "source figures opened before use",
+  "every web pick stored with file, url, license, reason",
+  "photo_picks written (result.json)"
+ ],
+ "frame_version": 1,
+ "id": "photo_pia",
+ "io": {
+  "inputs": [
+   "INPUTS.md"
+  ],
+  "output": "result.json"
+ },
+ "model": "meta-models/muse-spark-open-1026",
+ "name": "Pia",
+ "title": "Photo researcher",
+ "stage": 7,
+ "tools": [
+  "query_graph",
+  "read_md_section",
+  "open_ref",
+  "pc_list_source",
+  "pc_read_source",
+  "write_photo_picks"
+ ],
+ "flow": {
+  "inputs": [
+   {
+    "category": "storyboard",
+    "required": true,
+    "description": "Penn's per-cut screen plan to illustrate."
+   },
+   {
+    "category": "style_guide",
+    "required": false,
+    "description": "Look to match."
+   }
+  ],
+  "outputs": [
+   {
+    "category": "photo_picks",
+    "description": "Per-cut photo pick or none."
+   }
+  ]
+ }
+}

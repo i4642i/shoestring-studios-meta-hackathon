@@ -47,12 +47,17 @@ reg = results.registry()
 ok(set(reg) == {"brief", "cases", "concept", "concepts", "source",
                 "request", "structure",
                 "video", "storyboard_draft", "storyboard",
-                "narration"},
-   "registry has 11 incl stage-3 cats")
+                "narration", "style_guide", "photo_picks", "gen_picks",
+                "anim_picks", "slide_draft", "render_log",
+                "storyboard_table"},
+   "registry has 18 incl v8 cats")
 ok(reg["source"]["version"] == 3 and reg["structure"]["version"] == 3
+   and reg["storyboard"]["version"] == 2
+   and reg["narration"]["version"] == 2
    and all(reg[c]["version"] == 1 for c in reg
-           if c not in ("source", "structure")),
-   "source v3 + structure v3, rest v1")
+           if c not in ("source", "structure", "storyboard",
+                        "narration")),
+   "source v3 + structure v3 + wren/penn v2, rest v1")
 
 r = results.make_result("sales_sam", "o1", "r1", {"request": dict(REQ)})
 ok(r["status"] == "unverified" and r["format_version"] == 1
@@ -619,40 +624,6 @@ try:
     ok("no structure received" in " ".join(write_storyboard_draft(
         bare, {"storyboard_draft": D}).get("errors", [])),
        "draft without structure refuses")
-    pdir = os.path.join(stud, "rundir", "board_penn")
-    os.makedirs(pdir)
-    with open(os.path.join(pdir,
-                           "received.plan_ash.storyboard_draft.json"),
-              "w", encoding="utf-8") as f:
-        json.dump({"sender": "plan_ash", "category": "storyboard_draft",
-                   "version": 1, "data": D}, f)
-    pctx = {"run_dir": pdir,
-            "agent_dir": os.path.join(ROOT, "agents", "board_penn"),
-            "producer": "board_penn", "order_id": "o7", "run_id": "r7"}
-    SB = {"scenes": [
-        {"scene_n": 1, "start_s": 0, "end_s": 40, "layout": "L",
-         "on_screen_text": "T", "visuals": ["V"],
-         "materials": [{"ref": sref + "#s2.1/p2", "how_used": "h"}],
-         "notes_for_wren": "N"},
-        {"scene_n": 2, "start_s": 40, "end_s": 100, "layout": "L",
-         "on_screen_text": "", "visuals": ["V"], "materials": [],
-         "notes_for_wren": "N"}]}
-    ok(write_storyboard(pctx, {"storyboard": SB}).get("ok") is True,
-       "penn storyboard accepts")
-    savedp = results.load_result(os.path.join(pdir, "result.json"))
-    ok(results.check_result(savedp) == []
-       and "## storyboard (v1)" in results.render_report(savedp),
-       "storyboard envelope + report")
-    bad = json.loads(json.dumps(SB))
-    bad["scenes"][1]["end_s"] = 99
-    ok("!= draft" in " ".join(write_storyboard(
-        pctx, {"storyboard": bad}).get("errors", [])),
-       "storyboard time mismatch refuses")
-    bad = json.loads(json.dumps(SB))
-    bad["scenes"][0]["materials"][0]["ref"] = sref + "#s2.2/p2"
-    ok("not listed" in " ".join(write_storyboard(
-        pctx, {"storyboard": bad}).get("errors", [])),
-       "storyboard unreadable ref refuses")
     wdir = os.path.join(stud, "rundir", "voice_wren")
     os.makedirs(wdir)
     with open(os.path.join(wdir,
@@ -663,40 +634,102 @@ try:
     wctx = {"run_dir": wdir,
             "agent_dir": os.path.join(ROOT, "agents", "voice_wren"),
             "producer": "voice_wren", "order_id": "o7", "run_id": "r7"}
-    WN = {"scenes": [
-        {"scene_n": 1, "start_s": 0, "end_s": 40,
-         "lines": [{"text": "Two plus two is 4.",
-                    "citations": [{"ref": tref + "#p1",
-                                   "quote": "Theory core idea."}]}],
-         "words": 5, "est_seconds": 2},
-        {"scene_n": 2, "start_s": 40, "end_s": 100,
-         "lines": [{"text": "Data flows onward today fast.",
-                    "citations": []}],
-         "words": 5, "est_seconds": 2}]}
+    _CUTS = [("c1", 1, 0, 20,
+               "Theory core idea explained here slowly", True),
+              ("c2", 1, 20, 40, "Two plus two is 4", True),
+              ("c3", 2, 40, 60, "Data flows onward today fast", False),
+              ("c4", 2, 60, 80, "Second scene keeps moving forward",
+               False),
+              ("c5", 2, 80, 100, "Closing thoughts land softly here",
+               False)]
+    _vcuts = []
+    for _cid, _sc, _st, _en, _tx, _cite in _CUTS:
+        _saved = _pc.voice_save("o7", _cid, b"\x00" * 32, _tx, 20, 1,
+                                "stub")
+        _cites = [{"ref": tref + "#p1",
+                   "quote": "Theory core idea."}] if _cite else []
+        _vcuts.append({"cut_id": _cid, "scene_n": _sc, "start_s": _st,
+                       "end_s": _en, "lines": [{"text": _tx,
+                                                "citations": _cites}],
+                       "words": len(_tx.split()),
+                       "audio": {"voice_pc_ref": _saved["ref"],
+                                 "seconds": 20},
+                       "attempts": 1})
+    WN = {"cuts": _vcuts}
     ok(write_narration(wctx, {"narration": WN}).get("ok") is True,
        "wren narration accepts")
     savedw = results.load_result(os.path.join(wdir, "result.json"))
     ok(results.check_result(savedw) == []
-       and "## narration (v1)" in results.render_report(savedw),
+       and "## narration (v2)" in results.render_report(savedw),
        "narration envelope + report")
     bad = json.loads(json.dumps(WN))
-    bad["scenes"][0]["lines"][0]["citations"] = []
+    bad["cuts"][1]["lines"][0]["citations"] = []
     ok("needs >=1 citation" in " ".join(write_narration(
         wctx, {"narration": bad}).get("errors", [])),
        "wren digit line without citation refuses")
     bad = json.loads(json.dumps(WN))
-    bad["scenes"][0]["words"] = 4
-    ok("counted 5" in " ".join(write_narration(
+    bad["cuts"][1]["words"] = 4
+    ok("!= counted" in " ".join(write_narration(
         wctx, {"narration": bad}).get("errors", [])),
        "wren word miscount refuses")
     bad = json.loads(json.dumps(WN))
-    bad["scenes"][0]["est_seconds"] = 3
-    ok("strays" in " ".join(write_narration(
+    bad["cuts"][0]["attempts"] = 3
+    ok("attempts must be 1-2" in " ".join(write_narration(
         wctx, {"narration": bad}).get("errors", [])),
-       "wren est_seconds stray refuses")
+       "wren third attempt refuses")
     bad = json.loads(json.dumps(WN))
-    bad["scenes"][0]["lines"][0]["citations"][0][
+    bad["cuts"][0]["end_s"] = 5
+    ok("want 10-30" in " ".join(write_narration(
+        wctx, {"narration": bad}).get("errors", [])),
+       "wren short cut refuses")
+    bad = json.loads(json.dumps(WN))
+    bad["cuts"][0]["lines"][0]["citations"][0][
         "quote"] = "invented words"
+    ok(write_narration(wctx, {"narration": bad}).get("ok") is False,
+       "wren invented quote refuses")
+    pdir = os.path.join(stud, "rundir", "board_penn")
+    os.makedirs(pdir)
+    with open(os.path.join(pdir,
+                           "received.voice_wren.narration.json"),
+              "w", encoding="utf-8") as f:
+        json.dump({"sender": "voice_wren", "category": "narration",
+                   "version": 2, "data": WN}, f)
+    pctx = {"run_dir": pdir,
+            "agent_dir": os.path.join(ROOT, "agents", "board_penn"),
+            "producer": "board_penn", "order_id": "o7", "run_id": "r7"}
+    SB = {"cuts": [{"cut_id": c["cut_id"], "scene_n": c["scene_n"],
+                    "start_s": c["start_s"], "end_s": c["end_s"],
+                    "show_what": "Card", "show_why": "Intro",
+                    "on_screen_text": ["Hello"]}
+                   for c in WN["cuts"]]}
+    GUIDE = {"palette": {"background": "#101418", "text": "#f5f2ea",
+                         "accent": "#e0a458"},
+             "fonts": {"heading": "sans", "body": "sans"},
+             "image_tone": "plain", "rules": ["Keep it calm."]}
+    ok(write_storyboard(pctx, {"storyboard": SB,
+                               "style_guide": GUIDE}).get("ok") is True,
+       "penn storyboard accepts")
+    savedp = results.load_result(os.path.join(pdir, "result.json"))
+    ok(results.check_result(savedp) == []
+       and "## storyboard (v2)" in results.render_report(savedp)
+       and "## style_guide (v1)" in results.render_report(savedp),
+       "storyboard envelope + report")
+    bad = {"cuts": SB["cuts"][:-1]}
+    ok("cut set must equal" in " ".join(write_storyboard(
+        pctx, {"storyboard": bad,
+               "style_guide": GUIDE}).get("errors", [])),
+       "storyboard dropped cut refuses")
+    bad = json.loads(json.dumps(SB))
+    bad["cuts"][0]["on_screen_text"] = ["a", "b", "c", "d"]
+    ok("must hold 0-3" in " ".join(write_storyboard(
+        pctx, {"storyboard": bad,
+               "style_guide": GUIDE}).get("errors", [])),
+       "storyboard fourth text line refuses")
+    badg = dict(GUIDE)
+    del badg["palette"]
+    ok(write_storyboard(pctx, {"storyboard": SB,
+                               "style_guide": badg}).get("ok") is False,
+       "storyboard bad guide refuses")
     ok(write_narration(wctx, {"narration": bad}).get("ok") is False,
        "wren invented quote refuses")
 finally:

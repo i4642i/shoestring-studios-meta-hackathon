@@ -1,30 +1,71 @@
 {
-  "bounds": {
-    "max_steps": 10
-  },
-  "done": [
-    "every page checked against source and materials",
-    "every fix logged with was/now/why",
-    "storyboard_checked category complete per RESULT_JSON_DRAFT_EN.md"
+ "bounds": {
+  "max_steps": 12
+ },
+ "done": [
+  "cut set equals Wren's narration exactly",
+  "every cut holds 1-2 materials or a text card",
+  "every material backed by a helper pick or an opened ref",
+  "slide_draft written (result.json)"
+ ],
+ "frame_version": 1,
+ "id": "board_vera",
+ "io": {
+  "inputs": [
+   "INPUTS.md"
   ],
-  "frame_version": 1,
-  "id": "board_vera",
-  "io": {
-    "inputs": [
-      "storyboard.json",
-      "source.md"
-    ],
-    "output": "storyboard_checked.json"
-  },
-  "model": "meta-models/muse-spark-open-1026",
-  "name": "Vera",
-  "title": "Storyboard reviewer",
-  "stage": 5,
-  "tools": [
-    "query_graph",
-    "read_md_section",
-    "open_ref",
-    "pc_read_theory",
-    "pc_read_article"
+  "output": "result.json"
+ },
+ "model": "meta-models/muse-spark-open-1026",
+ "name": "Vera",
+ "title": "Slide planner",
+ "stage": 8,
+ "tools": [
+  "query_graph",
+  "read_md_section",
+  "open_ref",
+  "pc_list_source",
+  "pc_read_source",
+  "write_slide_draft"
+ ],
+ "flow": {
+  "inputs": [
+   {
+    "category": "narration",
+    "required": true,
+    "description": "Wren's cuts with times to plan slides for."
+   },
+   {
+    "category": "storyboard",
+    "required": false,
+    "description": "Penn's screen ideas."
+   },
+   {
+    "category": "style_guide",
+    "required": false,
+    "description": "Look to plan with."
+   },
+   {
+    "category": "photo_picks",
+    "required": false,
+    "description": "Pia's photo candidates."
+   },
+   {
+    "category": "gen_picks",
+    "required": false,
+    "description": "Gene's generated candidates."
+   },
+   {
+    "category": "anim_picks",
+    "required": false,
+    "description": "Max's animation candidates."
+   }
+  ],
+  "outputs": [
+   {
+    "category": "slide_draft",
+    "description": "Per-cut slide plan."
+   }
   ]
+ }
 }

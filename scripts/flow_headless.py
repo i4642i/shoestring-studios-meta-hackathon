@@ -2,9 +2,10 @@
 
 Builds a small harness page from the REAL index.html flow code
 (style + flowtab script) and the REAL default flow + catalog, opens
-it in headless Edge, and asserts what the user sees: 13 solid + 29
-dotted non-degenerate paths, solid labels always on, dotted labels
-only on hover/select, 11 nodes pairwise disjoint inside the canvas,
+it in headless Edge, and asserts what the user sees: 37 solid + 44
+dotted non-degenerate paths, solid labels on (dense rest hover-only),
+dotted labels
+only on hover/select, 20 nodes pairwise disjoint inside the canvas,
 svg size matching the canvas, out-ports inside their footer strip.
 
 Usage: .venv\\Scripts\\python scripts/flow_headless.py
@@ -78,6 +79,11 @@ def main():
 <button id="fl-z100"></button><button id="fl-zminus"></button>
 <button id="fl-zplus"></button><span id="fl-zoomlab"></span>
 <p id="fl-runstate"></p><div id="fl-runs"></div>
+<select id="fl-target"></select><button id="fl-step"></button>
+<button id="fl-approve"></button><button id="fl-rerun"></button>
+<input id="fl-note"><span id="fl-stepstate"></span>
+<div id="fl-steps"></div><select id="fl-fnode"></select>
+<select id="fl-fname"></select><button id="fl-view"></button>
 </div>
 <div id="probe">PENDING</div>
 <script>
@@ -151,6 +157,21 @@ const api = {
       const visLab = Array.from(
         svg.querySelectorAll("text.fl-label:not(.oh)"));
       out.solidVisible = visLab.length;
+      out.hoverSolid = null;
+      const hid = svg.querySelector("text.fl-label.oh");
+      if (hid) {
+        const hidId = hid.getAttribute("data-ln");
+        const hp = svg.querySelector(
+          'path.fl-hit[data-ln="' + hidId + '"]');
+        if (hp) {
+          hp.dispatchEvent(new MouseEvent("mouseenter"));
+          const again = svg.querySelector(
+            'text.fl-label[data-ln="' + hidId + '"]');
+          out.hoverSolid = !!again &&
+            !again.classList.contains("oh");
+          hp.dispatchEvent(new MouseEvent("mouseleave"));
+        }
+      }
       out.labelClash = 0;
       const visBox = visLab.map(t => {
         try { return t.getBBox(); } catch (e) { return null; }
@@ -367,37 +388,37 @@ const api = {
         print("PROBE ERROR:", (out.get("error") or "?")[:800])
         print("1 FAILURES")
         return 1
-    ok(out.get("solid") == 13 and out.get("dotted") == 29,
-       "42 paths drawn (13 solid + 29 dotted)")
+    ok(out.get("solid") == 37 and out.get("dotted") == 44,
+       "81 paths drawn (37 solid + 44 dotted)")
     ok(out.get("degenerate", -1) == 0, "no degenerate path")
-    ok(out.get("solidLabels") == 13, "13 solid labels visible")
-    ok(out.get("dottedLabels") == 29 and out.get("dottedShown") == 1
+    ok(out.get("solidLabels") == 37, "37 solid labels visible")
+    ok(out.get("dottedLabels") == 44 and out.get("dottedShown") == 1
        and out.get("shownPclabels") == ["full text"],
        "only the full-text dotted label shows (%s)"
        % out.get("shownPclabels"))
-    ok(out.get("nodes") == 11 and out.get("clash") == []
+    ok(out.get("nodes") == 20 and out.get("clash") == []
        and out.get("outside") == [],
-       "11 nodes disjoint inside the canvas (tallest %spx)" %
+       "20 nodes disjoint inside the canvas (tallest %spx)" %
        out.get("maxH"))
     cw, ch, sw, sh = out.get("canvas", [0, 0, 0, 0])
-    ok(sw > 0 and sh > 0 and sw >= 1690 and sh >= 710
+    ok(sw > 0 and sh > 0 and sw >= 3282 and sh >= 900
        and abs(cw - sw) <= 2 and abs(ch - sh) <= 2,
        "svg is live and matches the canvas (%dx%d)" % (sw, sh))
     ok(0.4 <= out.get("zoom", 0) <= 2,
        "zoom settled in range (%s)" % out.get("zoom"))
-    ok(sw > 0 and sh > 0 and out.get("inside", -1) == 42,
-       "all 42 paths sit inside the live svg box (%s)" %
+    ok(sw > 0 and sh > 0 and out.get("inside", -1) == 81,
+       "all 81 paths sit inside the live svg box (%s)" %
        out.get("inside"))
     ok(out.get("hoverShown") == 2 and out.get("unhoverShown") == 1,
        "hover adds one dotted label next to full text")
     ok(out.get("popup") is True and out.get("selectShown") == 2
-       and out.get("dottedAfterClick") == 29,
+       and out.get("dottedAfterClick") == 44,
        "click selects one dotted line next to full text, no duplicates")
     p = out.get("ports", {})
-    ok(p.get("rows") == 8 and p.get("edgeOk") == 8
-       and p.get("spanClear") == 8 and p.get("pcRows", -1) == 0
-       and p.get("crewNodes") == 7,
-       "8 out-ports on right edges, labels clear of text")
+    ok(p.get("rows") == 16 and p.get("edgeOk") == 16
+       and p.get("spanClear") == 16 and p.get("pcRows", -1) == 0
+       and p.get("crewNodes") == 13,
+       "16 out-ports on right edges, labels clear of text")
     m = p.get("marty", {})
     ok(m.get("rows") == 2
        and m.get("labels") == ["concept", "structure"],
@@ -405,13 +426,15 @@ const api = {
     s = p.get("sam", {})
     ok(s.get("rows") == 1 and s.get("labels") == ["request"],
        "sam shows only the request port (%s)" % s)
-    ok(out.get("dots") == 29 and out.get("dotErr") == [],
-       "29 dotted crew ends on edges/ports (%s)"
+    ok(out.get("dots") == 44 and out.get("dotErr") == [],
+       "44 dotted crew ends on edges/ports (%s)"
        % (out.get("dotErr") or "ok"))
-    ok(out.get("solidVisible") == 13
+    ok(out.get("solidVisible", -1) >= 30
        and out.get("labelClash", -1) == 0,
-       "13 solid labels visible, none overlap (%s/%s)"
-       % (out.get("solidVisible"), out.get("labelClash")))
+       "solid labels on, dense rest hover-only, none overlap (%s)"
+       % out.get("solidVisible"))
+    ok(out.get("hoverSolid") is True,
+       "hover reveals a hidden solid label")
     if fails:
         print("%d FAILURES" % fails)
         return 1

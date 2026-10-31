@@ -16,11 +16,16 @@ from . import graph
 from . import pc
 from . import pdfingest
 from . import results
-from .schemas import (list_headings, validate_cases, validate_concept,
-                      validate_concepts, validate_draft,
-                      validate_narration, validate_request,
-                      validate_storyboard,
-                      validate_storyboard_draft, validate_structure)
+from .schemas import (VOICE_MAX_ATTEMPTS, list_headings,
+                      validate_anim_picks, validate_cases,
+                      validate_concept, validate_concepts,
+                      validate_draft, validate_gen_picks,
+                      validate_narration, validate_photo_picks,
+                      validate_render_log, validate_request,
+                      validate_slide_draft, validate_storyboard,
+                      validate_storyboard_draft,
+                      validate_storyboard_table, validate_structure,
+                      validate_style_guide)
 
 
 def read_md_section(ctx, args):
@@ -505,34 +510,30 @@ def write_storyboard_draft(ctx, args):
 
 
 def write_storyboard(ctx, args):
-    """Penn's composition: exact scene match vs the received draft,
-    every material ref readable by Penn."""
+    """Penn's cut descriptions v2 + style guide: exact cut match
+    vs Wren's received narration, on-screen text ≤3 lines."""
     obj = (args or {}).get("storyboard")
-    if not isinstance(obj, dict):
-        return {"ok": False, "errors": ["call with {storyboard: {...}}"]}
-    draft = _received_data(ctx, "storyboard_draft")
-    if not draft:
+    guide = (args or {}).get("style_guide")
+    if not isinstance(obj, dict) or not isinstance(guide, dict):
         return {"ok": False, "errors": [
-            "no storyboard_draft received in this run"]}
-    errors = validate_storyboard(obj, draft)
+            "call with {storyboard: {...}, style_guide: {...}}"]}
+    narr = _received_data(ctx, "narration")
+    if not narr:
+        return {"ok": False, "errors": [
+            "no narration received in this run"]}
+    errors = validate_storyboard(obj, narr)
+    errors += ["style_guide: " + e
+               for e in validate_style_guide(guide)]
     if errors:
         return {"ok": False, "errors": errors}
-    producer = (ctx or {}).get("producer", "")
-    order_id = (ctx or {}).get("order_id", "")
-    for i, sc in enumerate(obj["scenes"]):
-        for j, m in enumerate(sc.get("materials", [])):
-            if not isinstance(m, dict):
-                continue
-            _readable_ref(errors, m.get("ref"), producer, order_id,
-                          "scenes[%d].materials[%d]" % (i, j))
-    if errors:
-        return {"ok": False, "errors": errors}
-    return _save_category(ctx, "storyboard", obj)
+    return _save_categories(ctx, {"storyboard": obj,
+                                  "style_guide": guide})
 
 
 def write_narration(ctx, args):
-    """Wren's lines: scene match + fit math, digit lines cited,
-    every citation verbatim and readable by Wren."""
+    """Wren's cuts v2: tiling + fit math, digit lines cited, every
+    citation verbatim and readable, every audio ref a stored Voice
+    clip for this order."""
     obj = (args or {}).get("narration")
     if not isinstance(obj, dict):
         return {"ok": False, "errors": ["call with {narration: {...}}"]}
@@ -545,11 +546,11 @@ def write_narration(ctx, args):
         return {"ok": False, "errors": errors}
     producer = (ctx or {}).get("producer", "")
     order_id = (ctx or {}).get("order_id", "")
-    for i, sc in enumerate(obj["scenes"]):
-        for j, ln in enumerate(sc.get("lines", [])):
+    for i, cut in enumerate(obj["cuts"]):
+        for j, ln in enumerate(cut.get("lines", [])):
             if not isinstance(ln, dict):
                 continue
-            where = "scenes[%d].lines[%d]" % (i, j)
+            where = "cuts[%d].lines[%d]" % (i, j)
             cits = ln.get("citations", []) or []
             if any(ch.isdigit() for ch in str(ln.get("text", ""))) \
                     and not cits:
@@ -558,11 +559,15 @@ def write_narration(ctx, args):
             for n, cit in enumerate(cits):
                 if not isinstance(cit, dict):
                     continue
-                _check_quote(errors, cit.get("ref"), cit.get("quote"),
+                _check_quote(errors, cit.get("ref"),
+                             cit.get("quote"),
                              "%s.citations[%d]" % (where, n))
                 _readable_ref(errors, cit.get("ref"), producer,
                               order_id,
                               "%s.citations[%d]" % (where, n))
+        audio = cut.get("audio", {}) or {}
+        _audio_ref_ok(errors, audio.get("voice_pc_ref"),
+                      cut.get("cut_id"), order_id, "cuts[%d]" % i)
     if errors:
         return {"ok": False, "errors": errors}
     return _save_category(ctx, "narration", obj)
@@ -1202,7 +1207,384 @@ OUTPUTS = {
     "write_storyboard_draft": "result.json",
     "write_storyboard": "result.json",
     "write_narration": "result.json",
+    "write_photo_picks": "result.json",
+    "write_gen_picks": "result.json",
+    "write_anim_picks": "result.json",
+    "write_slide_draft": "result.json",
+    "write_render_log": "result.json",
 }
+
+# ---- v8 cut writers, voice, slide render (appended) ----
+
+def _audio_ref_ok(errors, ref, cut_id, order_id, where):
+    try:
+        rpc, _rid, frag = pc.parse_ref(ref or "")
+    except ValueError:
+        errors.append("%s: bad audio ref" % where)
+        return
+    if rpc != "voice" or frag != cut_id:
+        errors.append("%s: audio ref must be this cut's Voice PC "
+                      "clip" % where)
+        return
+    try:
+        entry = pc.load_entry_by_ref(ref)
+    except (OSError, ValueError, KeyError) as exc:
+        errors.append("%s: cannot load voice clip: %s" % (where,
+                                                          exc))
+        return
+    if entry.get("order_id") != order_id:
+        errors.append("%s: voice clip is from another order"
+                      % where)
+    elif frag not in entry.get("cuts", {}):
+        errors.append("%s: voice clip has no %s" % (where, frag))
+
+
+def _checked_table_formula(errors, ref, where):
+    try:
+        entry = pc.load_entry_by_ref(ref)
+        passage = pc.open_ref(entry, ref)
+    except (OSError, ValueError, KeyError) as exc:
+        errors.append("%s: cannot open %r (%s)" % (where, ref,
+                                                   exc))
+        return
+    if passage.get("kind") not in ("table", "equation"):
+        errors.append("%s: %r is not a table or formula" % (where,
+                                                            ref))
+    elif not passage.get("checked", True):
+        errors.append("%s: %r is not a CHECKED table/formula"
+                      % (where, ref))
+
+
+def _counter(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _counter_save(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1)
+
+
+def write_photo_picks(ctx, args):
+    """Pia's picks: cut match vs Penn's received storyboard, every
+    use pick licensed and (web) stored, source figures readable."""
+    obj = (args or {}).get("photo_picks")
+    if not isinstance(obj, dict):
+        return {"ok": False, "errors": [
+            "call with {photo_picks: {...}}"]}
+    board = _received_data(ctx, "storyboard")
+    if not board:
+        return {"ok": False, "errors": [
+            "no storyboard received in this run"]}
+    errors = validate_photo_picks(obj, board)
+    if errors:
+        return {"ok": False, "errors": errors}
+    producer = (ctx or {}).get("producer", "")
+    order_id = (ctx or {}).get("order_id", "")
+    for i, cut in enumerate(obj["cuts"]):
+        if not isinstance(cut, dict) or cut.get("decision") != "use":
+            continue
+        where = "cuts[%d]" % i
+        if cut.get("kind") == "source_figure":
+            _readable_ref(errors, cut.get("ref"), producer,
+                          order_id, where)
+        else:
+            try:
+                rpc, _rid, _frag = pc.parse_ref(cut.get("ref",
+                                                        ""))
+            except ValueError:
+                errors.append("%s: bad image ref" % where)
+                continue
+            if rpc != "image":
+                errors.append("%s: web picks ref the Image PC"
+                              % where)
+                continue
+            try:
+                entry = pc.load_entry_by_ref(cut["ref"])
+            except (OSError, ValueError, KeyError) as exc:
+                errors.append("%s: cannot load pick (%s)"
+                              % (where, exc))
+                continue
+            if entry.get("license") != cut.get("license"):
+                errors.append("%s: license %r != stored %r"
+                              % (where, cut.get("license"),
+                                 entry.get("license")))
+    if errors:
+        return {"ok": False, "errors": errors}
+    return _save_category(ctx, "photo_picks", obj)
+
+
+def write_gen_picks(ctx, args):
+    """Gene's choices: cut match, prompt per generate cut, ≤6
+    images, every image stored in the Generated PC."""
+    obj = (args or {}).get("gen_picks")
+    if not isinstance(obj, dict):
+        return {"ok": False, "errors": [
+            "call with {gen_picks: {...}}"]}
+    board = _received_data(ctx, "storyboard")
+    if not board:
+        return {"ok": False, "errors": [
+            "no storyboard received in this run"]}
+    errors = validate_gen_picks(obj, board)
+    if errors:
+        return {"ok": False, "errors": errors}
+    order_id = (ctx or {}).get("order_id", "")
+    for i, im in enumerate(obj["images"]):
+        if not isinstance(im, dict):
+            continue
+        where = "images[%d]" % i
+        try:
+            rpc, rid, _frag = pc.parse_ref(
+                "pc://generated/%s" % _prompt_doc(im.get("prompt",
+                                                         "")))
+            entry = pc.load_entry_by_ref(pc.entry_ref(rpc, rid))
+        except (OSError, ValueError, KeyError) as exc:
+            errors.append("%s: prompt has no stored image (%s)"
+                          % (where, exc))
+            continue
+        if entry.get("file") != im.get("file"):
+            errors.append("%s: file %r != stored %r"
+                          % (where, im.get("file"),
+                             entry.get("file")))
+    if errors:
+        return {"ok": False, "errors": errors}
+    return _save_category(ctx, "gen_picks", obj)
+
+
+def _prompt_doc(prompt):
+    return pc.content_id("generated:" + str(prompt or ""))
+
+
+def write_anim_picks(ctx, args):
+    """Max's picks: cut match, template + values + refs per use,
+    every ref a CHECKED source table/formula readable by Max."""
+    obj = (args or {}).get("anim_picks")
+    if not isinstance(obj, dict):
+        return {"ok": False, "errors": [
+            "call with {anim_picks: {...}}"]}
+    board = _received_data(ctx, "storyboard")
+    if not board:
+        return {"ok": False, "errors": [
+            "no storyboard received in this run"]}
+    errors = validate_anim_picks(obj, board)
+    if errors:
+        return {"ok": False, "errors": errors}
+    producer = (ctx or {}).get("producer", "")
+    order_id = (ctx or {}).get("order_id", "")
+    for i, cut in enumerate(obj["cuts"]):
+        if not isinstance(cut, dict) or cut.get("decision") != "use":
+            continue
+        for j, ref in enumerate(cut.get("refs", []) or []):
+            where = "cuts[%d].refs[%d]" % (i, j)
+            _readable_ref(errors, ref, producer, order_id, where)
+            _checked_table_formula(errors, ref, where)
+    if errors:
+        return {"ok": False, "errors": errors}
+    return _save_category(ctx, "anim_picks", obj)
+
+
+def _use_cuts(report):
+    """{cut_id} with a use/generate decision in a helper report."""
+    out = set()
+    for c in ((report or {}).get("cuts") or []):
+        if isinstance(c, dict) and c.get("decision") in ("use",
+                                                         "generate"):
+            out.add(c.get("cut_id"))
+    return out
+
+
+def write_slide_draft(ctx, args):
+    """Vera's slide plan: cut+time match vs Wren's narration,
+    materials backed by helper picks, source figures readable."""
+    obj = (args or {}).get("slide_draft")
+    if not isinstance(obj, dict):
+        return {"ok": False, "errors": [
+            "call with {slide_draft: {...}}"]}
+    narr = _received_data(ctx, "narration")
+    if not narr:
+        return {"ok": False, "errors": [
+            "no narration received in this run"]}
+    errors = validate_slide_draft(obj, narr)
+    if errors:
+        return {"ok": False, "errors": errors}
+    producer = (ctx or {}).get("producer", "")
+    order_id = (ctx or {}).get("order_id", "")
+    have = {"photo": _use_cuts(_received_data(ctx, "photo_picks")),
+            "generated": _use_cuts(_received_data(ctx,
+                                                  "gen_picks")),
+            "animation": _use_cuts(_received_data(ctx,
+                                                  "anim_picks"))}
+    for i, cut in enumerate(obj["cuts"]):
+        for j, m in enumerate(cut.get("materials", []) or []):
+            if not isinstance(m, dict):
+                continue
+            where = "cuts[%d].materials[%d]" % (i, j)
+            kind = m.get("kind")
+            if kind in have and cut.get("cut_id") not in have[kind]:
+                errors.append("%s: no %s pick for cut %r"
+                              % (where, kind, cut.get("cut_id")))
+            elif kind == "source_figure":
+                _readable_ref(errors, m.get("ref"), producer,
+                              order_id, where)
+            elif kind not in ("text_card",):
+                errors.append("%s: unknown material kind %r"
+                              % (where, kind))
+    if errors:
+        return {"ok": False, "errors": errors}
+    return _save_category(ctx, "slide_draft", obj)
+
+
+def write_render_log(ctx, args):
+    """Remy's render record: cut match vs Vera's draft, ≤3
+    renders, layout-only adjustments."""
+    obj = (args or {}).get("render_log")
+    if not isinstance(obj, dict):
+        return {"ok": False, "errors": [
+            "call with {render_log: {...}}"]}
+    draft = _received_data(ctx, "slide_draft")
+    if not draft:
+        return {"ok": False, "errors": [
+            "no slide_draft received in this run"]}
+    errors = validate_render_log(obj, draft)
+    if errors:
+        return {"ok": False, "errors": errors}
+    return _save_category(ctx, "render_log", obj)
+
+
+def _stub_wav(text):
+    """Deterministic silence: seconds = words/2.5, 16 kHz mono."""
+    import io
+    import struct
+    import wave
+    words = len(str(text or "").split())
+    seconds = round(max(1.0, words / 2.5), 1)
+    rate = 16000
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(struct.pack("<%dh" % int(seconds * rate),
+                                  *([0] * int(seconds * rate))))
+    return buf.getvalue(), seconds
+
+
+def _wav_seconds(blob):
+    import io
+    import wave
+    with wave.open(io.BytesIO(blob), "rb") as w:
+        return round(w.getnframes() / float(w.getframerate()), 1)
+
+
+def _kokoro_tts(text):
+    """Local Kokoro synthesis. Imported lazily; raises RuntimeError
+    with the install hint when unavailable."""
+    try:
+        from kokoro import KPipeline
+    except ImportError:
+        raise RuntimeError(
+            "kokoro not installed: pip install kokoro torch "
+            "soundfile (plus the espeak-ng system package for "
+            "English), or call make_voice with engine=stub")
+    import io
+    import soundfile
+    import torch
+    pipe = KPipeline(lang_code="a")
+    audio = None
+    rate = 24000
+    for _gs, _ps, chunk in pipe(str(text or ""),
+                                voice="af_heart"):
+        part = chunk.detach().cpu()
+        audio = part if audio is None else torch.cat([audio,
+                                                      part])
+    buf = io.BytesIO()
+    soundfile.write(buf, audio.numpy(), rate, format="WAV")
+    return buf.getvalue(), _wav_seconds(buf.getvalue())
+
+
+def make_voice(ctx, args):
+    """Wren's TTS: synthesize one cut's text into the Voice PC.
+    Returns the real duration. Max 2 attempts per cut. engine:
+    stub (default, deterministic) or kokoro (local install)."""
+    producer = (ctx or {}).get("producer", "")
+    if producer != "voice_wren":
+        return {"error": "make_voice is Wren's tool"}
+    cut_id = ((args or {}).get("cut_id") or "").strip()
+    text = ((args or {}).get("text") or "").strip()
+    plan = (args or {}).get("plan_seconds")
+    if not cut_id or not text or not isinstance(plan,
+                                                (int, float)) \
+            or plan <= 0:
+        return {"ok": False, "errors": [
+            "call with {cut_id, text, plan_seconds}"]}
+    engine = (args or {}).get("engine", "stub")
+    if engine not in ("stub", "kokoro"):
+        return {"ok": False, "errors": [
+            "engine must be stub or kokoro"]}
+    attp = os.path.join(ctx["run_dir"], "voice_attempts.json")
+    attempts = _counter(attp)
+    n = int(attempts.get(cut_id, 0)) + 1
+    if n > VOICE_MAX_ATTEMPTS:
+        return {"ok": False, "errors": [
+            "cut %s already used %d voice attempts"
+            % (cut_id, VOICE_MAX_ATTEMPTS)]}
+    try:
+        if engine == "kokoro":
+            wav, seconds = _kokoro_tts(text)
+        else:
+            wav, seconds = _stub_wav(text)
+    except RuntimeError as exc:
+        return {"ok": False, "errors": [str(exc)]}
+    saved = pc.voice_save(ctx.get("order_id", ""), cut_id, wav,
+                          text, seconds, n, engine)
+    attempts[cut_id] = n
+    _counter_save(attp, attempts)
+    return {"ok": True, "voice_pc_ref": saved["ref"],
+            "seconds": seconds, "attempt": n,
+            "within_15pct": abs(seconds - plan) <= plan * 0.15,
+            "engine": engine}
+
+
+def render_slide(ctx, args):
+    """Render one cut's text-card slide (SVG) from the received
+    slide draft + style guide. Max 3 renders per cut per run."""
+    from . import video
+    cut_id = ((args or {}).get("cut_id") or "").strip()
+    if not cut_id:
+        return {"ok": False, "errors": ["call with {cut_id}"]}
+    draft = _received_data(ctx, "slide_draft")
+    guide = _received_data(ctx, "style_guide")
+    if not draft or not guide:
+        return {"ok": False, "errors": [
+            "need received slide_draft + style_guide"]}
+    cut = next((c for c in draft.get("cuts", [])
+                if isinstance(c, dict)
+                and c.get("cut_id") == cut_id), None)
+    if cut is None:
+        return {"ok": False, "errors": ["no such cut: %r" % cut_id]}
+    countp = os.path.join(ctx["run_dir"], "render_counts.json")
+    counts = _counter(countp)
+    n = int(counts.get(cut_id, 0)) + 1
+    if n > video.RENDER_MAX:
+        return {"ok": False, "errors": [
+            "cut %s already used %d renders"
+            % (cut_id, video.RENDER_MAX)]}
+    sdir = os.path.join(ctx["run_dir"], "slides")
+    os.makedirs(sdir, exist_ok=True)
+    out = os.path.join(sdir, "%s.svg" % cut_id)
+    try:
+        video.render_text_card(cut, guide, out)
+    except (OSError, ValueError) as exc:
+        return {"ok": False, "errors": ["render failed: %s" % exc]}
+    counts[cut_id] = n
+    _counter_save(countp, counts)
+    return {"ok": True, "slide_file": "slides/%s.svg" % cut_id,
+            "renders_n": n}
+
 
 TOOLS = {
     "read_md_section": (
@@ -1232,8 +1614,7 @@ TOOLS = {
     ),
     "write_request": (
         write_request,
-        "Save this run's result.json (request + source categories). "
-        "The source pointer is built from the sent entry. Fails "
+        "Save this run's result.json (request category). Fails "
         "unless the request validates, the source was sent here, "
         "and recipients are set.",
         {"type": "object",
@@ -1271,21 +1652,96 @@ TOOLS = {
     ),
     "write_storyboard": (
         write_storyboard,
-        "Save Penn's composition as this run's result.json "
-        "(storyboard category). Fails unless scenes match Ash's "
-        "draft exactly and every material ref opens for Penn.",
+        "Save Penn's cut screens as this run's result.json "
+        "(storyboard + style_guide categories). Fails unless cuts "
+        "match Wren's narration exactly and the style guide is "
+        "complete.",
         {"type": "object",
-         "properties": {"storyboard": {"type": "object"}},
-         "required": ["storyboard"], "additionalProperties": False},
+         "properties": {"storyboard": {"type": "object"},
+                        "style_guide": {"type": "object"}},
+         "required": ["storyboard", "style_guide"],
+         "additionalProperties": False},
     ),
     "write_narration": (
         write_narration,
-        "Save Wren's lines as this run's result.json (narration "
-        "category). Fails unless scenes match, lines fit the time, "
-        "number lines are cited, and citations are verbatim.",
+        "Save Wren's cuts as this run's result.json (narration "
+        "category). Fails unless cuts tile the scenes, audio sits "
+        "within ±15% of each cut, number lines are cited, "
+        "citations are verbatim, and audio refs are stored.",
         {"type": "object",
          "properties": {"narration": {"type": "object"}},
          "required": ["narration"], "additionalProperties": False},
+    ),
+    "write_photo_picks": (
+        write_photo_picks,
+        "Save Pia's photo picks as this run's result.json "
+        "(photo_picks category). Fails unless cuts match Penn's "
+        "storyboard and every use pick is licensed and stored.",
+        {"type": "object",
+         "properties": {"photo_picks": {"type": "object"}},
+         "required": ["photo_picks"],
+         "additionalProperties": False},
+    ),
+    "write_gen_picks": (
+        write_gen_picks,
+        "Save Gene's generation choices as this run's result.json "
+        "(gen_picks category). Fails unless cuts match, every "
+        "generate cut has a prompt and a stored image, and the "
+        "run holds at most 6 images.",
+        {"type": "object",
+         "properties": {"gen_picks": {"type": "object"}},
+         "required": ["gen_picks"], "additionalProperties": False},
+    ),
+    "write_anim_picks": (
+        write_anim_picks,
+        "Save Max's animation picks as this run's result.json "
+        "(anim_picks category). Fails unless cuts match and every "
+        "use pick names a template with values from CHECKED "
+        "source tables/formulas.",
+        {"type": "object",
+         "properties": {"anim_picks": {"type": "object"}},
+         "required": ["anim_picks"], "additionalProperties": False},
+    ),
+    "write_slide_draft": (
+        write_slide_draft,
+        "Save Vera's slide plan as this run's result.json "
+        "(slide_draft category). Fails unless cuts match Wren's "
+        "narration and every material is backed by a helper pick.",
+        {"type": "object",
+         "properties": {"slide_draft": {"type": "object"}},
+         "required": ["slide_draft"],
+         "additionalProperties": False},
+    ),
+    "write_render_log": (
+        write_render_log,
+        "Save Remy's render record as this run's result.json "
+        "(render_log category). Fails unless cuts match Vera's "
+        "draft, renders stay ≤3 per cut, and adjustments are "
+        "layout-only.",
+        {"type": "object",
+         "properties": {"render_log": {"type": "object"}},
+         "required": ["render_log"], "additionalProperties": False},
+    ),
+    "make_voice": (
+        make_voice,
+        "Synthesize one cut's text into the Voice PC (Wren only). "
+        "Returns the voice ref and the real duration. Max 2 "
+        "attempts per cut; engine stub (default) or kokoro.",
+        {"type": "object",
+         "properties": {"cut_id": {"type": "string"},
+                        "text": {"type": "string"},
+                        "plan_seconds": {"type": "number"},
+                        "engine": {"type": "string"}},
+         "required": ["cut_id", "text", "plan_seconds"],
+         "additionalProperties": False},
+    ),
+    "render_slide": (
+        render_slide,
+        "Render one cut's text-card slide from the received slide "
+        "draft + style guide. Max 3 renders per cut per run.",
+        {"type": "object",
+         "properties": {"cut_id": {"type": "string"}},
+         "required": ["cut_id"], "additionalProperties": False},
     ),
     "research_status": (
         research_status,
@@ -1434,3 +1890,4 @@ def get_tools(agent_dir):
         merged[name] = (mod.run, getattr(mod, "DESC", "custom tool " + name),
                         mod.SCHEMA)
     return merged
+

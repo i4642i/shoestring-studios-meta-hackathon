@@ -24,6 +24,10 @@ RUNS_DIR = os.path.join(ROOT, "runs")
 ORDERS_DIR = os.path.join(ROOT, "orders")
 FINAL_NODE = "final"
 INTAKE_AGENT = "sales_sam"
+CODE_NODE = "video_production"
+PC_KINDS = ("source", "theory", "article", "image", "generated",
+            "voice")
+CODE_REQUIRED = ["narration", "render_log"]
 
 
 def _write_json(path, obj):
@@ -99,8 +103,14 @@ def load_catalog():
             "color": color}
            for name, color in (("source", "#4dabf7"),
                                ("theory", "#9775fa"),
-                               ("article", "#66d9e8"))]
-    return {"agents": agents, "categories": categories, "pcs": pcs}
+                               ("article", "#66d9e8"),
+                               ("image", "#63e6be"),
+                               ("generated", "#e599f7"),
+                               ("voice", "#ffd43b"))]
+    code = [{"id": CODE_NODE, "title": "Video production",
+             "color": "#fab005"}]
+    return {"agents": agents, "categories": categories, "pcs": pcs,
+            "code": code}
 
 
 def validate_flow(flow, catalog=None):
@@ -114,11 +124,12 @@ def validate_flow(flow, catalog=None):
     they cannot run. Same category from different senders is allowed;
     every received category keeps its sender label (Q4). Flows saved
     with the retired order node fail cleanly (no such agent).
-    PC nodes ({"id": ..., "pc": "source"|"theory"|"article"}) are shared
-    stores, not runners: they need no agent.json, no lines, and never
-    join topo order, cycles, or solid lines. Dotted pc_lines each link
-    exactly one PC with one crew node and carry a short label. The
-    final node takes only the storyboard + narration categories.
+    PC nodes ({"id": ..., "pc": <kind>}) are shared stores, not
+    runners: they need no agent.json, no lines, and never join topo
+    order, cycles, or solid lines. Dotted pc_lines each link exactly
+    one PC with one crew node and carry a short label. Code nodes
+    ({"id": ..., "code": true}) run program steps, not agents. The
+    final node takes only the video + storyboard_table categories.
     """
     def err(message, line=None, node=None):
         out = {"message": message}
@@ -141,7 +152,7 @@ def validate_flow(flow, catalog=None):
         pcname = ndef.get("pc")
         if pcname is None:
             continue
-        if pcname not in ("source", "theory", "article"):
+        if pcname not in PC_KINDS:
             errors.append(err("node %r has unknown pc %r" % (nid, pcname),
                               node=nid))
         else:
@@ -243,14 +254,31 @@ def validate_flow(flow, catalog=None):
                 if isinstance(sender, dict) else {}
             cats = [o.get("category") for o in sflow.get("outputs", [])
                     if isinstance(o, dict)]
-        bad = [c for c in cats if c not in ("storyboard", "narration")]
+        bad = [c for c in cats
+               if c not in ("video", "storyboard_table")]
         if bad:
-            errors.append(err("final takes only storyboard + narration "
+            errors.append(err("final takes only video + "
+                              "storyboard_table "
                               "(%r carries %s)" % (ln["from"],
                                                    ", ".join(bad)),
                               line=ln.get("id")))
     for nid in nodes:
         if nid == FINAL_NODE or nid in pcs:
+            continue
+        if nodes[nid].get("code"):
+            if nid not in incoming:
+                errors.append(err("code node %r has no incoming "
+                                  "line" % nid, node=nid))
+                continue
+            got = set()
+            for ln in incoming[nid]:
+                if isinstance(ln.get("categories"), list):
+                    got.update(ln["categories"])
+            for need in CODE_REQUIRED:
+                if need not in got:
+                    errors.append(err("code node %r misses required "
+                                      "input %r" % (nid, need),
+                                      node=nid))
             continue
         if _is_draft(nid):
             if nid in incoming or any(ln["from"] == nid for ln in lines):
@@ -545,7 +573,8 @@ def _sam_stored_result(order_id):
 
 
 def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
-                    run_agent_fn, emit):
+                    run_agent_fn, emit, note=None,
+                    want_summary=False):
     """Run one agent: gather transfers, run, expect result.json, check it,
     promote to checked, refresh the report. Sam reuses his stored
     order result when the chat already ran him (no double spend)."""
@@ -573,6 +602,10 @@ def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
                 with open(os.path.join(adir, "report.md"), "w",
                           encoding="utf-8") as f:
                     f.write(rep)
+            _write_json(os.path.join(adir, "usage.json"),
+                        {"reused": True, "llm_calls": 0,
+                         "prompt_tokens": 0,
+                         "completion_tokens": 0, "tools": {}})
             emit({"ev": "agent_done", "agent": agent_id,
                   "outputs": sorted(stored["categories"]),
                   "reused": True})
@@ -594,12 +627,16 @@ def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
     manifest = {"agent": agent_id, "received": received}
     _write_json(os.path.join(adir, "INPUTS.json"), manifest)
     input_text = _render_inputs_md(order_brief, received, run_dir, agent_id)
+    if note:
+        input_text = ("## Owner note (follow it)\n\n"
+                      + str(note).strip() + "\n\n" + input_text)
     input_md = os.path.join(adir, "INPUTS.md")
     with open(input_md, "w", encoding="utf-8") as f:
         f.write(input_text)
     brief = {"order_id": order_id,
              "flow_run_id": os.path.basename(run_dir),
-             "answers": (order_brief or {}).get("answers", {})}
+             "answers": (order_brief or {}).get("answers", {}),
+             "want_summary_ko": bool(want_summary)}
     try:
         out = run_agent_fn(os.path.join(AGENTS, agent_id), adir, brief,
                            input_md)
@@ -621,6 +658,8 @@ def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
     results.save_result(adir, res)
     with open(os.path.join(adir, "report.md"), "w", encoding="utf-8") as f:
         f.write(results.render_report(res))
+    _save_usage(adir, out)
+    _prepend_summary(adir)
     if agent_id == INTAKE_AGENT:
         _store_sam_result(order_id, adir)
     emit({"ev": "agent_done", "agent": agent_id,
@@ -723,11 +762,20 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
         sequence = topo_order(flow)
     except RuntimeError as exc:
         return fail(str(exc))
+    code_nodes = {n.get("id") for n in flow.get("nodes", [])
+                  if isinstance(n, dict) and n.get("code")}
     for nid in sequence:
         if nid == FINAL_NODE or _is_draft(nid):
             continue
-        step = _run_agent_node(run_dir, nid, order_id, order["brief"],
-                               incoming.get(nid, []), run_agent_fn, emit)
+        if nid in code_nodes:
+            step = _run_code_node(run_dir, nid, order_id,
+                                  order["brief"],
+                                  incoming.get(nid, []), emit)
+        else:
+            step = _run_agent_node(run_dir, nid, order_id,
+                                   order["brief"],
+                                   incoming.get(nid, []),
+                                   run_agent_fn, emit)
         if not step["ok"]:
             return fail(step["error"])
     final = _collect_final(run_dir, order_id,
@@ -740,3 +788,396 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
                  "received": final["received"]})
     emit({"ev": "flow_done", "run": run_id})
     return {"ok": True, "run_id": run_id, "received": final["received"]}
+
+
+def _save_usage(adir, out):
+    """Persist per-stage cost: llm calls, tokens, tool counts."""
+    out = out if isinstance(out, dict) else {}
+    usage = out.get("usage") or {}
+    llm_calls, tools = 0, {}
+    for ev in (out.get("events") or []):
+        if not isinstance(ev, dict):
+            continue
+        if ev.get("ev") == "llm":
+            llm_calls += 1
+        elif ev.get("ev") == "tool" and ev.get("tool"):
+            tools[ev["tool"]] = tools.get(ev["tool"], 0) + 1
+    _write_json(os.path.join(adir, "usage.json"),
+                {"llm_calls": llm_calls,
+                 "prompt_tokens": usage.get("prompt_tokens", 0)
+                 if isinstance(usage, dict) else 0,
+                 "completion_tokens": usage.get("completion_tokens", 0)
+                 if isinstance(usage, dict) else 0,
+                 "tools": tools})
+
+
+def _prepend_summary(adir):
+    """Step mode: the runner's Korean paragraph starts report.md."""
+    summ = os.path.join(adir, "summary_ko.md")
+    rep = os.path.join(adir, "report.md")
+    if not (os.path.isfile(summ) and os.path.isfile(rep)):
+        return
+    with open(summ, encoding="utf-8") as f:
+        text = f.read().strip()
+    if not text:
+        return
+    with open(rep, encoding="utf-8") as f:
+        body = f.read()
+    with open(rep, "w", encoding="utf-8") as f:
+        f.write("# Stage summary (KO)\n\n" + text + "\n\n" + body)
+
+
+def _received_data_map(run_dir, node_id, received):
+    data = {}
+    for item in received:
+        if not item.get("file") or item.get("category") in data:
+            continue
+        try:
+            with open(os.path.join(run_dir, node_id, item["file"]),
+                      encoding="utf-8") as f:
+                data[item["category"]] = json.load(f)["data"]
+        except (OSError, ValueError, KeyError):
+            continue
+    return data
+
+
+def _video_scenes(narration):
+    """Video category scenes: cuts grouped by scene_n, line times
+    split proportionally by word count (same math as the .srt)."""
+    by_scene = {}
+    for cut in ((narration or {}).get("cuts") or []):
+        if isinstance(cut, dict):
+            by_scene.setdefault(cut.get("scene_n"), []).append(cut)
+    scenes = []
+    for n in sorted(by_scene, key=str):
+        cuts = sorted(by_scene[n], key=lambda c: c.get("start_s", 0))
+        lines = []
+        for cut in cuts:
+            start = float(cut.get("start_s", 0))
+            end = float(cut.get("end_s", start))
+            items = [ln for ln in (cut.get("lines") or [])
+                     if isinstance(ln, dict)
+                     and str(ln.get("text", "")).strip()]
+            weights = [max(1, len(str(ln["text"]).split()))
+                       for ln in items]
+            total = sum(weights) or 1
+            cursor = start
+            for ln, w in zip(items, weights):
+                span = (end - start) * w / total
+                lines.append({"text": str(ln["text"]).strip(),
+                              "start_s": round(cursor, 3),
+                              "end_s": round(cursor + span, 3),
+                              "citations": ln.get("citations", []) or []})
+                cursor += span
+        if not cuts:
+            continue
+        scenes.append({"n": n,
+                       "start_s": cuts[0].get("start_s"),
+                       "end_s": cuts[-1].get("end_s"),
+                       "lines": lines})
+    return scenes
+
+
+def _run_code_node(run_dir, node_id, order_id, order_brief, incoming,
+                   emit):
+    """Video production: assemble slides + Voice audio into the
+    video record, subtitles, and storyboard table. Pure code, no
+    model. Never renders the MP4 itself (see assembly.json)."""
+    from . import video
+    emit({"ev": "agent_start", "agent": node_id, "code": True})
+    received = []
+    for ln in incoming:
+        got, nbytes, errors = _transfer(run_dir, ln["from"], node_id,
+                                        ln.get("categories", "*"), None)
+        received.extend(got)
+        emit({"ev": "line", "line": ln.get("id"), "from": ln["from"],
+              "to": node_id, "categories": [r["category"] for r in got],
+              "bytes": nbytes})
+        if errors:
+            return {"ok": False, "error": errors[0]}
+    ndir = os.path.join(run_dir, node_id)
+    _write_json(os.path.join(ndir, "INPUTS.json"),
+                {"agent": node_id, "received": received, "code": True})
+    input_text = _render_inputs_md(order_brief, received, run_dir,
+                                   node_id)
+    with open(os.path.join(ndir, "INPUTS.md"), "w",
+              encoding="utf-8") as f:
+        f.write(input_text)
+    data = _received_data_map(run_dir, node_id, received)
+    narration = data.get("narration") or {}
+    cuts = [c for c in (narration.get("cuts") or [])
+            if isinstance(c, dict) and c.get("cut_id")]
+    if not cuts:
+        return {"ok": False,
+                "error": "video_production needs narration cuts"}
+    slides, missing = {}, []
+    for cut in cuts:
+        cid = cut["cut_id"]
+        cand = os.path.join(run_dir, "slide_remy", "slides",
+                            "%s.svg" % cid)
+        if os.path.isfile(cand):
+            slides[cid] = os.path.join("slide_remy", "slides",
+                                       "%s.svg" % cid)
+        else:
+            missing.append("slide for %s" % cid)
+    audio = {}
+    try:
+        doc = pc.content_id("voice:" + order_id)
+        edir = pc.entry_dir("voice", doc)
+        with open(os.path.join(edir, "entry.json"),
+                  encoding="utf-8") as f:
+            entry = json.load(f)
+        for cid, clip in ((entry.get("cuts") or {}).items()):
+            if isinstance(clip, dict) and clip.get("file"):
+                cand = os.path.join(edir, "audio", clip["file"])
+                if os.path.isfile(cand):
+                    audio[cid] = cand
+    except (OSError, ValueError, KeyError):
+        pass
+    for cut in cuts:
+        if cut["cut_id"] not in audio:
+            missing.append("audio for %s" % cut["cut_id"])
+    if missing:
+        return {"ok": False,
+                "error": "video_production missing: "
+                         + ", ".join(sorted(missing))}
+    asm = video.build_assembly(narration, slides, audio)
+    _write_json(os.path.join(ndir, "assembly.json"),
+                {"segments": asm["segments"],
+                 "total_s": asm["total_s"],
+                 "ffmpeg_cmd": asm["ffmpeg_cmd"]})
+    with open(os.path.join(ndir, "captions.srt"), "w",
+              encoding="utf-8") as f:
+        f.write(asm["srt"])
+    scene_part = {}
+    for sc in ((data.get("storyboard_draft") or {}).get("scenes")
+               or []):
+        if isinstance(sc, dict):
+            scene_part[sc.get("n")] = sc.get("part_id", "")
+    table = video.build_table(narration, data.get("storyboard"),
+                              data.get("slide_draft"), scene_part)
+    _write_json(os.path.join(ndir, "storyboard_table.json"), table)
+    video_cat = {"file": {"path": "video.mp4", "size_bytes": 0,
+                          "format": "mp4", "resolution": "1280x720"},
+                 "duration_s": asm["total_s"],
+                 "built_from": os.path.basename(run_dir),
+                 "scenes": _video_scenes(narration)}
+    res = results.make_result(node_id, order_id,
+                              os.path.basename(run_dir),
+                              {"video": video_cat,
+                               "storyboard_table": table})
+    problems = results.check_result(res, where=node_id)
+    if problems:
+        return {"ok": False, "error": "%s: %s" % (node_id, problems[0])}
+    results.promote_checked(res)
+    results.save_result(ndir, res)
+    with open(os.path.join(ndir, "report.md"), "w",
+              encoding="utf-8") as f:
+        f.write(results.render_report(res))
+    _write_json(os.path.join(ndir, "usage.json"),
+                {"code": True, "llm_calls": 0, "prompt_tokens": 0,
+                 "completion_tokens": 0, "tools": {}})
+    emit({"ev": "agent_done", "agent": node_id, "code": True,
+          "outputs": ["video", "storyboard_table"]})
+    return {"ok": True}
+
+
+def _step_status_path(run_dir):
+    return os.path.join(run_dir, "STATUS.json")
+
+
+def _read_step_status(run_dir):
+    try:
+        with open(_step_status_path(run_dir), encoding="utf-8") as f:
+            st = json.load(f)
+        return st if isinstance(st, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _downstream(flow, node):
+    seen, queue = {node}, [node]
+    while queue:
+        cur = queue.pop(0)
+        for ln in flow.get("lines", []):
+            if not isinstance(ln, dict) or ln.get("from") != cur:
+                continue
+            dst = ln.get("to")
+            if dst not in seen:
+                seen.add(dst)
+                queue.append(dst)
+    return seen
+
+
+def _node_cost(run_dir, nid):
+    cost = {"result": os.path.isfile(os.path.join(
+        run_dir, nid, results.RESULT_FILE))}
+    try:
+        with open(os.path.join(run_dir, nid, "usage.json"),
+                  encoding="utf-8") as f:
+            cost["usage"] = json.load(f)
+    except (OSError, ValueError):
+        cost["usage"] = None
+    return cost
+
+
+def step_run(flow, order_id, run_agent_fn, target, run_id=None,
+             note=None, runs_root=None, flow_id="adhoc"):
+    """Step mode: run the topo prefix through target, then stop.
+
+    Approved nodes with a result.json are skipped; every other node
+    up to and including target runs (agents via run_agent_fn with
+    want_summary_ko, code nodes directly). target "final" also
+    collects. Nothing is auto-approved: call approve_node().
+    """
+    problems = validate_flow(flow)
+    if problems:
+        return {"ok": False, "error": problems[0]["message"]}
+    run_id = run_id or new_run_id()
+    run_dir = os.path.join(runs_root or RUNS_DIR, run_id)
+    os.makedirs(run_dir, exist_ok=True)
+    _write_json(os.path.join(run_dir, "flow.json"), flow)
+    events_path = os.path.join(run_dir, "events.jsonl")
+    events = []
+
+    def emit(ev):
+        ev["at"] = time.strftime("%H:%M:%S")
+        events.append(ev)
+        with open(events_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+
+    def fail(msg):
+        st = _read_step_status(run_dir)
+        st.update({"run_id": run_id, "flow_id": flow_id,
+                   "order_id": order_id, "state": "failed",
+                   "error": msg})
+        _write_json(_step_status_path(run_dir), st)
+        emit({"ev": "flow_error", "error": msg})
+        return {"ok": False, "run_id": run_id, "error": msg}
+
+    st = _read_step_status(run_dir)
+    approved = [n for n in (st.get("approved") or [])
+                if os.path.isfile(os.path.join(
+                    run_dir, n, results.RESULT_FILE))]
+    order = _order_brief(order_id)
+    if not order["ok"]:
+        return fail(order["error"])
+    incoming = {}
+    for ln in flow.get("lines", []):
+        incoming.setdefault(ln["to"], []).append(ln)
+    try:
+        sequence = topo_order(flow)
+    except RuntimeError as exc:
+        return fail(str(exc))
+    if target not in sequence and target != FINAL_NODE:
+        return fail("unknown step target: %r" % (target,))
+    code_nodes = {n.get("id") for n in flow.get("nodes", [])
+                  if isinstance(n, dict) and n.get("code")}
+    emit({"ev": "step_start", "target": target, "run": run_id})
+    ran = []
+    stop_at = sequence.index(target) if target in sequence \
+        else len(sequence)
+    for nid in sequence[:stop_at + 1]:
+        if nid == FINAL_NODE or _is_draft(nid):
+            continue
+        if nid in approved:
+            emit({"ev": "agent_skip", "agent": nid,
+                  "reason": "approved"})
+            continue
+        if nid in code_nodes:
+            step = _run_code_node(run_dir, nid, order_id,
+                                  order["brief"],
+                                  incoming.get(nid, []), emit)
+        else:
+            step = _run_agent_node(run_dir, nid, order_id,
+                                   order["brief"],
+                                   incoming.get(nid, []), run_agent_fn,
+                                   emit,
+                                   note=note if nid == target else None,
+                                   want_summary=True)
+        if not step["ok"]:
+            return fail(step["error"])
+        ran.append(nid)
+    if target == FINAL_NODE:
+        final = _collect_final(run_dir, order_id,
+                               incoming.get(FINAL_NODE, []), emit)
+        if not final["ok"]:
+            return fail(final["error"])
+        _write_json(_step_status_path(run_dir),
+                    {"run_id": run_id, "flow_id": flow_id,
+                     "order_id": order_id, "state": "done",
+                     "approved": approved,
+                     "received": final["received"]})
+        emit({"ev": "flow_done", "run": run_id})
+        return {"ok": True, "run_id": run_id, "last": target,
+                "ran": ran, "received": final["received"]}
+    _write_json(_step_status_path(run_dir),
+                {"run_id": run_id, "flow_id": flow_id,
+                 "order_id": order_id, "state": "step_paused",
+                 "approved": approved, "last": target, "ran": ran})
+    emit({"ev": "step_paused", "target": target})
+    return {"ok": True, "run_id": run_id, "last": target, "ran": ran}
+
+
+def approve_node(run_id, node, runs_root=None):
+    """Approve a finished stage; later step_runs skip it."""
+    run_dir = os.path.join(runs_root or RUNS_DIR, run_id)
+    if not os.path.isfile(os.path.join(run_dir, node,
+                                       results.RESULT_FILE)):
+        return {"ok": False,
+                "error": "%r has no result.json to approve" % node}
+    st = _read_step_status(run_dir)
+    approved = st.get("approved") or []
+    if node not in approved:
+        approved.append(node)
+    st.update({"approved": approved, "state": "step_paused"})
+    _write_json(_step_status_path(run_dir), st)
+    return {"ok": True, "run_id": run_id, "approved": approved}
+
+
+def invalidate_node(run_id, node, runs_root=None):
+    """Re-run support: drop node + every downstream stage (dirs and
+    approvals); they must run again."""
+    import shutil
+    run_dir = os.path.join(runs_root or RUNS_DIR, run_id)
+    try:
+        with open(os.path.join(run_dir, "flow.json"),
+                  encoding="utf-8") as f:
+            flow = json.load(f)
+    except (OSError, ValueError) as exc:
+        return {"ok": False, "error": "no flow.json (%s)" % exc}
+    gone = []
+    for nid in sorted(_downstream(flow, node)):
+        ndir = os.path.join(run_dir, nid)
+        if os.path.isdir(ndir):
+            shutil.rmtree(ndir)
+            gone.append(nid)
+    st = _read_step_status(run_dir)
+    st["approved"] = [n for n in (st.get("approved") or [])
+                      if n not in gone]
+    st["state"] = "step_paused"
+    _write_json(_step_status_path(run_dir), st)
+    return {"ok": True, "run_id": run_id, "removed": gone}
+
+
+def step_status(run_id, runs_root=None):
+    """STATUS + per-node result/approval/cost for the step UI."""
+    run_dir = os.path.join(runs_root or RUNS_DIR, run_id)
+    st = _read_step_status(run_dir)
+    if not st:
+        return {"ok": False, "error": "no such run: %r" % run_id}
+    try:
+        with open(os.path.join(run_dir, "flow.json"),
+                  encoding="utf-8") as f:
+            sequence = topo_order(json.load(f))
+    except (OSError, ValueError, RuntimeError):
+        sequence = []
+    approved = set(st.get("approved") or [])
+    nodes = {}
+    for nid in sequence:
+        cost = _node_cost(run_dir, nid)
+        cost["approved"] = nid in approved
+        nodes[nid] = cost
+    st = dict(st)
+    st["nodes"] = nodes
+    return {"ok": True, "status": st}

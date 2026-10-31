@@ -3,8 +3,9 @@
   "max_steps": 10
  },
  "done": [
-  "scene set equals the draft exactly",
-  "every material ref opens for Penn",
+  "cut set equals Wren's narration exactly",
+  "on-screen text at most 3 lines per cut",
+  "style guide complete (palette, fonts, tone, rules)",
   "storyboard written (result.json)"
  ],
  "frame_version": 1,
@@ -18,7 +19,7 @@
  "model": "meta-models/muse-spark-open-1026",
  "name": "Penn",
  "title": "Storyboard writer",
- "stage": 4,
+ "stage": 6,
  "tools": [
   "query_graph",
   "read_md_section",
@@ -32,15 +33,29 @@
  "flow": {
   "inputs": [
    {
-    "category": "storyboard_draft",
+    "category": "narration",
     "required": true,
-    "description": "Ash's scene plan to compose."
+    "description": "Wren's cuts to describe (Penn runs after Wren)."
+   },
+   {
+    "category": "storyboard_draft",
+    "required": false,
+    "description": "Ash's scene plan for context."
+   },
+   {
+    "category": "concept",
+    "required": false,
+    "description": "Marty's concept to carry in look."
    }
   ],
   "outputs": [
    {
     "category": "storyboard",
-    "description": "Per-scene composition report."
+    "description": "Per-cut screen description report."
+   },
+   {
+    "category": "style_guide",
+    "description": "One look for the whole video."
    }
   ]
  }

@@ -304,7 +304,37 @@ def run(agent_dir, run_dir, brief, input_md):
                           "usage": total})
                     return {"ok": False, "events": events, "usage": total}
         if finished:
+            if brief_obj.get("want_summary_ko"):
+                _write_ko_summary(agent, run_dir, emit, total)
             emit({"ev": "run_done", "usage": total})
             return {"ok": True, "events": events, "usage": total}
     emit({"ev": "run_fail", "reason": "max_steps exhausted", "usage": total})
     return {"ok": False, "events": events, "usage": total}
+
+def _write_ko_summary(agent, run_dir, emit, total):
+    """Step mode: one short call asks the model to summarize the
+    saved result in a single Korean paragraph. Best effort: never
+    fails the run."""
+    try:
+        with open(os.path.join(run_dir, agent["io"]["output"]),
+                  encoding="utf-8") as f:
+            blob = f.read()[:4000]
+        resp = _chat(agent["model"], [
+            {"role": "system", "content": agent.get("model", "")},
+            {"role": "user", "content":
+             "Summarize this crew result in ONE Korean paragraph "
+             "(what was decided or written, key numbers). No lists, "
+             "no preamble.\n\n" + blob}], None, max_tokens=300)
+        usage = resp.get("usage", {})
+        total["prompt"] += usage.get("prompt_tokens", 0)
+        total["completion"] += usage.get("completion_tokens", 0)
+        text = (resp["choices"][0]["message"].get("content") or "")
+        text = text.strip()
+        if text:
+            with open(os.path.join(run_dir, "summary_ko.md"), "w",
+                      encoding="utf-8") as f:
+                f.write(text + "\n")
+            emit({"ev": "summary_ko", "chars": len(text)})
+    except Exception as exc:  # noqa: BLE001 - summary never fails runs
+        emit({"ev": "summary_ko", "ok": False,
+              "error": str(exc)[:200]})

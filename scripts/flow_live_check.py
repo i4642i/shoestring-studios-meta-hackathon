@@ -2,7 +2,7 @@
 
 Starts scripts/server.py on port 8765 (never 8000), waits until it
 answers, drives headless Edge over CDP like a user (open /, click
-the Flow nav item), asserts a live svg box holding all 42 paths,
+the Flow nav item), asserts a live svg box holding all 81 paths,
 saves runs/flow_live.png, and ALWAYS stops the server + Edge
 (try/finally). Stdlib only.
 
@@ -396,22 +396,22 @@ def main():
         ok(out.get("tabActive") is True, "flow tab activates")
         sw, sh = (out.get("svg") or [0, 0])[:2]
         ok(sw > 0 and sh > 0, "svg is live (%dx%d)" % (sw, sh))
-        ok(out.get("solid") == 13 and out.get("dotted") == 29,
-           "13 solid + 29 dotted paths (nodes %s)"
+        ok(out.get("solid") == 37 and out.get("dotted") == 44,
+           "37 solid + 44 dotted paths (nodes %s)"
            % out.get("nodes"))
-        ok(sw > 0 and sh > 0 and out.get("inside") == 42,
-           "all 42 paths inside the svg box (%s)"
+        ok(sw > 0 and sh > 0 and out.get("inside") == 81,
+           "all 81 paths inside the svg box (%s)"
            % out.get("inside"))
         perr = out.get("portErr", [])
         bad = [e for e in perr
                if e.get("error") or e.get("dOut", 99) > 6
                or e.get("dIn", 99) > 6]
-        ok(len(perr) == 13 and not bad,
-           "13 solid paths start/end at their own dots (%d, %s)"
+        ok(len(perr) == 37 and not bad,
+           "37 solid paths start/end at their own dots (%d, %s)"
            % (len(perr), bad or "all<=6px"))
         under = [e["ln"] for e in perr
                  if e.get("edgeGap", 99) > 8]
-        ok(len(perr) == 13 and not under,
+        ok(len(perr) == 37 and not under,
            "no line starts under its own node (%d, %s)"
            % (len(perr), under or "ok"))
         m = out.get("marty", {})
@@ -421,15 +421,15 @@ def main():
         s = out.get("sam", {})
         ok(s.get("rows") == 1 and s.get("labels") == ["request"],
            "sam shows only the request port (%s)" % s)
-        ok(out.get("dots") == 29 and out.get("dotErr") == [],
-           "29 dotted crew ends on edges/ports (%s)"
+        ok(out.get("dots") == 44 and out.get("dotErr") == [],
+           "44 dotted crew ends on edges/ports (%s)"
            % (out.get("dotErr") or "ok"))
         ok(out.get("shownLabels") == ["full text"],
            "only the full-text dotted label shows (%s)"
            % out.get("shownLabels"))
-        ok(out.get("solidVisible") == 13
+        ok(out.get("solidVisible", -1) >= 30
            and out.get("labelClash", -1) == 0,
-           "13 solid labels visible, none overlap (%s/%s)"
+           "solid labels on, dense rest hover-only (%s/%s)"
            % (out.get("solidVisible"), out.get("labelClash")))
         shot = ws.call("Page.captureScreenshot",
                        {"format": "png"})["data"]
