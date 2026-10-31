@@ -487,9 +487,27 @@
 
 <style>
 #p-flow { max-width: none; margin: 0 12px; }
-#fl-canvas { position: relative; width: 1690px; height: 710px; overflow: hidden;
+#fl-canvas { position: relative; overflow: hidden;
   border: 1px solid var(--line); background: #f7f9fc; border-radius: 12px; }
-#fl-scroll { overflow: auto; flex: 1; min-width: 0; }
+#fl-scroll { overflow: auto; }
+#fl-stage { position: relative; }
+.fldrawer { position: absolute; top: 8px; bottom: 8px; z-index: 20;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(17,24,39,.18); overflow-y: auto;
+  padding: 12px; display: none; }
+.fldrawer.open { display: block; }
+.fldrawer.left { left: 8px; width: 264px; }
+.fldrawer.right { right: 8px; width: 348px; }
+.fldrawer h3 { margin: 10px 0 6px; font-size: 12px;
+  letter-spacing: 1px; color: var(--dim); }
+.fldrawer h3:first-child { margin-top: 0; }
+#fl-steps-panel table { font-size: 11px; }
+#fl-steps-panel #fl-log { max-height: 150px; font-size: 11px; }
+#fl-canvas.zfar .fl-node .req, #fl-canvas.zfar .fl-node .fl-portrow span,
+#fl-canvas.zfar .fl-node .partrow, #fl-canvas.zfar .fl-node .del,
+#fl-canvas.zfar .clonebadge { display: none; }
+#p-flow #fl-err:empty, #p-flow #fl-problems:empty { display: none; }
+#p-flow #fl-err, #p-flow #fl-problems { margin: 4px 0; }
 #fl-zoom { transform-origin: 0 0; }
 #fl-zoomlab { font-size: 12px; font-weight: 700; color: #4b5563;
   min-width: 44px; text-align: right; }
@@ -566,10 +584,7 @@
 #fl-problems { color: #b91c1c; }
 #fl-err { color: #b91c1c; font-weight: 600; }
 #fl-status { color: var(--dim); font-size: 12px; margin-left: 8px; }
-#fl-main { display: flex; gap: 12px; align-items: flex-start; }
-#fl-crew { width: 236px; flex: none; background: #fff;
-  border: 1px solid var(--line); border-radius: 12px; padding: 12px;
-  max-height: 710px; overflow-y: auto; }
+#fl-crew { background: #fff; }
 #fl-crew h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: 2px;
   color: var(--dim); }
 .fl-member { display: flex; align-items: center; gap: 8px;
@@ -600,24 +615,23 @@
       <span id="fl-status"></span>
     </div>
     <div class="addform">
-      <button id="fl-crew-toggle">&laquo; Crew</button>
+      <button id="fl-crew-toggle">Crew</button>
+      <button id="fl-steps-toggle">Steps</button>
       <button id="fl-zfit">Fit</button>
       <button id="fl-z100">100%</button>
       <button id="fl-zminus">-</button>
       <button id="fl-zplus">+</button>
       <span id="fl-zoomlab">100%</span>
     </div>
-    <div id="fl-main">
-      <div id="fl-crew"><h4>CREW</h4><div id="fl-crewlist"></div></div>
+    <div id="fl-stage">
     <div id="fl-scroll"><div id="fl-zoom"><div id="fl-canvas">
       <svg id="fl-svg" width="1690" height="710"></svg>
       <div id="teamframe"><span class="teamtag">Video team — per part, parallel</span></div>
       <div id="fl-nodes"></div>
       <div id="fl-linepop"></div>
     </div></div></div>
-    </div>
-    <p id="fl-err"></p>
-    <ul id="fl-problems"></ul>
+      <div id="fl-crew" class="fldrawer left"><h4>CREW</h4><div id="fl-crewlist"></div></div>
+      <div id="fl-steps-panel" class="fldrawer right">
     <h3>RUN</h3>
     <div class="addform">
       <input id="fl-order" maxlength="64" placeholder="Order id" aria-label="Order id">
@@ -652,6 +666,10 @@
       <thead><tr><th>RUN</th><th>FLOW</th><th>ORDER</th><th>STATE</th><th></th></tr></thead>
       <tbody id="fl-runs"><tr><td colspan="5">Loading…</td></tr></tbody>
     </table>
+      </div>
+    </div>
+    <p id="fl-err"></p>
+    <ul id="fl-problems"></ul>
   </div>
 </div>
 
@@ -2099,16 +2117,20 @@
       S.canvasH = h;
     }
     function fitLayout() {
-      const top = scroller.getBoundingClientRect().top;
+      const page = document.getElementById("p-flow");
+      if (!page || !page.classList.contains("active")) return;
+      const r = scroller.getBoundingClientRect();
+      if (r.width < 2) return;
       scroller.style.height =
-        Math.max(480, window.innerHeight - top - 24) + "px";
+        Math.max(320, window.innerHeight - r.top - 24) + "px";
       if (!S.zoomManual || !S.zoom) fitZoom();
       else applyZoom();
     }
     function fitZoom() {
       const w = S.canvasW || 1690, h = S.canvasH || 710;
       S.zoom = Math.min(2, Math.max(0.4, Math.min(
-        scroller.clientWidth / w, scroller.clientHeight / h)));
+        (scroller.clientWidth - 48) / w,
+        (scroller.clientHeight - 48) / h)));
       S.zoomManual = false;
       applyZoom();
     }
@@ -2118,20 +2140,40 @@
       zoomEl.style.width = (S.canvasW * z) + "px";
       zoomEl.style.height = (S.canvasH * z) + "px";
       zoomLab.textContent = Math.round(z * 100) + "%";
+      canvas.classList.toggle("zfar", z < 0.7);
       drawLines();
     }
-    function setZoom(z, manual) {
-      S.zoom = Math.min(2, Math.max(0.4, Math.round(z * 10) / 10));
+    function setZoom(z, manual, raw) {
+      z = Math.min(2, Math.max(0.4, z));
+      S.zoom = raw ? z : Math.round(z * 10) / 10;
       S.zoomManual = manual !== false;
       applyZoom();
     }
-    function setCrewHidden(hidden) {
-      crewEl.style.display = hidden ? "none" : "";
-      crewBtn.innerHTML = hidden ? "Crew &raquo;" : "&laquo; Crew";
+    function zoomAtCursor(e, factor) {
+      const z0 = ZU();
+      const nz = Math.min(2, Math.max(0.4, z0 * factor));
+      if (nz === z0) return;
+      const sr = scroller.getBoundingClientRect();
+      const cx = scroller.scrollLeft + (e.clientX - sr.left);
+      const cy = scroller.scrollTop + (e.clientY - sr.top);
+      setZoom(nz, true, true);
+      scroller.scrollLeft = cx * (nz / z0) - (e.clientX - sr.left);
+      scroller.scrollTop = cy * (nz / z0) - (e.clientY - sr.top);
+    }
+    const stepsEl = document.getElementById("fl-steps-panel");
+    const stepsBtn = document.getElementById("fl-steps-toggle");
+    function setDrawer(el, btn, key, open) {
+      el.classList.toggle("open", open);
+      btn.classList.toggle("cta", open);
       try {
-        localStorage.setItem("flow.crewHidden", hidden ? "1" : "0");
+        localStorage.setItem(key, open ? "1" : "0");
       } catch (e) { /* private mode: forget it */ }
-      fitLayout();
+    }
+    function setCrewHidden(hidden) {
+      setDrawer(crewEl, crewBtn, "flow.crewOpen", !hidden);
+    }
+    function setStepsOpen(open) {
+      setDrawer(stepsEl, stepsBtn, "flow.stepsOpen", open);
     }
     function drawLines() {
       drawLinesSolid();
@@ -2216,11 +2258,17 @@
         t.textContent = lineLabel(ln);
         svg.appendChild(t);
       });
-      // Labels that still overlap become hover-only, except the
+      // Below 70% zoom every label is hover-only; otherwise only
+      // labels that still overlap become hover-only, except the
       // hovered/selected line's own label.
+      const far = ZU() < 0.7;
       svg.querySelectorAll("text.fl-label").forEach((t, i, all) => {
         const id = t.getAttribute("data-ln");
         if (S.selLine === id || S.hoverLine === id) return;
+        if (far) {
+          t.setAttribute("class", "fl-label oh");
+          return;
+        }
         let bb = null;
         try { bb = t.getBBox(); } catch (e) { return; }
         for (let j = 0; j < i; j++) {
@@ -2513,6 +2561,14 @@
         if (!dot || !dot.isConnected) return;
         const a = portXY(dot), b = canvasXY(e);
         S.drag.tmp.setAttribute("d", linePath(a.x, a.y, b.x, b.y));
+      } else if (S.drag.kind === "pan") {
+        if (Math.abs(e.clientX - S.drag.dx) +
+            Math.abs(e.clientY - S.drag.dy) > 3)
+          S.drag.moved = true;
+        if (S.drag.moved) {
+          scroller.scrollLeft = S.drag.sl - (e.clientX - S.drag.dx);
+          scroller.scrollTop = S.drag.st - (e.clientY - S.drag.dy);
+        }
       } else {
         if (Math.abs(e.clientX - S.drag.dx) +
             Math.abs(e.clientY - S.drag.dy) > 3)
@@ -2541,6 +2597,12 @@
         const inp = t.closest ? t.closest("[data-in]") : null;
         if (inp && inp.dataset.in !== d.from)
           dropConnect(d.from, inp.dataset.in, d.cats);
+      } else if (d.kind === "pan") {
+        if (!d.moved) {
+          hidePop();
+          S.selNode = null;
+          render();
+        }
       } else if (!d.moved) {
         S.selNode = S.selNode === d.id ? null : d.id;
         render();
@@ -2563,11 +2625,16 @@
     }
     canvas.addEventListener("pointerdown", (e) => {
       if (e.target === canvas || e.target === svg) {
-        hidePop();
-        S.selNode = null;
-        render();
+        S.drag = { kind: "pan", dx: e.clientX, dy: e.clientY,
+          moved: false, sl: scroller.scrollLeft,
+          st: scroller.scrollTop };
+        e.preventDefault();
       }
     });
+    scroller.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      zoomAtCursor(e, e.deltaY < 0 ? 1.1 : 1 / 1.1);
+    }, { passive: false });
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       const t = e.target && e.target.tagName;
@@ -2939,7 +3006,9 @@
     document.getElementById("fl-zplus").onclick = () =>
       setZoom((S.zoom || 1) + 0.1);
     crewBtn.onclick = () =>
-      setCrewHidden(crewEl.style.display !== "none");
+      setCrewHidden(crewEl.classList.contains("open"));
+    stepsBtn.onclick = () =>
+      setStepsOpen(!stepsEl.classList.contains("open"));
     function status(t) {
       document.getElementById("fl-status").textContent = t || "";
     }
@@ -2962,11 +3031,9 @@
       }
     });
     try {
-      if (localStorage.getItem("flow.crewHidden") === "1") {
-        crewEl.style.display = "none";
-        crewBtn.innerHTML = "Crew &raquo;";
-      }
-    } catch (e) { /* private mode: default shown */ }
+      setCrewHidden(localStorage.getItem("flow.crewOpen") !== "1");
+      setStepsOpen(localStorage.getItem("flow.stepsOpen") === "1");
+    } catch (e) { /* private mode: default collapsed */ }
     S.catalog = { agents: [], order: { outputs: [] } };
     S.flow = blankFlow();
     render();
@@ -3000,6 +3067,10 @@
       requestAnimationFrame(() => fitLayout());
     };
     window.addEventListener("resize", () => fitLayout());
+    try {
+      new ResizeObserver(() => fitLayout())
+        .observe(document.getElementById("fl-stage"));
+    } catch (e) { /* old browser: resize listener covers it */ }
   })();
 
   /* Settings: embedding profiles. */

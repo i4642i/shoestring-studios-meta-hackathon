@@ -142,6 +142,42 @@ try:
 except ValueError:
     ok(True, "bad flow id raises")
 
+# ---- STEP 4b: flow tab ui wiring (structural) ----
+ok(len(dflt["nodes"]) == 21, "default flow holds 21 nodes")
+_ui = open(os.path.join(ROOT, "index.html"),
+           encoding="utf-8").read()
+_style = [b.split("</style>")[0] for b in _ui.split("<style>")[1:]
+          if "#fl-stage" in b][0]
+ok("height" not in _re.search(r"#fl-scroll \{([^}]*)\}",
+                              _style).group(1)
+   and "height" not in _re.search(r"#fl-canvas \{([^}]*)\}",
+                                  _style).group(1),
+   "canvas has no fixed or max height")
+ok('classList.contains("active")' in _ui
+   and "r.width < 2" in _ui
+   and 'observe(document.getElementById("fl-stage"))' in _ui,
+   "layout recomputes on show, never from hidden 0x0")
+ok('id="fl-crew" class="fldrawer left"' in _ui
+   and 'id="fl-steps-panel" class="fldrawer right"' in _ui
+   and 'id="fl-steps-toggle"' in _ui
+   and ".fldrawer { position: absolute" in _style
+   and 'localStorage.getItem("flow.crewOpen") !== "1"' in _ui
+   and 'localStorage.getItem("flow.stepsOpen") === "1"' in _ui,
+   "crew + steps are drawers, collapsed by default")
+ok("(scroller.clientWidth - 48)" in _ui
+   and "(scroller.clientHeight - 48)" in _ui
+   and 'addEventListener("wheel"' in _ui
+   and "zoomAtCursor(e, e.deltaY < 0 ? 1.1 : 1 / 1.1)" in _ui
+   and 'kind: "pan"' in _ui,
+   "fit has 24px margins, wheel zoom, background pan")
+ok('canvas.classList.toggle("zfar", z < 0.7)' in _ui
+   and "ZU() < 0.7" in _ui
+   and "#fl-canvas.zfar .fl-node .req" in _style,
+   "under 70%: name+role nodes, hover-only labels")
+ok('id="fl-part"' in _ui and 'id="fl-stop"' in _ui
+   and "S.partStat" in _ui,
+   "step part selector, stop and part rows kept")
+
 # ---- validate ----
 ok(flow.validate_flow(dflt) == [], "default flow validates")
 bad = json.loads(json.dumps(dflt))
