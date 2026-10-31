@@ -1926,8 +1926,8 @@
       });
       canvas.style.width = w + "px";
       canvas.style.height = h + "px";
-      svg.setAttribute("width", canvas.clientWidth);
-      svg.setAttribute("height", canvas.clientHeight);
+      svg.setAttribute("width", w);
+      svg.setAttribute("height", h);
     }
     function drawLines() {
       drawLinesSolid();
@@ -2234,6 +2234,9 @@
       } else if (!d.moved) {
         S.selNode = S.selNode === d.id ? null : d.id;
         render();
+      } else {
+        fitCanvas();
+        drawLines();
       }
     });
     function dropConnect(from, to, cat) {
@@ -2485,9 +2488,9 @@
     }
     loadRuns();
     window.__flowShown = () => {
-      requestAnimationFrame(() => drawLines());
+      requestAnimationFrame(() => { fitCanvas(); drawLines(); });
     };
-    window.addEventListener("resize", () => drawLines());
+    window.addEventListener("resize", () => { fitCanvas(); drawLines(); });
   })();
 
   /* Settings: embedding profiles. */

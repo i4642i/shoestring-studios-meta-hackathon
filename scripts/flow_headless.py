@@ -62,7 +62,7 @@ def main():
     harness = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>%s</style></head>
 <body>
-<div class="page active" id="p-flow">
+<div class="page" id="p-flow">
 <div id="fl-main"><div id="fl-crew"><div id="fl-crewlist"></div></div>
 <div id="fl-scroll"><div id="fl-canvas">
 <svg id="fl-svg" width="1690" height="710"></svg>
@@ -99,14 +99,25 @@ const api = {
 </script>
 <script>
 (function probe() {
-  let tries = 0;
+  let tries = 0, clicked = false, settle = 0;
   const timer = setInterval(() => {
     tries++;
     const st = (document.getElementById("fl-status") || {})
       .textContent || "";
-    if (st.indexOf("Loaded") !== 0 && tries <= 400) return;
+    if (!clicked) {
+      const probs = (document.getElementById("fl-problems") || {})
+        .textContent || "";
+      if ((st.indexOf("Loaded") !== 0 || probs.indexOf("Valid") !== 0) &&
+          tries <= 600) return;
+      // real user path: hidden load, then the Flow tab click
+      document.getElementById("p-flow").classList.add("active");
+      if (window.__flowShown) window.__flowShown();
+      clicked = true;
+      return;
+    }
+    if (++settle < 15) return;
     clearInterval(timer);
-    const out = {status: st};
+    const out = {status: st, clicked: clicked};
     try {
       const svg = document.getElementById("fl-svg");
       const cv = document.getElementById("fl-canvas");
@@ -156,6 +167,20 @@ const api = {
         b.y + b.h > cv.clientHeight + 0.5).map(b => b.id);
       out.canvas = [cv.clientWidth, cv.clientHeight,
         +svg.getAttribute("width"), +svg.getAttribute("height")];
+      const SW = +svg.getAttribute("width") || 0;
+      const SH = +svg.getAttribute("height") || 0;
+      out.inside = 0;
+      svg.querySelectorAll("path.fl-line, path.fl-pcline")
+        .forEach(p => {
+          const nums = (p.getAttribute("d").match(/-?\d+(\.\d+)?/g) ||
+            []).map(Number);
+          for (let i = 0; i + 1 < nums.length; i += 2)
+            if (nums[i] >= 0 && nums[i] <= SW &&
+                nums[i + 1] >= 0 && nums[i + 1] <= SH) {
+              out.inside++;
+              break;
+            }
+        });
       const hit = svg.querySelector("path[data-hover]");
       if (hit) {
         hit.dispatchEvent(new MouseEvent("mouseenter"));
@@ -258,8 +283,12 @@ const api = {
        "11 nodes disjoint inside the canvas (tallest %spx)" %
        out.get("maxH"))
     cw, ch, sw, sh = out.get("canvas", [0, 0, 0, 0])
-    ok(cw == sw and ch == sh and cw >= 1690 and ch >= 710,
-       "svg size matches the canvas (%dx%d)" % (sw, sh))
+    ok(sw > 0 and sh > 0 and sw >= 1690 and sh >= 710
+       and abs(cw - sw) <= 2 and abs(ch - sh) <= 2,
+       "svg is live and matches the canvas (%dx%d)" % (sw, sh))
+    ok(sw > 0 and sh > 0 and out.get("inside", -1) == 39,
+       "all 39 paths sit inside the live svg box (%s)" %
+       out.get("inside"))
     ok(out.get("hoverShown") == 1 and out.get("unhoverShown") == 0,
        "hover shows exactly one dotted label")
     ok(out.get("popup") is True and out.get("selectShown") == 1
