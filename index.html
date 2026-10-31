@@ -525,6 +525,7 @@
 .fl-label { font-size: 12px; font-weight: 600; fill: #1f2937;
   pointer-events: none; paint-order: stroke; stroke: #f7f9fc;
   stroke-width: 4px; }
+.fl-label.oh { display: none; }
 .fl-tmp { fill: none; stroke: #16a34a; stroke-width: 2;
   stroke-dasharray: 6 4; }
 #fl-linepop { position: absolute; z-index: 5; background: #fff;
@@ -1756,6 +1757,11 @@
       const a = agentOf(id);
       return ((a && a.flow) || {}).outputs || [];
     }
+    // Display-only hides. Sam's "source" output has no solid line
+    // (delivery runs on the order's pc_ref + recipient rows), so the
+    // Flow tab shows only "request" for Sam. STEP 2 removes the
+    // category itself.
+    const HIDDEN_PORTS = { sales_sam: ["source"] };
     function outRowFor(from, cats) {
       const rows = Array.from(nodesEl.querySelectorAll(
         '[data-out="' + from + '"]'));
@@ -1833,7 +1839,9 @@
         }
         if (!n.pc) {
           inner += '<div class="fl-port in" data-in="' + esc(n.id) + '"></div>';
-          outputsOf(n.id).forEach(o => {
+          outputsOf(n.id).filter(o =>
+            !((HIDDEN_PORTS[n.id] || []).includes(o.category)))
+            .forEach(o => {
             inner += '<div class="fl-portrow" data-out="' + esc(n.id) +
               '" data-cats="' + esc(o.category) +
               '" title="' + esc(o.description || o.category) +
@@ -1890,15 +1898,43 @@
       const s = c === "*" ? "*" : (c || []).join(",");
       return s.length > 20 ? s.slice(0, 19) + "…" : s;
     }
-    function nodeCenter(id) {
+    function nodeBox(id) {
       const el = nodesEl.querySelector('[data-n="' + id + '"]');
       if (!el) return null;
       const r = el.getBoundingClientRect();
       const c = canvas.getBoundingClientRect();
       const z = ZU();
-      return { x: (r.left - c.left + r.width / 2) / z,
-               y: (r.top - c.top + r.height / 2) / z,
-               h: r.height / z };
+      return { x: (r.left - c.left) / z, y: (r.top - c.top) / z,
+               w: r.width / z, h: r.height / z };
+    }
+    function isPcNode(id) {
+      const n = (S.flow.nodes || []).find(x => x.id === id);
+      return !!(n && n.pc);
+    }
+    // Dotted lines leave a crew node at its right edge. Dotted
+    // lines name no category, so "matching out-port" is the node's
+    // first out-port row; the x is always the right edge.
+    function dottedStart(id) {
+      const b = nodeBox(id);
+      if (!b) return null;
+      if (isPcNode(id))
+        return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+      let y = b.y + b.h / 2;
+      const rows = nodesEl.querySelectorAll(
+        '[data-out="' + id + '"]');
+      if (rows.length)
+        y = portXY(rows[0].querySelector("i") || rows[0]).y;
+      return { x: b.x + b.w, y: y };
+    }
+    // Dotted lines end on a crew node at its blue in-port.
+    function dottedEnd(id) {
+      if (!isPcNode(id)) {
+        const inp = nodesEl.querySelector('[data-in="' + id + '"]');
+        if (inp) return portXY(inp);
+      }
+      const b = nodeBox(id);
+      if (!b) return null;
+      return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
     }
     function pcLabel(pl) {
       const s = pl.label || "";
@@ -1909,11 +1945,14 @@
       svg.querySelectorAll(".fl-pcline, .fl-pclabel, path[data-hover]")
         .forEach(el => el.remove());
       (S.flow.pc_lines || []).forEach(pl => {
-        const a = nodeCenter(pl.from), b = nodeCenter(pl.to);
+        const a = dottedStart(pl.from), b = dottedEnd(pl.to);
         if (!a || !b) return;
         const d = linePath(a.x, a.y, b.x, b.y);
         const p = document.createElementNS(NS, "path");
         p.setAttribute("d", d);
+        p.setAttribute("data-pl", pl.id);
+        p.setAttribute("data-from", pl.from);
+        p.setAttribute("data-to", pl.to);
         p.setAttribute("class", "fl-pcline" +
           (S.selLine === pl.id ? " sel" : "") +
           (S.badLines[pl.id] ? " bad" : ""));
@@ -1937,9 +1976,10 @@
         const t = document.createElementNS(NS, "text");
         t.setAttribute("x", (a.x + b.x) / 2);
         t.setAttribute("y", (a.y + b.y) / 2 - 6);
+        const keep = pl.from === "pc_source" && pl.to === "pd_marty";
         t.setAttribute("class", "fl-pclabel" +
           ((S.selLine === pl.id || S.hoverLine === pl.id ||
-            S.badLines[pl.id]) ? " on" : ""));
+            S.badLines[pl.id] || keep) ? " on" : ""));
         t.setAttribute("text-anchor", "middle");
         t.textContent = pcLabel(pl);
         svg.appendChild(t);
@@ -2001,12 +2041,19 @@
     function drawLinesSolid() {
       while (svg.firstChild) svg.removeChild(svg.firstChild);
       const NS = "http://www.w3.org/2000/svg";
+      const pairN = {};
+      S.flow.lines.forEach(ln => {
+        const key = ln.from + ">" + ln.to;
+        pairN[key] = (pairN[key] || 0) + 1;
+      });
+      const pairK = {};
       S.flow.lines.forEach(ln => {
         const row = outRowFor(ln.from, ln.categories);
         const inp = nodesEl.querySelector('[data-in="' + ln.to + '"]');
         if (!row || !inp) return;
         const a = portXY(row.querySelector("i") || row), b = portXY(inp);
         const d = linePath(a.x, a.y, b.x, b.y);
+        let lineEl = null;
         ["fl-line", "fl-hit"].forEach(cls => {
           const p = document.createElementNS(NS, "path");
           p.setAttribute("d", d);
@@ -2018,17 +2065,57 @@
           p.setAttribute("class", cls +
             (S.selLine === ln.id ? " sel" : "") +
             (S.badLines[ln.id] ? " bad" : ""));
-          if (cls === "fl-hit")
+          if (cls === "fl-line") lineEl = p;
+          if (cls === "fl-hit") {
             p.onclick = (e) => { e.stopPropagation(); openPop(ln, e); };
+            p.onmouseenter = () => {
+              if (S.hoverLine !== ln.id) {
+                S.hoverLine = ln.id;
+                drawLines();
+              }
+            };
+            p.onmouseleave = () => {
+              S.hoverLine = null;
+              drawLines();
+            };
+          }
           svg.appendChild(p);
         });
+        const key = ln.from + ">" + ln.to;
+        const k = pairK[key] || 0;
+        pairK[key] = k + 1;
+        let mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        try {
+          const pt = lineEl.getPointAtLength(
+            lineEl.getTotalLength() / 2);
+          mx = pt.x; my = pt.y;
+        } catch (e) { /* fall back to the midpoint */ }
+        my += (k - (pairN[key] - 1) / 2) * 16 - 6;
         const t = document.createElementNS(NS, "text");
-        t.setAttribute("x", (a.x + b.x) / 2);
-        t.setAttribute("y", (a.y + b.y) / 2 - 6);
+        t.setAttribute("x", mx);
+        t.setAttribute("y", my);
         t.setAttribute("class", "fl-label");
+        t.setAttribute("data-ln", ln.id);
         t.setAttribute("text-anchor", "middle");
         t.textContent = lineLabel(ln);
         svg.appendChild(t);
+      });
+      // Labels that still overlap become hover-only, except the
+      // hovered/selected line's own label.
+      svg.querySelectorAll("text.fl-label").forEach((t, i, all) => {
+        const id = t.getAttribute("data-ln");
+        if (S.selLine === id || S.hoverLine === id) return;
+        let bb = null;
+        try { bb = t.getBBox(); } catch (e) { return; }
+        for (let j = 0; j < i; j++) {
+          let ob = null;
+          try { ob = all[j].getBBox(); } catch (e) { continue; }
+          if (bb.x < ob.x + ob.width && ob.x < bb.x + bb.width &&
+              bb.y < ob.y + ob.height && ob.y < bb.y + bb.height) {
+            t.setAttribute("class", "fl-label oh");
+            break;
+          }
+        }
       });
     }
 

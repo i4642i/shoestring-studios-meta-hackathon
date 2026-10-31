@@ -214,8 +214,59 @@ PROBE_JS = """(() => {
       dIn: Math.round(Math.hypot(ex - ic[0], ey - ic[1]) * 10) / 10,
       edgeGap: Math.round((fb.x + fb.w - sx) * 10) / 10});
   });
+  const isCrew = (id) => {
+    const el = document.querySelector(
+      '#fl-nodes .fl-node[data-n="' + id + '"]');
+    return el && !el.classList.contains('pcnode');
+  };
+  const dotErr = [];
+  svg.querySelectorAll('path.fl-pcline').forEach(p => {
+    const from = p.getAttribute('data-from');
+    const to = p.getAttribute('data-to');
+    const nums = (p.getAttribute('d').match(/-?\\d+(\\.\\d+)?/g) ||
+      []).map(Number);
+    if (!from || !to || nums.length < 4) {
+      dotErr.push({ln: p.getAttribute('data-pl'),
+                   error: 'missing endpoint'});
+      return;
+    }
+    const sx = nums[0], sy = nums[1];
+    const ex = nums[nums.length - 2], ey = nums[nums.length - 1];
+    if (isCrew(from)) {
+      const fb = boxOf(from);
+      const gap = Math.abs(fb.x + fb.w - sx);
+      const cx = Math.abs(fb.x + fb.w / 2 - sx);
+      if (gap > 8 || cx < 20)
+        dotErr.push({ln: p.getAttribute('data-pl'), why: 'start',
+                     gap: Math.round(gap * 10) / 10,
+                     cx: Math.round(cx * 10) / 10});
+    }
+    if (isCrew(to)) {
+      const inp = document.querySelector('[data-in="' + to + '"]');
+      const ic = ctr(inp);
+      const dIn = Math.hypot(ex - ic[0], ey - ic[1]);
+      if (dIn > 6)
+        dotErr.push({ln: p.getAttribute('data-pl'), why: 'end',
+                     dIn: Math.round(dIn * 10) / 10});
+    }
+  });
+  const visLab = Array.from(
+    svg.querySelectorAll('text.fl-label:not(.oh)'));
+  let labelClash = 0;
+  const visBox = visLab.map(t => {
+    try { return t.getBBox(); } catch (e) { return null; }
+  });
+  for (let i = 0; i < visBox.length; i++)
+    for (let j = i + 1; j < visBox.length; j++) {
+      const a = visBox[i], b = visBox[j];
+      if (a && b && a.x < b.x + b.width && b.x < a.x + a.width &&
+          a.y < b.y + b.height && b.y < a.y + a.height)
+        labelClash++;
+    }
   const mrows = Array.from(
     document.querySelectorAll('[data-out="pd_marty"]'));
+  const srows = Array.from(
+    document.querySelectorAll('[data-out="sales_sam"]'));
   return {
     svg: [sw, sh],
     solid: svg.querySelectorAll('path.fl-line').length,
@@ -227,7 +278,17 @@ PROBE_JS = """(() => {
     portErr: portErr,
     marty: {rows: mrows.length,
             labels: mrows.map(
-              r => r.querySelector('span').textContent)}
+              r => r.querySelector('span').textContent)},
+    sam: {rows: srows.length,
+          labels: srows.map(
+            r => r.querySelector('span').textContent)},
+    dots: svg.querySelectorAll('path.fl-pcline').length,
+    dotErr: dotErr,
+    shownLabels: Array.from(
+      svg.querySelectorAll('text.fl-pclabel.on'))
+      .map(t => t.textContent),
+    solidVisible: visLab.length,
+    labelClash: labelClash
   };
 })()"""
 
@@ -357,6 +418,19 @@ def main():
         ok(m.get("rows") == 2
            and m.get("labels") == ["concept", "structure"],
            "marty shows concept + structure ports (%s)" % m)
+        s = out.get("sam", {})
+        ok(s.get("rows") == 1 and s.get("labels") == ["request"],
+           "sam shows only the request port (%s)" % s)
+        ok(out.get("dots") == 29 and out.get("dotErr") == [],
+           "29 dotted crew ends on edges/ports (%s)"
+           % (out.get("dotErr") or "ok"))
+        ok(out.get("shownLabels") == ["full text"],
+           "only the full-text dotted label shows (%s)"
+           % out.get("shownLabels"))
+        ok(out.get("solidVisible") == 13
+           and out.get("labelClash", -1) == 0,
+           "13 solid labels visible, none overlap (%s/%s)"
+           % (out.get("solidVisible"), out.get("labelClash")))
         shot = ws.call("Page.captureScreenshot",
                        {"format": "png"})["data"]
         with open(PNG, "wb") as f:

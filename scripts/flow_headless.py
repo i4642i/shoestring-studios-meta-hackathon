@@ -81,6 +81,11 @@ def main():
 </div>
 <div id="probe">PENDING</div>
 <script>
+// Headless Edge never fires requestAnimationFrame on this page, so
+// drive the flow tab's rAF-scheduled redraws with a timer instead.
+// Without this every path keeps its hidden-load zero coords and all
+// geometry asserts pass vacuously.
+window.requestAnimationFrame = (cb) => setTimeout(cb, 0);
 const esc = (s) => String(s).replace(/&/g, "&amp;")
   .replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const CATALOG = %s;
@@ -143,10 +148,28 @@ const api = {
         });
       out.solidLabels =
         svg.querySelectorAll("text.fl-label").length;
+      const visLab = Array.from(
+        svg.querySelectorAll("text.fl-label:not(.oh)"));
+      out.solidVisible = visLab.length;
+      out.labelClash = 0;
+      const visBox = visLab.map(t => {
+        try { return t.getBBox(); } catch (e) { return null; }
+      });
+
+      for (let i = 0; i < visBox.length; i++)
+        for (let j = i + 1; j < visBox.length; j++) {
+          const a = visBox[i], b = visBox[j];
+          if (a && b && a.x < b.x + b.width && b.x < a.x + a.width &&
+              a.y < b.y + b.height && b.y < a.y + a.height)
+            out.labelClash++;
+        }
       out.dottedLabels =
         svg.querySelectorAll("text.fl-pclabel").length;
       out.dottedShown =
         svg.querySelectorAll("text.fl-pclabel.on").length;
+      out.shownPclabels = Array.from(
+        svg.querySelectorAll("text.fl-pclabel.on"))
+        .map(t => t.textContent);
       const cr = cv.getBoundingClientRect();
       const tm = getComputedStyle(document.getElementById("fl-zoom"))
         .transform;
@@ -160,6 +183,48 @@ const api = {
                     y: (r.top - cr.top) / z, w: r.width / z,
                     h: r.height / z});
       });
+      const boxById = {};
+      boxes.forEach(b => { boxById[b.id] = b; });
+      const crewOf = (id) => {
+        const el = document.querySelector(
+          '#fl-nodes .fl-node[data-n="' + id + '"]');
+        return el && !el.classList.contains("pcnode");
+      };
+      out.dotErr = [];
+      svg.querySelectorAll("path.fl-pcline").forEach(p => {
+        const from = p.getAttribute("data-from");
+        const to = p.getAttribute("data-to");
+        const nums = (p.getAttribute("d").match(/-?\d+(\.\d+)?/g) ||
+          []).map(Number);
+        if (!from || !to || nums.length < 4) {
+          out.dotErr.push({ln: p.getAttribute("data-pl"),
+                           error: "missing endpoint"});
+          return;
+        }
+        const sx = nums[0], sy = nums[1];
+        const ex = nums[nums.length - 2], ey = nums[nums.length - 1];
+        if (crewOf(from)) {
+          const fb = boxById[from];
+          const gap = Math.abs(fb.x + fb.w - sx);
+          const cx = Math.abs(fb.x + fb.w / 2 - sx);
+          if (gap > 8 || cx < 20)
+            out.dotErr.push({ln: p.getAttribute("data-pl"),
+                             why: "start",
+                             gap: Math.round(gap * 10) / 10,
+                             cx: Math.round(cx * 10) / 10});
+        }
+        if (crewOf(to)) {
+          const inp = document.querySelector('[data-in="' + to + '"]');
+          const r = inp.getBoundingClientRect();
+          const ix = (r.left - cr.left + r.width / 2) / z;
+          const iy = (r.top - cr.top + r.height / 2) / z;
+          const dIn = Math.hypot(ex - ix, ey - iy);
+          if (dIn > 6)
+            out.dotErr.push({ln: p.getAttribute("data-pl"), why: "end",
+                             dIn: Math.round(dIn * 10) / 10});
+        }
+      });
+      out.dots = svg.querySelectorAll("path.fl-pcline").length;
       out.nodes = boxes.length;
       out.maxH = Math.round(Math.max.apply(
         null, boxes.map(b => b.h).concat([0])));
@@ -212,7 +277,8 @@ const api = {
           svg.querySelectorAll("path.fl-pcline").length;
       }
       out.ports = {rows: 0, edgeOk: 0, spanClear: 0, crewNodes: 0,
-                   pcRows: 0, marty: {rows: 0, labels: []}};
+                   pcRows: 0, marty: {rows: 0, labels: []},
+                   sam: {rows: 0, labels: []}};
       document.querySelectorAll("#fl-nodes .fl-node").forEach(el => {
         const r = el.getBoundingClientRect();
         const nx = r.left - cr.left, ny = r.top - cr.top;
@@ -240,6 +306,10 @@ const api = {
         out.ports.crewNodes++;
         if (el.dataset.n === "pd_marty")
           out.ports.marty = {rows: rows.length,
+            labels: Array.from(rows).map(
+              r => r.querySelector("span").textContent)};
+        if (el.dataset.n === "sales_sam")
+          out.ports.sam = {rows: rows.length,
             labels: Array.from(rows).map(
               r => r.querySelector("span").textContent)};
       });
@@ -301,8 +371,10 @@ const api = {
        "42 paths drawn (13 solid + 29 dotted)")
     ok(out.get("degenerate", -1) == 0, "no degenerate path")
     ok(out.get("solidLabels") == 13, "13 solid labels visible")
-    ok(out.get("dottedLabels") == 29 and out.get("dottedShown") == 0,
-       "29 dotted labels hidden until hover")
+    ok(out.get("dottedLabels") == 29 and out.get("dottedShown") == 1
+       and out.get("shownPclabels") == ["full text"],
+       "only the full-text dotted label shows (%s)"
+       % out.get("shownPclabels"))
     ok(out.get("nodes") == 11 and out.get("clash") == []
        and out.get("outside") == [],
        "11 nodes disjoint inside the canvas (tallest %spx)" %
@@ -316,20 +388,30 @@ const api = {
     ok(sw > 0 and sh > 0 and out.get("inside", -1) == 42,
        "all 42 paths sit inside the live svg box (%s)" %
        out.get("inside"))
-    ok(out.get("hoverShown") == 1 and out.get("unhoverShown") == 0,
-       "hover shows exactly one dotted label")
-    ok(out.get("popup") is True and out.get("selectShown") == 1
+    ok(out.get("hoverShown") == 2 and out.get("unhoverShown") == 1,
+       "hover adds one dotted label next to full text")
+    ok(out.get("popup") is True and out.get("selectShown") == 2
        and out.get("dottedAfterClick") == 29,
-       "click selects one dotted line, no duplicates")
+       "click selects one dotted line next to full text, no duplicates")
     p = out.get("ports", {})
-    ok(p.get("rows") == 9 and p.get("edgeOk") == 9
-       and p.get("spanClear") == 9 and p.get("pcRows", -1) == 0
+    ok(p.get("rows") == 8 and p.get("edgeOk") == 8
+       and p.get("spanClear") == 8 and p.get("pcRows", -1) == 0
        and p.get("crewNodes") == 7,
-       "9 out-ports on right edges, labels clear of text")
+       "8 out-ports on right edges, labels clear of text")
     m = p.get("marty", {})
     ok(m.get("rows") == 2
        and m.get("labels") == ["concept", "structure"],
        "marty shows concept + structure ports")
+    s = p.get("sam", {})
+    ok(s.get("rows") == 1 and s.get("labels") == ["request"],
+       "sam shows only the request port (%s)" % s)
+    ok(out.get("dots") == 29 and out.get("dotErr") == [],
+       "29 dotted crew ends on edges/ports (%s)"
+       % (out.get("dotErr") or "ok"))
+    ok(out.get("solidVisible") == 13
+       and out.get("labelClash", -1) == 0,
+       "13 solid labels visible, none overlap (%s/%s)"
+       % (out.get("solidVisible"), out.get("labelClash")))
     if fails:
         print("%d FAILURES" % fails)
         return 1
