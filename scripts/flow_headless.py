@@ -2,7 +2,7 @@
 
 Builds a small harness page from the REAL index.html flow code
 (style + flowtab script) and the REAL default flow + catalog, opens
-it in headless Edge, and asserts what the user sees: 10 solid + 29
+it in headless Edge, and asserts what the user sees: 13 solid + 29
 dotted non-degenerate paths, solid labels always on, dotted labels
 only on hover/select, 11 nodes pairwise disjoint inside the canvas,
 svg size matching the canvas, out-ports inside their footer strip.
@@ -212,7 +212,7 @@ const api = {
           svg.querySelectorAll("path.fl-pcline").length;
       }
       out.ports = {rows: 0, edgeOk: 0, spanClear: 0, crewNodes: 0,
-                   pcRows: 0, marty: {rows: 0, label: ""}};
+                   pcRows: 0, marty: {rows: 0, labels: []}};
       document.querySelectorAll("#fl-nodes .fl-node").forEach(el => {
         const r = el.getBoundingClientRect();
         const nx = r.left - cr.left, ny = r.top - cr.top;
@@ -240,8 +240,8 @@ const api = {
         out.ports.crewNodes++;
         if (el.dataset.n === "pd_marty")
           out.ports.marty = {rows: rows.length,
-            label: rows.length ?
-              rows[0].querySelector("span").textContent : ""};
+            labels: Array.from(rows).map(
+              r => r.querySelector("span").textContent)};
       });
     } catch (err) {
       out.error = String((err && err.stack) || err);
@@ -297,10 +297,10 @@ const api = {
         print("PROBE ERROR:", (out.get("error") or "?")[:800])
         print("1 FAILURES")
         return 1
-    ok(out.get("solid") == 10 and out.get("dotted") == 29,
-       "39 paths drawn (10 solid + 29 dotted)")
+    ok(out.get("solid") == 13 and out.get("dotted") == 29,
+       "42 paths drawn (13 solid + 29 dotted)")
     ok(out.get("degenerate", -1) == 0, "no degenerate path")
-    ok(out.get("solidLabels") == 10, "10 solid labels visible")
+    ok(out.get("solidLabels") == 13, "13 solid labels visible")
     ok(out.get("dottedLabels") == 29 and out.get("dottedShown") == 0,
        "29 dotted labels hidden until hover")
     ok(out.get("nodes") == 11 and out.get("clash") == []
@@ -313,8 +313,8 @@ const api = {
        "svg is live and matches the canvas (%dx%d)" % (sw, sh))
     ok(0.4 <= out.get("zoom", 0) <= 2,
        "zoom settled in range (%s)" % out.get("zoom"))
-    ok(sw > 0 and sh > 0 and out.get("inside", -1) == 39,
-       "all 39 paths sit inside the live svg box (%s)" %
+    ok(sw > 0 and sh > 0 and out.get("inside", -1) == 42,
+       "all 42 paths sit inside the live svg box (%s)" %
        out.get("inside"))
     ok(out.get("hoverShown") == 1 and out.get("unhoverShown") == 0,
        "hover shows exactly one dotted label")
@@ -322,13 +322,14 @@ const api = {
        and out.get("dottedAfterClick") == 29,
        "click selects one dotted line, no duplicates")
     p = out.get("ports", {})
-    ok(p.get("rows") == 7 and p.get("edgeOk") == 7
-       and p.get("spanClear") == 7 and p.get("pcRows", -1) == 0
+    ok(p.get("rows") == 9 and p.get("edgeOk") == 9
+       and p.get("spanClear") == 9 and p.get("pcRows", -1) == 0
        and p.get("crewNodes") == 7,
-       "7 out-ports on right edges, labels clear of text")
+       "9 out-ports on right edges, labels clear of text")
     m = p.get("marty", {})
-    ok(m.get("rows") == 1 and m.get("label") == "Storyboard draft",
-       "marty shows one 'Storyboard draft' port")
+    ok(m.get("rows") == 2
+       and m.get("labels") == ["concept", "structure"],
+       "marty shows concept + structure ports")
     if fails:
         print("%d FAILURES" % fails)
         return 1

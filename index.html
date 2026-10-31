@@ -1756,46 +1756,16 @@
       const a = agentOf(id);
       return ((a && a.flow) || {}).outputs || [];
     }
-    const GROUP_LABELS = {
-      "pd_marty|concept,structure": "Storyboard draft",
-    };
-    function groupLabel(id, cats) {
-      if (cats.length === 1) return cats[0];
-      return GROUP_LABELS[id + "|" + cats.join(",")] ||
-        cats.join("+");
-    }
-    function portGroups(id) {
-      const outs = outputsOf(id);
-      const lines = (S.flow.lines || []).filter(ln => ln.from === id);
-      if (!lines.length)
-        return outs.map(o => ({ cats: [o.category], label: o.category,
-          desc: o.description || o.category }));
-      const seen = {};
-      lines.forEach(ln => {
-        const cats = ln.categories === "*" ?
-          outs.map(o => o.category) : (ln.categories || []).slice();
-        const key = cats.slice().sort().join(",");
-        if (key && !seen[key]) seen[key] = cats.slice().sort();
-      });
-      return Object.keys(seen).sort().map(key => ({ cats: seen[key],
-        label: groupLabel(id, seen[key]),
-        desc: "carries " + seen[key].join(", ") }));
-    }
     function outRowFor(from, cats) {
       const rows = Array.from(nodesEl.querySelectorAll(
         '[data-out="' + from + '"]'));
       if (!rows.length) return null;
       const outs = outputsOf(from);
-      const want = (cats === "*" ? outs.map(o => o.category)
-        : (cats || []).slice()).sort().join(",");
-      const key = (r) => (r.dataset.cats || "").split(",")
-        .filter(Boolean).sort().join(",");
-      return rows.find(r => key(r) === want) ||
-        rows.find(r => {
-          const have = (r.dataset.cats || "").split(",")
-            .filter(Boolean);
-          return want.split(",").every(c => have.includes(c));
-        }) || rows[0];
+      const list = cats === "*" ? outs.map(o => o.category)
+        : (cats || []).slice();
+      const want = list.length ? list[0] : null;
+      return rows.find(r => (r.dataset.cats || "").split(",")
+        .filter(Boolean).includes(want)) || rows[0];
     }
     function titleOf(id) {
       if (id === "final") return ["Final storyboard",
@@ -1863,11 +1833,11 @@
         }
         if (!n.pc) {
           inner += '<div class="fl-port in" data-in="' + esc(n.id) + '"></div>';
-          portGroups(n.id).forEach(g => {
+          outputsOf(n.id).forEach(o => {
             inner += '<div class="fl-portrow" data-out="' + esc(n.id) +
-              '" data-cats="' + esc(g.cats.join(",")) +
-              '" title="' + esc(g.desc) + '"><span>' + esc(g.label) +
-              "</span><i></i></div>";
+              '" data-cats="' + esc(o.category) +
+              '" title="' + esc(o.description || o.category) +
+              '"><span>' + esc(o.category) + "</span><i></i></div>";
           });
         }
         div.innerHTML = inner;
@@ -2043,6 +2013,8 @@
           p.setAttribute("data-ln", ln.id);
           p.setAttribute("data-from", ln.from);
           p.setAttribute("data-to", ln.to);
+          p.setAttribute("data-cats", ln.categories === "*" ? "*"
+            : (ln.categories || []).join(","));
           p.setAttribute("class", cls +
             (S.selLine === ln.id ? " sel" : "") +
             (S.badLines[ln.id] ? " bad" : ""));
@@ -2386,10 +2358,18 @@
           if (e.line) S.badLines[e.line] = 1;
           if (e.node) S.badNodes[e.node] = 1;
         });
+        (r.warnings || []).forEach(e => {
+          const li = document.createElement("li");
+          li.style.color = "#d97706";
+          li.textContent = "Warning: " + e.message;
+          problemsEl.appendChild(li);
+        });
         if (!r.errors || !r.errors.length) {
           const li = document.createElement("li");
           li.style.color = "#51cf66";
-          li.textContent = "Valid.";
+          li.textContent = (r.warnings && r.warnings.length) ?
+            "Valid with " + r.warnings.length + " warning(s)." :
+            "Valid.";
           problemsEl.appendChild(li);
         }
         render();

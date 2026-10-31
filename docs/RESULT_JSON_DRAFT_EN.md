@@ -1483,7 +1483,7 @@ At write time, the writer tool verifies, in order:
 ## 15. Workflow design v7 (target data flow)
 
 The default flow, exactly as drawn in the Flow tab: solid lines
-carry result categories, dotted lines show PC links. 11 nodes, 10
+carry result categories, dotted lines show PC links. 11 nodes, 13
 solid lines, 29 dotted lines. No Order node: the flow starts at
 Sam, who owns intake, parsing, and the recipient list.
 
@@ -1492,9 +1492,12 @@ Solid lines:
 | Line | From → To | Categories |
 |---|---|---|
 | c1 | Sam → Marty | `request` |
-| c2 | Marty → Cleo | `concept`, `structure` |
-| c3 | Marty → Rex | `concept`, `structure` |
-| c4 | Marty → Ash | `concept`, `structure` |
+| c2a | Marty → Cleo | `concept` |
+| c2b | Marty → Cleo | `structure` |
+| c3a | Marty → Rex | `concept` |
+| c3b | Marty → Rex | `structure` |
+| c4a | Marty → Ash | `concept` |
+| c4b | Marty → Ash | `structure` |
 | c5 | Cleo → Ash | `concepts` |
 | c6 | Rex → Ash | `cases` |
 | c7 | Ash → Penn | `storyboard_draft` |
@@ -1504,6 +1507,8 @@ Solid lines:
 
 - Marty is labeled "Storyboard draft (concept + structure)":
   his two categories are the draft's skeleton plus its time plan.
+  Every node shows one out-port per category on the right edge;
+  each line starts at the dot of its own category.
 - No `source` line exists: `source` is a pointer Sam writes (§4),
   and recipient rows (§8.9) deliver the entry to whoever is
   listed.
@@ -1526,7 +1531,9 @@ node and carries a short label):
 
 Rules the flow file enforces: PC nodes (`{"id", "pc"}`) need no
 `agent.json` and never run; solid lines must not touch a PC;
-dotted ids must not clash with solid ids. The Flow tab draws all
+dotted ids must not clash with solid ids; each line should carry
+one category (a multi-category line stays valid but draws from
+its first category's port and shows a validation warning). The Flow tab draws all
 of this — PC nodes on the canvas, dotted lines with labels, and a
 per-agent "Preview start prompt" built by the same chunk builder
 real runs use. Layout follows the owner's drawn design (kept

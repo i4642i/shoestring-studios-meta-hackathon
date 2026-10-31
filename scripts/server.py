@@ -867,7 +867,9 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(body, dict):
             return self._json(400, {"error": "need flow object"})
         errs = flows.validate_flow(body)
-        return self._json(200, {"ok": not errs, "errors": errs})
+        warns = flows.lint_flow(body)
+        return self._json(200, {"ok": not errs, "errors": errs,
+                                "warnings": warns})
 
     def _api_flow_run(self, fid):
         try:

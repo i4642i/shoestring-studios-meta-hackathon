@@ -106,8 +106,8 @@ def load_catalog():
 def validate_flow(flow, catalog=None):
     """Static flow check. Returns [errors], each {message, line?, node?}.
 
-    Unknown categories, duplicate same-pair lines (one line per pair; it
-    may carry several categories), agents without required input
+    Unknown categories, duplicate categories on one pair (split one
+    line per category), agents without required input
     (starters: no required inputs, e.g. Sam; draft nodes exempt),
     missing required inputs, dangling endpoints, lines from final,
     cycles. Connected draft nodes are rejected: drafts display only,
@@ -149,7 +149,7 @@ def validate_flow(flow, catalog=None):
     lines = flow.get("lines", [])
     if not isinstance(lines, list):
         return errors + [err("lines must be an array")]
-    pairs = set()
+    pairs = {}
     for ln in lines:
         if not isinstance(ln, dict):
             errors.append(err("line must be an object"))
@@ -166,11 +166,29 @@ def validate_flow(flow, catalog=None):
                               line=lid))
         if src == FINAL_NODE:
             errors.append(err("final never sends", line=lid))
-        if (src, dst) in pairs:
-            errors.append(err("duplicate line %r -> %r (one line per pair;"
-                              " it may carry several categories)"
-                              % (src, dst), line=lid))
-        pairs.add((src, dst))
+        cats = ln.get("categories", "*")
+        if cats == "*":
+            try:
+                sender = _load_agent(src)
+            except (OSError, ValueError):
+                sender = {}
+            sflow = sender.get("flow", {}) \
+                if isinstance(sender, dict) else {}
+            have = [o.get("category") for o in sflow.get("outputs", [])
+                    if isinstance(o, dict)]
+        elif isinstance(cats, list):
+            have = [c for c in cats if isinstance(c, str)]
+        else:
+            have = []
+        seen = pairs.setdefault((src, dst), set())
+        dup = sorted({c for c in have if c in seen})
+        if dup:
+            errors.append(err("duplicate categor%s %s on pair %r -> %r"
+                              " (split one line per category)"
+                              % ("y" if len(dup) == 1 else "ies",
+                                 ", ".join(dup), src, dst),
+                              line=lid))
+        seen.update(have)
         cats = ln.get("categories", "*")
         if cats != "*" and not (
                 isinstance(cats, list) and cats
@@ -302,6 +320,38 @@ def validate_flow(flow, catalog=None):
             if hit:
                 return hit
     return []
+
+
+def _ferr(msg, line=None, node=None):
+    e = {"message": msg}
+    if line is not None:
+        e["line"] = line
+    if node is not None:
+        e["node"] = node
+    return e
+
+
+def lint_flow(flow):
+    """Non-blocking warnings: a line should carry one category.
+
+    Multi-category lines stay valid but draw from the first
+    category's port, so they warn (split one line per category).
+    "*" (forward all) is exempt.
+    """
+    warns = []
+    reg = results.registry()
+    for ln in flow.get("lines", []):
+        if not isinstance(ln, dict):
+            continue
+        cats = ln.get("categories", "*")
+        if isinstance(cats, list) and len(cats) > 1:
+            known = [c for c in cats if c in reg]
+            if len(known) > 1:
+                warns.append(_ferr(
+                    "line carries %s; split one line per category "
+                    "(drawn from %r)" % (", ".join(known), known[0]),
+                    line=ln.get("id")))
+    return warns
 
 
 def topo_order(flow):

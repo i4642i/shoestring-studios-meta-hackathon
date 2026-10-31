@@ -87,9 +87,10 @@ ok([n["id"] for n in dflt["nodes"]]
 ok(not next(n for n in dflt["nodes"]
             if n["id"] == "final").get("temp")
    and sorted(ln["id"] for ln in dflt["lines"])
-   == ["c1", "c10", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9"]
+   == ["c1", "c10", "c2a", "c2b", "c3a", "c3b", "c4a", "c4b", "c5",
+       "c6", "c7", "c8", "c9"]
    and len(dflt.get("pc_lines", [])) == 29,
-   "final takes storyboard+narration, 10 solid + 29 dotted")
+   "final takes storyboard+narration, 13 solid + 29 dotted")
 ok(all(isinstance(n.get("pc"), str)
        for n in dflt["nodes"] if n["id"].startswith("pc_")),
    "PC nodes carry their pc name")
@@ -116,10 +117,10 @@ ok(not clash, "default nodes do not overlap (%s)"
 crew = {n["id"] for n in dflt["nodes"] if not n.get("pc")}
 solids = dflt["lines"]
 dots = dflt.get("pc_lines", [])
-ok(len(solids) == 10 and len(dots) == 29
+ok(len(solids) == 13 and len(dots) == 29
    and all(ln["from"] in crew and ln["to"] in crew for ln in solids)
    and all(pl["from"] in boxes and pl["to"] in boxes for pl in dots),
-   "39 lines would draw (10 solid + 29 dotted)")
+   "42 lines would draw (13 solid + 29 dotted)")
 # No PC-row gap rule: the owner's drawn layout (source of truth)
 # interleaves PCs with crew (Source PC sits above Sam).
 try:
@@ -139,8 +140,9 @@ ok(any("unknown category" in e["message"] for e in errs)
 bad = json.loads(json.dumps(dflt))
 bad["lines"].append({"id": "ld", "from": "sales_sam", "to": "pd_marty",
                       "categories": ["request"]})
-ok(any("duplicate line" in e["message"]
-       for e in flow.validate_flow(bad)), "dup pair kept forbidden")
+ok(any("duplicate categor" in e["message"]
+       for e in flow.validate_flow(bad)),
+   "dup category on a pair rejected")
 bad = {"nodes": [{"id": "sales_sam"}, {"id": "pd_marty"},
                  {"id": "final"}],
        "lines": [{"id": "l1", "from": "sales_sam", "to": "final",
@@ -156,11 +158,20 @@ starter = {"nodes": [{"id": "sales_sam"}, {"id": "final"}],
            "positions": {}}
 ok(flow.validate_flow(starter) == [], "sam starts without lines")
 bad = json.loads(json.dumps(dflt))
-for ln in bad["lines"]:
-    if ln["id"] == "c3":
-        ln["categories"] = ["structure"]
-ok(any("misses required input 'concept'" in e["message"]
+bad["lines"] = [ln for ln in bad["lines"] if ln["id"] != "c3b"]
+ok(any("misses required input 'structure'" in e["message"]
        for e in flow.validate_flow(bad)), "missing required input")
+mflow = json.loads(json.dumps(dflt))
+for ln in mflow["lines"]:
+    if ln["id"] == "c2a":
+        ln["categories"] = ["concept", "structure"]
+mflow["lines"] = [ln for ln in mflow["lines"] if ln["id"] != "c2b"]
+ok(flow.validate_flow(mflow) == [], "multi-category line stays valid")
+w = flow.lint_flow(mflow)
+ok(len(w) == 1 and w[0].get("line") == "c2a"
+   and "split one line" in w[0]["message"],
+   "multi-category line warns with line id")
+ok(flow.lint_flow(dflt) == [], "default flow has no warnings")
 cyc = {"nodes": [{"id": "sales_sam"},
                  {"id": "pd_marty"}, {"id": "final"}],
        "lines": [{"id": "l2", "from": "sales_sam", "to": "pd_marty",
@@ -422,7 +433,7 @@ evs = [json.loads(ln) for ln in
        open(os.path.join(rdir, "events.jsonl"), encoding="utf-8")]
 kinds = [e["ev"] for e in evs]
 ok(kinds[0] == "flow_start" and kinds[-1] == "flow_done"
-   and "order_ready" not in kinds and kinds.count("line") == 10
+   and "order_ready" not in kinds and kinds.count("line") == 13
    and "final_ready" in kinds, "event trail complete")
 line1 = next(e for e in evs if e.get("line") == "c1")
 ok(line1["categories"] == ["request"]

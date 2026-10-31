@@ -2,7 +2,7 @@
 
 Starts scripts/server.py on port 8765 (never 8000), waits until it
 answers, drives headless Edge over CDP like a user (open /, click
-the Flow nav item), asserts a live svg box holding all 39 paths,
+the Flow nav item), asserts a live svg box holding all 42 paths,
 saves runs/flow_live.png, and ALWAYS stops the server + Edge
 (try/finally). Stdlib only.
 
@@ -161,18 +161,22 @@ PROBE_JS = """(() => {
       }
   });
   const sr = svg.getBoundingClientRect();
+  const tm = getComputedStyle(document.getElementById("fl-zoom"))
+    .transform;
+  const pz = tm && tm !== "none" ?
+    +(tm.split("(")[1].split(",")[0]) : 1;
   const boxOf = (id) => {
     const el = document.querySelector(
       '#fl-nodes .fl-node[data-n="' + id + '"]');
     if (!el) return null;
     const r = el.getBoundingClientRect();
-    return {x: r.left - sr.left, y: r.top - sr.top,
-            w: r.width, h: r.height};
+    return {x: (r.left - sr.left) / pz, y: (r.top - sr.top) / pz,
+            w: r.width / pz, h: r.height / pz};
   };
   const ctr = (el) => {
     const r = el.getBoundingClientRect();
-    return [r.left - sr.left + r.width / 2,
-            r.top - sr.top + r.height / 2];
+    return [(r.left - sr.left + r.width / 2) / pz,
+            (r.top - sr.top + r.height / 2) / pz];
   };
   const portErr = [];
   svg.querySelectorAll('path.fl-line').forEach(p => {
@@ -183,16 +187,26 @@ PROBE_JS = """(() => {
     const fb = boxOf(from);
     const inp = document.querySelector(
       '[data-in="' + to + '"]');
-    const dots = Array.from(document.querySelectorAll(
-      '[data-out="' + from + '"] i')).map(ctr);
-    if (!fb || !inp || !dots.length || nums.length < 4) {
+    const rows = Array.from(document.querySelectorAll(
+      '[data-out="' + from + '"]'));
+    if (!fb || !inp || !rows.length || nums.length < 4) {
       portErr.push({ln: p.getAttribute('data-ln'),
                     error: 'missing endpoint'});
       return;
     }
     const sx = nums[0], sy = nums[1];
     const ex = nums[nums.length - 2], ey = nums[nums.length - 1];
-    const dOut = Math.min.apply(null, dots.map(
+    const want = (p.getAttribute('data-cats') || '').split(',')
+      .filter(Boolean).sort().join(',');
+    const key = (r) => (r.getAttribute('data-cats') || '')
+      .split(',').filter(Boolean).sort().join(',');
+    let targets = rows.map(r => ctr(r.querySelector('i')));
+    if (want)
+      targets = rows.filter(r => key(r) === want)
+        .map(r => ctr(r.querySelector('i')));
+    if (!targets.length)
+      targets = rows.map(r => ctr(r.querySelector('i')));
+    const dOut = Math.min.apply(null, targets.map(
       d => Math.hypot(sx - d[0], sy - d[1])));
     const ic = ctr(inp);
     portErr.push({ln: p.getAttribute('data-ln'),
@@ -212,8 +226,8 @@ PROBE_JS = """(() => {
       .classList.contains('active'),
     portErr: portErr,
     marty: {rows: mrows.length,
-            label: mrows.length ?
-              mrows[0].querySelector('span').textContent : ''}
+            labels: mrows.map(
+              r => r.querySelector('span').textContent)}
   };
 })()"""
 
@@ -321,27 +335,28 @@ def main():
         ok(out.get("tabActive") is True, "flow tab activates")
         sw, sh = (out.get("svg") or [0, 0])[:2]
         ok(sw > 0 and sh > 0, "svg is live (%dx%d)" % (sw, sh))
-        ok(out.get("solid") == 10 and out.get("dotted") == 29,
-           "10 solid + 29 dotted paths (nodes %s)"
+        ok(out.get("solid") == 13 and out.get("dotted") == 29,
+           "13 solid + 29 dotted paths (nodes %s)"
            % out.get("nodes"))
-        ok(sw > 0 and sh > 0 and out.get("inside") == 39,
-           "all 39 paths inside the svg box (%s)"
+        ok(sw > 0 and sh > 0 and out.get("inside") == 42,
+           "all 42 paths inside the svg box (%s)"
            % out.get("inside"))
         perr = out.get("portErr", [])
         bad = [e for e in perr
                if e.get("error") or e.get("dOut", 99) > 6
                or e.get("dIn", 99) > 6]
-        ok(len(perr) == 10 and not bad,
-           "solid paths start/end at their dots %s"
-           % (bad or "all<=6px"))
+        ok(len(perr) == 13 and not bad,
+           "13 solid paths start/end at their own dots (%d, %s)"
+           % (len(perr), bad or "all<=6px"))
         under = [e["ln"] for e in perr
                  if e.get("edgeGap", 99) > 8]
-        ok(len(perr) == 10 and not under,
-           "no line starts under its own node %s"
-           % (under or "ok"))
+        ok(len(perr) == 13 and not under,
+           "no line starts under its own node (%d, %s)"
+           % (len(perr), under or "ok"))
         m = out.get("marty", {})
-        ok(m.get("rows") == 1 and m.get("label") == "Storyboard draft",
-           "marty shows one 'Storyboard draft' port (%s)" % m)
+        ok(m.get("rows") == 2
+           and m.get("labels") == ["concept", "structure"],
+           "marty shows concept + structure ports (%s)" % m)
         shot = ws.call("Page.captureScreenshot",
                        {"format": "png"})["data"]
         with open(PNG, "wb") as f:
