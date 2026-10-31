@@ -59,7 +59,7 @@
 - [x] 5 J1/J2 Crew portraits (dda766c)
 - [x] 6 J12 Menu order (93dd36d)
 - [x] 7 J6/J7 Run controls (9c62540)
-- [ ] 8 J10/J11 Studio office live states + click to chat
+- [x] 8 J10/J11 Studio office live states + click to chat (d524896)
 - [ ] 9 J8/J9 Employee project memory + chat
 - [ ] 10 J13/J14 Input logs + spec check
 - [ ] 11 J15 Board verify view
