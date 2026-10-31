@@ -498,16 +498,14 @@
   border-radius: 50%; transform: translateY(-50%); }
 .fl-port.in { left: -8px; background: var(--accent); cursor: crosshair;
   border: 2px solid #fff; box-shadow: 0 0 0 1px var(--accent); }
-.fl-outs { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px;
-  border-top: 1px solid #e5e7eb; padding-top: 5px; min-height: 18px; }
-.fl-out { display: inline-flex; align-items: center; gap: 4px;
-  cursor: crosshair; }
-.fl-out i { width: 12px; height: 12px; border-radius: 50%;
+.fl-portrow { display: flex; justify-content: flex-end; align-items: center;
+  gap: 5px; min-height: 20px; cursor: crosshair; }
+.fl-portrow span { font-size: 11px; font-weight: 600; color: #1f2937;
+  text-align: right; max-width: 150px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.fl-portrow i { width: 12px; height: 12px; border-radius: 50%;
   background: #16a34a; border: 2px solid #fff;
-  box-shadow: 0 0 0 1px #16a34a; flex: none; }
-.fl-out span { font-size: 11px; font-weight: 600; white-space: nowrap;
-  color: #1f2937; max-width: 120px; overflow: hidden;
-  text-overflow: ellipsis; }
+  box-shadow: 0 0 0 1px #16a34a; flex: none; margin-right: -17px; }
 .fl-line { fill: none; stroke: #6b7280; stroke-width: 2; }
 .fl-pcline { fill: none; stroke: #9ca3af; stroke-width: 1.5; stroke-dasharray: 5 4; }
 .fl-pcline.bad { stroke: #dc2626; }
@@ -1740,6 +1738,47 @@
       const a = agentOf(id);
       return ((a && a.flow) || {}).outputs || [];
     }
+    const GROUP_LABELS = {
+      "pd_marty|concept,structure": "Storyboard draft",
+    };
+    function groupLabel(id, cats) {
+      if (cats.length === 1) return cats[0];
+      return GROUP_LABELS[id + "|" + cats.join(",")] ||
+        cats.join("+");
+    }
+    function portGroups(id) {
+      const outs = outputsOf(id);
+      const lines = (S.flow.lines || []).filter(ln => ln.from === id);
+      if (!lines.length)
+        return outs.map(o => ({ cats: [o.category], label: o.category,
+          desc: o.description || o.category }));
+      const seen = {};
+      lines.forEach(ln => {
+        const cats = ln.categories === "*" ?
+          outs.map(o => o.category) : (ln.categories || []).slice();
+        const key = cats.slice().sort().join(",");
+        if (key && !seen[key]) seen[key] = cats.slice().sort();
+      });
+      return Object.keys(seen).sort().map(key => ({ cats: seen[key],
+        label: groupLabel(id, seen[key]),
+        desc: "carries " + seen[key].join(", ") }));
+    }
+    function outRowFor(from, cats) {
+      const rows = Array.from(nodesEl.querySelectorAll(
+        '[data-out="' + from + '"]'));
+      if (!rows.length) return null;
+      const outs = outputsOf(from);
+      const want = (cats === "*" ? outs.map(o => o.category)
+        : (cats || []).slice()).sort().join(",");
+      const key = (r) => (r.dataset.cats || "").split(",")
+        .filter(Boolean).sort().join(",");
+      return rows.find(r => key(r) === want) ||
+        rows.find(r => {
+          const have = (r.dataset.cats || "").split(",")
+            .filter(Boolean);
+          return want.split(",").every(c => have.includes(c));
+        }) || rows[0];
+    }
     function titleOf(id) {
       if (id === "final") return ["Final storyboard",
         "collects Penn storyboard + Wren narration"];
@@ -1806,15 +1845,12 @@
         }
         if (!n.pc) {
           inner += '<div class="fl-port in" data-in="' + esc(n.id) + '"></div>';
-          const outs = outputsOf(n.id);
-          if (outs.length) {
-            inner += '<div class="fl-outs">' + outs.map(o =>
-              '<div class="fl-out" data-out="' + esc(n.id) +
-              '" data-cat="' + esc(o.category) +
-              '" title="' + esc(o.description || o.category) +
-              '"><i></i><span>' + esc(o.category) +
-              "</span></div>").join("") + "</div>";
-          }
+          portGroups(n.id).forEach(g => {
+            inner += '<div class="fl-portrow" data-out="' + esc(n.id) +
+              '" data-cats="' + esc(g.cats.join(",")) +
+              '" title="' + esc(g.desc) + '"><span>' + esc(g.label) +
+              "</span><i></i></div>";
+          });
         }
         div.innerHTML = inner;
         nodesEl.appendChild(div);
@@ -1937,20 +1973,17 @@
       while (svg.firstChild) svg.removeChild(svg.firstChild);
       const NS = "http://www.w3.org/2000/svg";
       S.flow.lines.forEach(ln => {
-        const outs = nodesEl.querySelectorAll(
-          '[data-out="' + ln.from + '"]');
+        const row = outRowFor(ln.from, ln.categories);
         const inp = nodesEl.querySelector('[data-in="' + ln.to + '"]');
-        if (!outs.length || !inp) return;
-        let out = outs[0];
-        const want = ln.categories === "*" ? null : (ln.categories || [])[0];
-        outs.forEach(o => {
-          if (want && o.dataset.cat === want) out = o;
-        });
-        const a = portXY(out), b = portXY(inp);
+        if (!row || !inp) return;
+        const a = portXY(row.querySelector("i") || row), b = portXY(inp);
         const d = linePath(a.x, a.y, b.x, b.y);
         ["fl-line", "fl-hit"].forEach(cls => {
           const p = document.createElementNS(NS, "path");
           p.setAttribute("d", d);
+          p.setAttribute("data-ln", ln.id);
+          p.setAttribute("data-from", ln.from);
+          p.setAttribute("data-to", ln.to);
           p.setAttribute("class", cls +
             (S.selLine === ln.id ? " sel" : "") +
             (S.badLines[ln.id] ? " bad" : ""));
@@ -2181,7 +2214,8 @@
       if (!node) return;
       if (out) {
         S.drag = { kind: "connect", from: out.dataset.out,
-          cat: out.dataset.cat, tmp: null };
+          cats: (out.dataset.cats || "").split(",").filter(Boolean),
+          el: out, tmp: null };
       } else {
         const p = pos(node.dataset.n);
         S.drag = { kind: "move", id: node.dataset.n,
@@ -2198,17 +2232,17 @@
           S.drag.tmp.setAttribute("class", "fl-tmp");
           svg.appendChild(S.drag.tmp);
         }
-        const src = nodesEl.querySelector('[data-out="' + S.drag.from +
-          '"][data-cat="' + S.drag.cat + '"]');
-        if (!src) return;
-        const a = portXY(src), b = canvasXY(e);
+        const dot = S.drag.el.querySelector
+          ? (S.drag.el.querySelector("i") || S.drag.el) : null;
+        if (!dot || !dot.isConnected) return;
+        const a = portXY(dot), b = canvasXY(e);
         S.drag.tmp.setAttribute("d", linePath(a.x, a.y, b.x, b.y));
       } else {
         if (Math.abs(e.clientX - S.drag.dx) +
             Math.abs(e.clientY - S.drag.dy) > 3)
           S.drag.moved = true;
         if (S.drag.moved) {
-          const limX = Math.max(0, canvas.clientWidth - 206);
+          const limX = Math.max(0, canvas.clientWidth - 212);
           const limY = Math.max(0, canvas.clientHeight - 140);
           const nx = Math.max(0, Math.min(limX,
             S.drag.x0 + e.clientX - S.drag.dx));
@@ -2230,7 +2264,7 @@
         const t = e.target;
         const inp = t.closest ? t.closest("[data-in]") : null;
         if (inp && inp.dataset.in !== d.from)
-          dropConnect(d.from, inp.dataset.in, d.cat);
+          dropConnect(d.from, inp.dataset.in, d.cats);
       } else if (!d.moved) {
         S.selNode = S.selNode === d.id ? null : d.id;
         render();
@@ -2239,7 +2273,7 @@
         drawLines();
       }
     });
-    function dropConnect(from, to, cat) {
+    function dropConnect(from, to, cats) {
       const dup = S.flow.lines.find(ln => ln.from === from && ln.to === to);
       if (dup) {
         S.selLine = dup.id;
@@ -2247,7 +2281,7 @@
         return;
       }
       S.flow.lines.push({ id: nextLineId(), from: from, to: to,
-        categories: [cat] });
+        categories: cats.length ? cats.slice() : ["*"] });
       render();
       scheduleValidate();
     }

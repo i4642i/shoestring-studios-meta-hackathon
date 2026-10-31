@@ -160,6 +160,48 @@ PROBE_JS = """(() => {
         break;
       }
   });
+  const sr = svg.getBoundingClientRect();
+  const boxOf = (id) => {
+    const el = document.querySelector(
+      '#fl-nodes .fl-node[data-n="' + id + '"]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return {x: r.left - sr.left, y: r.top - sr.top,
+            w: r.width, h: r.height};
+  };
+  const ctr = (el) => {
+    const r = el.getBoundingClientRect();
+    return [r.left - sr.left + r.width / 2,
+            r.top - sr.top + r.height / 2];
+  };
+  const portErr = [];
+  svg.querySelectorAll('path.fl-line').forEach(p => {
+    const from = p.getAttribute('data-from');
+    const to = p.getAttribute('data-to');
+    const nums = (p.getAttribute('d').match(/-?\d+(\.\d+)?/g) ||
+      []).map(Number);
+    const fb = boxOf(from);
+    const inp = document.querySelector(
+      '[data-in="' + to + '"]');
+    const dots = Array.from(document.querySelectorAll(
+      '[data-out="' + from + '"] i')).map(ctr);
+    if (!fb || !inp || !dots.length || nums.length < 4) {
+      portErr.push({ln: p.getAttribute('data-ln'),
+                    error: 'missing endpoint'});
+      return;
+    }
+    const sx = nums[0], sy = nums[1];
+    const ex = nums[nums.length - 2], ey = nums[nums.length - 1];
+    const dOut = Math.min.apply(null, dots.map(
+      d => Math.hypot(sx - d[0], sy - d[1])));
+    const ic = ctr(inp);
+    portErr.push({ln: p.getAttribute('data-ln'),
+      dOut: Math.round(dOut * 10) / 10,
+      dIn: Math.round(Math.hypot(ex - ic[0], ey - ic[1]) * 10) / 10,
+      edgeGap: Math.round((fb.x + fb.w - sx) * 10) / 10});
+  });
+  const mrows = Array.from(
+    document.querySelectorAll('[data-out="pd_marty"]'));
   return {
     svg: [sw, sh],
     solid: svg.querySelectorAll('path.fl-line').length,
@@ -167,7 +209,11 @@ PROBE_JS = """(() => {
     inside: inside,
     nodes: document.querySelectorAll('#fl-nodes .fl-node').length,
     tabActive: document.getElementById('p-flow')
-      .classList.contains('active')
+      .classList.contains('active'),
+    portErr: portErr,
+    marty: {rows: mrows.length,
+            label: mrows.length ?
+              mrows[0].querySelector('span').textContent : ''}
   };
 })()"""
 
@@ -281,6 +327,21 @@ def main():
         ok(sw > 0 and sh > 0 and out.get("inside") == 39,
            "all 39 paths inside the svg box (%s)"
            % out.get("inside"))
+        perr = out.get("portErr", [])
+        bad = [e for e in perr
+               if e.get("error") or e.get("dOut", 99) > 6
+               or e.get("dIn", 99) > 6]
+        ok(len(perr) == 10 and not bad,
+           "solid paths start/end at their dots %s"
+           % (bad or "all<=6px"))
+        under = [e["ln"] for e in perr
+                 if e.get("edgeGap", 99) > 8]
+        ok(len(perr) == 10 and not under,
+           "no line starts under its own node %s"
+           % (under or "ok"))
+        m = out.get("marty", {})
+        ok(m.get("rows") == 1 and m.get("label") == "Storyboard draft",
+           "marty shows one 'Storyboard draft' port (%s)" % m)
         shot = ws.call("Page.captureScreenshot",
                        {"format": "png"})["data"]
         with open(PNG, "wb") as f:

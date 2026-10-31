@@ -202,21 +202,37 @@ const api = {
         out.dottedAfterClick =
           svg.querySelectorAll("path.fl-pcline").length;
       }
-      out.ports = {total: 0, inStrips: 0, crewStrip: 0,
-                   crewNodes: 0, pcStrip: 0};
+      out.ports = {rows: 0, edgeOk: 0, spanClear: 0, crewNodes: 0,
+                   pcRows: 0, marty: {rows: 0, label: ""}};
       document.querySelectorAll("#fl-nodes .fl-node").forEach(el => {
-        const pc = el.classList.contains("pcnode");
-        if (pc) {
-          if (el.querySelector(".fl-outs")) out.ports.pcStrip++;
+        const r = el.getBoundingClientRect();
+        const nx = r.left - cr.left, ny = r.top - cr.top;
+        const rows = el.querySelectorAll("[data-out]");
+        const texts = Array.from(el.querySelectorAll("h4, .sub, .req"))
+          .map(t => t.getBoundingClientRect());
+        rows.forEach(row => {
+          const dot = row.querySelector("i");
+          const sp = row.querySelector("span");
+          if (!dot || !sp) return;
+          const dr = dot.getBoundingClientRect();
+          const srr = sp.getBoundingClientRect();
+          const dcx = dr.left - cr.left + dr.width / 2;
+          out.ports.rows++;
+          if (Math.abs(dcx - (nx + r.width)) <= 8) out.ports.edgeOk++;
+          if (!texts.some(q => srr.left < q.right && q.left < srr.right &&
+              srr.top < q.bottom && q.top < srr.bottom))
+            out.ports.spanClear++;
+        });
+        if (el.classList.contains("pcnode")) {
+          if (rows.length) out.ports.pcRows++;
           return;
         }
         if (el.dataset.n === "final") return;
         out.ports.crewNodes++;
-        if (el.querySelector(".fl-outs")) out.ports.crewStrip++;
-        el.querySelectorAll(".fl-out").forEach(o => {
-          out.ports.total++;
-          if (o.closest(".fl-outs")) out.ports.inStrips++;
-        });
+        if (el.dataset.n === "pd_marty")
+          out.ports.marty = {rows: rows.length,
+            label: rows.length ?
+              rows[0].querySelector("span").textContent : ""};
       });
     } catch (err) {
       out.error = String((err && err.stack) || err);
@@ -295,10 +311,13 @@ const api = {
        and out.get("dottedAfterClick") == 29,
        "click selects one dotted line, no duplicates")
     p = out.get("ports", {})
-    ok(p.get("crewNodes") == 7 and p.get("crewStrip") == 7
-       and p.get("pcStrip", -1) == 0
-       and p.get("total") == p.get("inStrips") and p.get("total") > 0,
-       "all %d out-ports live in footer strips" % p.get("total", 0))
+    ok(p.get("rows") == 7 and p.get("edgeOk") == 7
+       and p.get("spanClear") == 7 and p.get("pcRows", -1) == 0
+       and p.get("crewNodes") == 7,
+       "7 out-ports on right edges, labels clear of text")
+    m = p.get("marty", {})
+    ok(m.get("rows") == 1 and m.get("label") == "Storyboard draft",
+       "marty shows one 'Storyboard draft' port")
     if fails:
         print("%d FAILURES" % fails)
         return 1
