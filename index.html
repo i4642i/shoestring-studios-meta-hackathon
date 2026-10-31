@@ -470,7 +470,7 @@
 
 <style>
 #p-flow { max-width: 1240px; }
-#fl-canvas { position: relative; width: 1160px; height: 480px; overflow: hidden;
+#fl-canvas { position: relative; width: 1690px; height: 710px; overflow: hidden;
   border: 1px solid var(--line); background: #f7f9fc; border-radius: 12px; }
 #fl-scroll { overflow: auto; }
 #fl-svg { position: absolute; left: 0; top: 0; }
@@ -498,21 +498,24 @@
   border-radius: 50%; transform: translateY(-50%); }
 .fl-port.in { left: -8px; background: var(--accent); cursor: crosshair;
   border: 2px solid #fff; box-shadow: 0 0 0 1px var(--accent); }
-.fl-out { position: absolute; right: -8px; width: 14px; height: 14px;
-  border-radius: 50%; background: #16a34a; cursor: crosshair;
-  transform: translateY(-50%); border: 2px solid #fff;
-  box-shadow: 0 0 0 1px #16a34a; }
-.fl-out span { position: absolute; right: 17px; top: 50%;
-  transform: translateY(-50%); font-size: 11px; font-weight: 600;
-  white-space: nowrap; color: #1f2937; background: rgba(255,255,255,.92);
-  padding: 0 4px; border-radius: 4px; }
+.fl-outs { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px;
+  border-top: 1px solid #e5e7eb; padding-top: 5px; min-height: 18px; }
+.fl-out { display: inline-flex; align-items: center; gap: 4px;
+  cursor: crosshair; }
+.fl-out i { width: 12px; height: 12px; border-radius: 50%;
+  background: #16a34a; border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #16a34a; flex: none; }
+.fl-out span { font-size: 11px; font-weight: 600; white-space: nowrap;
+  color: #1f2937; max-width: 120px; overflow: hidden;
+  text-overflow: ellipsis; }
 .fl-line { fill: none; stroke: #6b7280; stroke-width: 2; }
 .fl-pcline { fill: none; stroke: #9ca3af; stroke-width: 1.5; stroke-dasharray: 5 4; }
 .fl-pcline.bad { stroke: #dc2626; }
 .fl-pcline.sel { stroke: var(--accent); }
 .fl-pclabel { font-size: 11px; font-weight: 600; fill: #4b5563;
   pointer-events: none; paint-order: stroke; stroke: #f7f9fc;
-  stroke-width: 4px; }
+  stroke-width: 4px; display: none; }
+.fl-pclabel.on { display: block; }
 .fl-node.pcnode { border-style: dashed; border-color: #6b7280;
   background: #f3f4f6; }
 .fl-line.bad { stroke: #dc2626; }
@@ -534,7 +537,7 @@
 #fl-main { display: flex; gap: 12px; align-items: flex-start; }
 #fl-crew { width: 236px; flex: none; background: #fff;
   border: 1px solid var(--line); border-radius: 12px; padding: 12px;
-  max-height: 480px; overflow-y: auto; }
+  max-height: 710px; overflow-y: auto; }
 #fl-crew h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: 2px;
   color: var(--dim); }
 .fl-member { display: flex; align-items: center; gap: 8px;
@@ -566,7 +569,7 @@
     <div id="fl-main">
       <div id="fl-crew"><h4>CREW</h4><div id="fl-crewlist"></div></div>
     <div id="fl-scroll"><div id="fl-canvas">
-      <svg id="fl-svg" width="1160" height="480"></svg>
+      <svg id="fl-svg" width="1690" height="710"></svg>
       <div id="fl-nodes"></div>
       <div id="fl-linepop"></div>
     </div></div>
@@ -650,6 +653,8 @@
     document.querySelectorAll(".page").forEach(x => x.classList.remove("active"));
     b.classList.add("active");
     document.getElementById("p-" + b.dataset.p).classList.add("active");
+    if (b.dataset.p === "flow" && window.__flowShown)
+      window.__flowShown();
   });
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -1698,7 +1703,8 @@
     const errline = document.getElementById("fl-err");
     const problemsEl = document.getElementById("fl-problems");
     const S = { catalog: null, flows: [], flow: null,
-      selLine: null, selNode: null, drag: null, valTimer: 0, runTimer: 0,
+      selLine: null, selNode: null, hoverLine: null, drag: null,
+      valTimer: 0, runTimer: 0,
       badLines: {}, badNodes: {} };
     function fail(e) { errline.textContent = "Error: " + e.message; }
     function agentOf(id) {
@@ -1774,14 +1780,15 @@
         }
         if (!n.pc) {
           inner += '<div class="fl-port in" data-in="' + esc(n.id) + '"></div>';
-        const outs = outputsOf(n.id);
-        outs.forEach((o, i) => {
-          const top = Math.round((i + 1) / (outs.length + 1) * 100);
-          inner += '<div class="fl-out" data-out="' + esc(n.id) +
-            '" data-cat="' + esc(o.category) + '" style="top:' + top + '%"' +
-            ' title="' + esc(o.description || o.category) + '"><span>' +
-            esc(o.category) + "</span></div>";
-        });
+          const outs = outputsOf(n.id);
+          if (outs.length) {
+            inner += '<div class="fl-outs">' + outs.map(o =>
+              '<div class="fl-out" data-out="' + esc(n.id) +
+              '" data-cat="' + esc(o.category) +
+              '" title="' + esc(o.description || o.category) +
+              '"><i></i><span>' + esc(o.category) +
+              "</span></div>").join("") + "</div>";
+          }
         }
         div.innerHTML = inner;
         nodesEl.appendChild(div);
@@ -1797,7 +1804,9 @@
           });
         };
       });
+      fitCanvas();
       drawLines();
+      requestAnimationFrame(() => drawLines());
       renderCrew();
     }
 
@@ -1843,6 +1852,8 @@
     }
     function drawDotted() {
       const NS = "http://www.w3.org/2000/svg";
+      svg.querySelectorAll(".fl-pcline, .fl-pclabel, path[data-hover]")
+        .forEach(el => el.remove());
       (S.flow.pc_lines || []).forEach(pl => {
         const a = nodeCenter(pl.from), b = nodeCenter(pl.to);
         if (!a || !b) return;
@@ -1856,16 +1867,41 @@
         const hit = document.createElementNS(NS, "path");
         hit.setAttribute("d", d);
         hit.setAttribute("class", "fl-hit");
+        hit.setAttribute("data-hover", pl.id);
         hit.onclick = (e) => { e.stopPropagation(); openPcPop(pl, e); };
+        hit.onmouseenter = () => {
+          if (S.hoverLine !== pl.id) {
+            S.hoverLine = pl.id;
+            drawDotted();
+          }
+        };
+        hit.onmouseleave = () => {
+          S.hoverLine = null;
+          drawDotted();
+        };
         svg.appendChild(hit);
         const t = document.createElementNS(NS, "text");
         t.setAttribute("x", (a.x + b.x) / 2);
         t.setAttribute("y", (a.y + b.y) / 2 - 6);
-        t.setAttribute("class", "fl-pclabel");
+        t.setAttribute("class", "fl-pclabel" +
+          ((S.selLine === pl.id || S.hoverLine === pl.id ||
+            S.badLines[pl.id]) ? " on" : ""));
         t.setAttribute("text-anchor", "middle");
         t.textContent = pcLabel(pl);
         svg.appendChild(t);
       });
+    }
+    function fitCanvas() {
+      let w = 800, h = 480;
+      (S.flow.nodes || []).forEach(n => {
+        const p = pos(n.id);
+        w = Math.max(w, p.x + 260);
+        h = Math.max(h, p.y + 200);
+      });
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
+      svg.setAttribute("width", canvas.clientWidth);
+      svg.setAttribute("height", canvas.clientHeight);
     }
     function drawLines() {
       drawLinesSolid();
@@ -2046,7 +2082,7 @@
       pop.innerHTML = h;
       const c = canvas.getBoundingClientRect();
       pop.style.display = "block";
-      pop.style.left = Math.min(e.clientX - c.left + 8, 900) + "px";
+      pop.style.left = Math.min(e.clientX - c.left + 8, 1350) + "px";
       pop.style.top = Math.max(e.clientY - c.top - 10, 0) + "px";
       const allBox = pop.querySelector("[data-all]");
       const boxes = Array.prototype.slice.call(
@@ -2084,7 +2120,7 @@
         "<button data-popclose>CLOSE</button>";
       const c = canvas.getBoundingClientRect();
       pop.style.display = "block";
-      pop.style.left = Math.min(e.clientX - c.left + 8, 900) + "px";
+      pop.style.left = Math.min(e.clientX - c.left + 8, 1350) + "px";
       pop.style.top = Math.max(e.clientY - c.top - 10, 0) + "px";
       pop.querySelector("[data-popdel]").onclick = () => {
         S.flow.pc_lines = (S.flow.pc_lines || [])
@@ -2146,9 +2182,11 @@
             Math.abs(e.clientY - S.drag.dy) > 3)
           S.drag.moved = true;
         if (S.drag.moved) {
-          const nx = Math.max(0, Math.min(960,
+          const limX = Math.max(0, canvas.clientWidth - 206);
+          const limY = Math.max(0, canvas.clientHeight - 140);
+          const nx = Math.max(0, Math.min(limX,
             S.drag.x0 + e.clientX - S.drag.dx));
-          const ny = Math.max(0, Math.min(400,
+          const ny = Math.max(0, Math.min(limY,
             S.drag.y0 + e.clientY - S.drag.dy));
           S.flow.positions[S.drag.id] = [Math.round(nx), Math.round(ny)];
           const el = nodesEl.querySelector('[data-n="' + S.drag.id + '"]');
@@ -2420,6 +2458,10 @@
       status("");
     }
     loadRuns();
+    window.__flowShown = () => {
+      requestAnimationFrame(() => drawLines());
+    };
+    window.addEventListener("resize", () => drawLines());
   })();
 
   /* Settings: embedding profiles. */

@@ -96,6 +96,32 @@ ok(all(isinstance(n.get("pc"), str)
 ok(all(n.get("pc") for n in dflt["nodes"]
        if n["id"] in ("pc_source", "pc_theory", "pc_article")),
    "all three PCs are on the canvas")
+W, H, CW, CH = 206, 140, 1690, 710
+boxes = {}
+for n in dflt["nodes"]:
+    p = dflt.get("positions", {}).get(n["id"])
+    boxes[n["id"]] = (p[0], p[1], p[0] + W, p[1] + H) if p else None
+ok(all(b for b in boxes.values())
+   and all(b[2] <= CW and b[3] <= CH for b in boxes.values()),
+   "every default node is placed inside the canvas")
+clash = []
+ids = sorted(boxes)
+for i in range(len(ids)):
+    for j in range(i + 1, len(ids)):
+        a, b = boxes[ids[i]], boxes[ids[j]]
+        if a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]:
+            clash.append((ids[i], ids[j]))
+ok(not clash, "default nodes do not overlap (%s)"
+   % (", ".join("%s/%s" % c for c in clash) or "none"))
+crew = {n["id"] for n in dflt["nodes"] if not n.get("pc")}
+solids = dflt["lines"]
+dots = dflt.get("pc_lines", [])
+ok(len(solids) == 10 and len(dots) == 29
+   and all(ln["from"] in crew and ln["to"] in crew for ln in solids)
+   and all(pl["from"] in boxes and pl["to"] in boxes for pl in dots),
+   "39 lines would draw (10 solid + 29 dotted)")
+# No PC-row gap rule: the owner's drawn layout (source of truth)
+# interleaves PCs with crew (Source PC sits above Sam).
 try:
     flow.load_flow("../x")
     ok(False, "bad flow id raises")

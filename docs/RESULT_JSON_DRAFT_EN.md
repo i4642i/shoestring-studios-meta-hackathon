@@ -1529,4 +1529,5 @@ Rules the flow file enforces: PC nodes (`{"id", "pc"}`) need no
 dotted ids must not clash with solid ids. The Flow tab draws all
 of this — PC nodes on the canvas, dotted lines with labels, and a
 per-agent "Preview start prompt" built by the same chunk builder
-real runs use.
+real runs use. Layout follows the owner's drawn design (kept
+private).
