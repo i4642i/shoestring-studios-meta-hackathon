@@ -15,7 +15,7 @@
   #bubbles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
   .bubble { position: absolute; max-width: 150px; background: #fff; color: #222;
     border: 2px solid #111; border-radius: 10px; padding: 4px 8px; font-size: 12px;
-    line-height: 1.35; transform: translate(-50%, -100%); }
+    line-height: 1.35; transform: translate(-50%, -100%); transition: opacity .3s; }
   .bubble::after { content: ""; position: absolute; left: 50%; bottom: -7px;
     width: 10px; height: 10px; background: #fff; border-right: 2px solid #111;
     border-bottom: 2px solid #111; transform: translateX(-50%) rotate(45deg); }
@@ -220,8 +220,9 @@ setTimeout(() => {
 /* ================= renderer, scene, camera, lights ================= */
 const container = $("app");
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+if (container.clientWidth > 1 && container.clientHeight > 1)
+  renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -232,16 +233,28 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 scene.fog = new THREE.Fog(SKY, 20, 42);
 
-// Orthographic (isometric-feel) view: no perspective distortion. Fixed
-// frustum height; narrow screens show a slice (pan/zoom to explore).
-const FRUSTUM_H = 8;
+// Orthographic (isometric-feel) view: no perspective distortion. The
+// frustum auto-fits the whole floor with a small margin at any aspect.
+const FIT_MARGIN = 1.08;
+const _fitV = new THREE.Vector3();
 function fitCamera() {
-  const aspect = container.clientWidth / container.clientHeight;
-  const halfH = FRUSTUM_H / 2;
-  camera.left = -halfH * aspect;
-  camera.right = halfH * aspect;
+  const w = container.clientWidth, h = container.clientHeight;
+  if (w < 2 || h < 2) return; // hidden tab: wait for a real size
+  camera.updateMatrixWorld();
+  const corners = [[ROOM.x0, ROOM.z0], [ROOM.x0 + ROOM.w, ROOM.z0],
+    [ROOM.x0, ROOM.z0 + ROOM.d], [ROOM.x0 + ROOM.w, ROOM.z0 + ROOM.d]];
+  let mx = 0, my = 0;
+  for (const [x, z] of corners) {
+    _fitV.set(x, 0, z).applyMatrix4(camera.matrixWorldInverse);
+    mx = Math.max(mx, Math.abs(_fitV.x));
+    my = Math.max(my, Math.abs(_fitV.y));
+  }
+  const halfH = Math.max(my, mx / (w / h)) * FIT_MARGIN;
+  camera.left = -halfH * (w / h);
+  camera.right = halfH * (w / h);
   camera.top = halfH;
   camera.bottom = -halfH;
+  camera.zoom = 1;
   camera.updateProjectionMatrix();
 }
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
@@ -719,6 +732,7 @@ async function spawnCrew() {
   $("crewn").textContent = "· " + crew.length + (crew.length === 1 ? " CREW" : " CREW");
 }
 function setBubble(m, text) {
+  m.bubbleSetAt = performance.now();
   m.bubble.innerHTML = "";
   const who = document.createElement("b");
   who.textContent = String(m.emp.name || m.emp.id).toUpperCase();
@@ -836,7 +850,25 @@ function updateCrew(dt, now) {
       m.bubble.style.left = ((m.head.x * 0.5 + 0.5) * container.clientWidth) + "px";
       m.bubble.style.top = ((-m.head.y * 0.5 + 0.5) * container.clientHeight - 12) + "px";
     }
+    const age = now - (m.bubbleSetAt || 0);
+    m.bubble.style.opacity = age < 3000 ? "1"
+      : String(Math.max(0.25, 1 - (age - 3000) / 2000 * 0.75));
   }
+  // Stack overlapping bubbles downward so none cover each other.
+  const vis = [];
+  for (const m of crew) {
+    if (m.bubble.style.display === "none") continue;
+    vis.push({ m, top: parseFloat(m.bubble.style.top) || 0,
+      h: m.bubble.getBoundingClientRect().height });
+  }
+  vis.sort((a, b) => a.top - b.top);
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 1; i < vis.length; i++) {
+      const minTop = vis[i - 1].top + vis[i].h + 6;
+      if (vis[i].top < minTop) vis[i].top = minTop;
+    }
+  }
+  for (const v of vis) v.m.bubble.style.top = v.top + "px";
 }
 
 /* ================= input: orbit + click-to-follow + reset ================= */
@@ -854,6 +886,8 @@ let camTween = null;      // {p0,p1,t0,t1,until} camera reset glide, or null
 controls.addEventListener("start", () => { followed = null; camTween = null; });
 $("reset").onclick = () => {
   followed = null;
+  camera.zoom = 1;
+  fitCamera();
   camTween = {
     p0: camera.position.clone(), p1: new THREE.Vector3(...HOME.pos),
     t0: controls.target.clone(), t1: new THREE.Vector3(...HOME.tgt),
@@ -911,10 +945,22 @@ addEventListener("message", (e) => {
   m.chatAt = now;
   m.bubbleAt = now + 8000;
 });
-addEventListener("resize", () => {
+function sizeRenderer() {
+  const w = container.clientWidth, h = container.clientHeight;
+  if (w < 2 || h < 2) return false; // hidden: ResizeObserver refires on show
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  renderer.setSize(w, h);
+  return true;
+}
+function refit() {
+  if (!sizeRenderer()) return;
+  controls.update();
   fitCamera();
-  renderer.setSize(container.clientWidth, container.clientHeight);
-});
+}
+if (typeof ResizeObserver !== "undefined")
+  new ResizeObserver(refit).observe(container);
+addEventListener("resize", refit);
+refit();
 
 /* ================= main loop + boot ================= */
 const timer = new THREE.Timer();
@@ -935,7 +981,7 @@ function animate() {
     const e = k * k * (3 - 2 * k);
     camera.position.lerpVectors(camTween.p0, camTween.p1, e);
     controls.target.lerpVectors(camTween.t0, camTween.t1, e);
-    if (k >= 1) camTween = null;
+    if (k >= 1) { camTween = null; fitCamera(); }
   }
   controls.target.x = clamp(controls.target.x, -5, 5);
   controls.target.y = clamp(controls.target.y, 0, 2.5);
@@ -950,6 +996,7 @@ function animate() {
   buildGrid();
   await spawnCrew();
   $("loading").style.display = "none";
+  $("error").style.display = "none";
   booted = true;
 })().catch((e) => showError("Boot failed.", String((e && e.message) || e)));
 </script>

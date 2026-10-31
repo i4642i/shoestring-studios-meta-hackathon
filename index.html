@@ -40,12 +40,27 @@
   /* hero */
   #p-order { max-width: none; padding: 0 0 40px; }
   #p-order .card { max-width: 1120px; margin-left: auto; margin-right: auto; }
-  #p-studio { max-width: 1440px; }
-  #p-studio .studiowrap { display: flex; gap: 16px; align-items: stretch; }
-  #p-studio .officebox { flex: 1 1 auto; min-width: 0; }
-  #p-studio .officebox iframe.office { height: 560px; aspect-ratio: auto; max-height: none; }
-  .chatbox { flex: 0 0 340px; display: flex; flex-direction: column; height: 560px;
+  #p-studio { max-width: none; padding: 12px 16px 16px; height: calc(100dvh - 72px);
+    min-height: 480px; display: flex; flex-direction: column; }
+  #p-studio .card { padding: 0; border: none; margin: 0; background: transparent;
+    display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  #p-studio .card h2 { margin: 0 0 8px; flex: none; }
+  #p-studio .studiowrap { display: flex; gap: 12px; align-items: stretch;
+    flex: 1 1 auto; min-height: 0; }
+  #p-studio .officebox { flex: 1 1 auto; min-width: 0; min-height: 0; position: relative; }
+  #p-studio .officebox iframe.office { height: 100%; aspect-ratio: auto; min-height: 0;
+    max-height: none; display: block; }
+  .chatbox { flex: 0 0 320px; display: flex; flex-direction: column; min-height: 0;
     border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+  #chatcollapse { flex: none; font-size: 14px; font-weight: 700; line-height: 1;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    padding: 5px 9px; cursor: pointer; }
+  #chatopen { display: none; position: absolute; right: 10px; bottom: 10px; z-index: 5;
+    font-size: 12px; font-weight: 700; letter-spacing: 1px;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    padding: 7px 12px; cursor: pointer; }
+  .studiowrap.chat-hidden .chatbox { display: none; }
+  .studiowrap.chat-hidden #chatopen { display: block; }
   .chead { display: flex; align-items: center; gap: 8px; padding: 10px 12px;
     border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 700; letter-spacing: 2px; }
   .chead select { margin-left: auto; font-size: 13px; padding: 5px 8px; max-width: 210px;
@@ -67,8 +82,10 @@
     border-radius: 8px; background: var(--ink); color: #fff; cursor: pointer; }
   .cform button:disabled { opacity: 0.5; cursor: default; }
   @media (max-width: 900px) {
+    #p-studio { height: auto; min-height: 0; }
     #p-studio .studiowrap { flex-direction: column; }
-    #p-studio .officebox iframe.office { height: auto; aspect-ratio: 16 / 9; min-height: 0; }
+    #p-studio .officebox { flex: none; width: 100%; height: 60dvh; min-height: 320px; }
+    #p-studio .officebox iframe.office { height: 100%; aspect-ratio: auto; min-height: 0; }
     .chatbox { flex: none; height: 380px; }
   }
   .hero { text-align: center; padding: 72px 24px 40px;
@@ -339,9 +356,9 @@
   <div class="card">
     <h2>STUDIO — WATCH THE CREW WORK</h2>
     <div class="studiowrap">
-      <div class="officebox"><iframe class="office" src="office_3d.html" title="3D office"></iframe></div>
+      <div class="officebox"><iframe class="office" src="office_3d.html" title="3D office"></iframe><button id="chatopen" type="button">CHAT</button></div>
       <div class="chatbox">
-        <div class="chead"><span>CHAT</span><select id="chatwho" aria-label="Talk to"></select></div>
+        <div class="chead"><span>CHAT</span><select id="chatwho" aria-label="Talk to"></select><button id="chatcollapse" type="button" title="Collapse chat" aria-label="Collapse chat">&raquo;</button></div>
         <div class="cmsgs" id="chatmsgs" aria-live="polite"></div>
         <form class="cform" id="chatform" autocomplete="off">
           <input id="chatinput" maxlength="500" placeholder="Say hi to the crew…" aria-label="Message">
@@ -1399,6 +1416,16 @@
       }
     });
     loadWho();
+  })();
+
+  /* Studio chat collapse: office takes the full width while hidden. */
+  (function studioCollapse() {
+    const wrap = document.querySelector("#p-studio .studiowrap");
+    const hide = document.getElementById("chatcollapse");
+    const show = document.getElementById("chatopen");
+    if (!wrap || !hide || !show) return;
+    hide.onclick = () => wrap.classList.add("chat-hidden");
+    show.onclick = () => wrap.classList.remove("chat-hidden");
   })();
 
   /* Order consultation: assignee + chat + 5 questions + PDF + mini-3D seat. */
