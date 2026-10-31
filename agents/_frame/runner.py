@@ -273,7 +273,9 @@ def run(agent_dir, run_dir, brief, input_md):
     run_id = (brief_obj.get("flow_run_id") or brief_obj.get("run_id")
               or "%s-%s" % (order_id, agent["id"]))
     ctx = {"run_dir": run_dir, "agent_dir": agent_dir, "input_md": input_md,
-           "producer": agent["id"], "order_id": order_id, "run_id": run_id}
+           "producer": brief_obj.get("clone_id") or agent["id"],
+           "order_id": order_id, "run_id": run_id,
+           "gene_quota": brief_obj.get("gene_quota")}
     messages = [
         {"role": "system", "content": persona},
         {"role": "user", "content":

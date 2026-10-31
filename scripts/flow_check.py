@@ -41,10 +41,10 @@ ok("sales_sam" in [a["id"] for a in cat["agents"] if a.get("flow")],
 ok(sorted(c["name"] for c in cat["categories"])
    == ["anim_picks", "brief", "cases", "concept", "concepts",
        "gen_picks", "narration", "photo_picks", "render_log",
-       "request", "slide_draft", "source", "storyboard",
-       "storyboard_draft", "storyboard_table", "structure",
-       "style_guide", "video"],
-   "catalog has 18 categories")
+       "request", "slide_draft", "source", "split_plan",
+       "storyboard", "storyboard_draft", "storyboard_table",
+       "structure", "style_guide", "video"],
+   "catalog has 19 categories")
 ok(all((a.get("color") or "").startswith("#") for a in cat["agents"]),
    "catalog colors")
 ok(all(isinstance(a.get("tools"), list) and a["tools"]
@@ -77,8 +77,9 @@ ok([p["id"] for p in cat.get("pcs", [])]
    == ["pc_source", "pc_theory", "pc_article", "pc_image",
        "pc_generated", "pc_voice"],
    "catalog lists the six PCs")
-ok([c["id"] for c in cat.get("code", [])] == ["video_production"],
-   "catalog lists the video code node")
+ok([c["id"] for c in cat.get("code", [])]
+   == ["video_production", "part_split"],
+   "catalog lists the code nodes")
 samdecl = next(a for a in cat["agents"] if a["id"] == "sales_sam")
 ok(samdecl["flow"]["inputs"] == []
    and [o["category"] for o in samdecl["flow"]["outputs"]]
@@ -88,17 +89,17 @@ ok(samdecl["flow"]["inputs"] == []
 dflt = flow.load_flow("default")
 ok([n["id"] for n in dflt["nodes"]]
    == ["sales_sam", "pd_marty", "explain_cleo", "case_rex", "plan_ash",
-       "voice_wren", "board_penn", "photo_pia", "image_gene", "anim_max",
-       "board_vera", "slide_remy", "final", "video_production",
-       "pc_source", "pc_theory", "pc_article", "pc_image",
-       "pc_generated", "pc_voice"]
+       "voice_wren", "board_penn", "part_split", "photo_pia",
+       "image_gene", "anim_max", "board_vera", "slide_remy",
+       "final", "video_production", "pc_source", "pc_theory",
+       "pc_article", "pc_image", "pc_generated", "pc_voice"]
    and dflt["name"] == "Order to video",
    "default flow is sam->..->wren->penn->helpers->vera->remy->video")
 ok(not next(n for n in dflt["nodes"]
             if n["id"] == "final").get("temp")
-   and len(dflt["lines"]) == 37
+   and len(dflt["lines"]) == 47
    and len(dflt.get("pc_lines", [])) == 44,
-   "final takes video+storyboard_table, 37 solid + 44 dotted")
+   "final takes video+storyboard_table, 47 solid + 44 dotted")
 ok(next(n for n in dflt["nodes"]
         if n["id"] == "video_production").get("code") is True,
    "video node is marked code")
@@ -129,10 +130,10 @@ ok(not clash, "default nodes do not overlap (%s)"
 crew = {n["id"] for n in dflt["nodes"] if not n.get("pc")}
 solids = dflt["lines"]
 dots = dflt.get("pc_lines", [])
-ok(len(solids) == 37 and len(dots) == 44
+ok(len(solids) == 47 and len(dots) == 44
    and all(ln["from"] in crew and ln["to"] in crew for ln in solids)
    and all(pl["from"] in boxes and pl["to"] in boxes for pl in dots),
-   "81 lines would draw (37 solid + 44 dotted)")
+   "91 lines would draw (47 solid + 44 dotted)")
 # No PC-row gap rule: the owner's drawn layout (source of truth)
 # interleaves PCs with crew (Source PC sits above Sam).
 try:
@@ -293,8 +294,9 @@ seq = flow.topo_order(dflt)
 ok(seq.index("sales_sam") < seq.index("pd_marty")
    < seq.index("explain_cleo") < seq.index("plan_ash")
    < seq.index("voice_wren") < seq.index("board_penn")
-   < seq.index("photo_pia") < seq.index("board_vera")
-   < seq.index("slide_remy") < seq.index("video_production")
+   < seq.index("part_split") < seq.index("photo_pia")
+   < seq.index("board_vera") < seq.index("slide_remy")
+   < seq.index("video_production")
    < seq.index("final") == len(seq) - 1
    and seq.index("pd_marty") < seq.index("case_rex")
    < seq.index("plan_ash")
@@ -404,6 +406,8 @@ PAY = {"sales_sam": ("sales_sam", {"request": REQ}),
 
 def stub(agent_dir, run_dir, brief, input_md):
     who = os.path.basename(run_dir)
+    if _re.fullmatch(r"p\d+", who):
+        who = os.path.basename(os.path.dirname(run_dir))
     if who == "voice_wren":
         saved = _pc.voice_save(brief["order_id"], "s1c1",
                                b"\x00" * 32, "Hello world", 20, 1,
@@ -416,7 +420,8 @@ def stub(agent_dir, run_dir, brief, input_md):
             "attempts": 1}]}}
         producer = "voice_wren"
     else:
-        producer, cats = PAY[who]
+        _base, cats = PAY[who]
+        producer = brief.get("clone_id", _base)
     if who == "slide_remy":
         sdir = os.path.join(run_dir, "slides")
         os.makedirs(sdir, exist_ok=True)
@@ -597,7 +602,7 @@ evs = [json.loads(ln) for ln in
        open(os.path.join(rdir, "events.jsonl"), encoding="utf-8")]
 kinds = [e["ev"] for e in evs]
 ok(kinds[0] == "flow_start" and kinds[-1] == "flow_done"
-   and "order_ready" not in kinds and kinds.count("line") == 37
+   and "order_ready" not in kinds and kinds.count("line") == 47
    and "final_ready" in kinds, "event trail complete")
 line1 = next(e for e in evs if e.get("line") == "c1")
 ok(line1["categories"] == ["request"]
@@ -680,10 +685,11 @@ try:
                        run_id="step1",
                        runs_root=os.path.join(tmp, "runs"))
     ok(s2.get("ok") and s2.get("ran") == ["voice_wren", "board_penn",
-                                          "anim_max", "image_gene",
-                                          "photo_pia", "board_vera"],
+                                          "part_split", "anim_max",
+                                          "image_gene", "photo_pia",
+                                          "board_vera"],
        "approved stages are skipped, pair runs together")
-    ok(open(os.path.join(sdir, "board_vera", "report.md"),
+    ok(open(os.path.join(sdir, "board_vera", "p1", "report.md"),
             encoding="utf-8").read().startswith("# Stage summary (KO)"),
        "step report starts with the KO summary")
     ok("want_summary_ko" not in json.load(

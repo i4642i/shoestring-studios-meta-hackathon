@@ -1814,6 +1814,8 @@
     }
     function outputsOf(id) {
       const n = (S.flow.nodes || []).find(x => x.id === id);
+      if (id === "part_split") return [{ category: "split_plan" },
+        { category: "narration" }, { category: "storyboard" }];
       if (n && n.code) return [{ category: "video" },
         { category: "storyboard_table" }];
       const a = agentOf(id);
@@ -1837,7 +1839,8 @@
       if (n && n.code) {
         const c = (S.catalog.code || []).find(x => x.id === id);
         return [c ? c.title : id,
-          "code step: join + subtitles + table"];
+          id === "part_split" ? "code step: one clone per part"
+            : "code step: join + subtitles + table"];
       }
       if (n && n.pc) {
         const p = (S.catalog.pcs || []).find(x => x.id === id);
@@ -1888,7 +1891,7 @@
         if (n.pc) {
           inner += '<div class="req">not a runner: dotted lines only</div>';
         } else if (n.code) {
-          inner += '<div class="req">needs: narration*, render_log*</div>';
+          inner += n.id === "part_split" ? '<div class="req">needs: structure*, draft*, narration*, storyboard*, guide*</div>' : '<div class="req">needs: narration*, render_log*</div>';
         } else if (n.id !== "final") {
           const a = agentOf(n.id);
           const reqs = (((a && a.flow) || {}).inputs || [])

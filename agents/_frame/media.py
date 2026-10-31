@@ -8,6 +8,7 @@ refuses with a clear error naming the cap.
 """
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -27,6 +28,15 @@ LICENSE_OK = ("cc0", "pdm", "by", "by-sa")
 _HTTP_JSON = None  # fn(url) -> parsed JSON (tests inject fixtures)
 _HTTP_BYTES = None  # fn(url, cap) -> bytes (tests inject fixtures)
 _IMAGE_FN = None  # fn(prompt) -> (blob, model, cost_usd)
+
+
+def _owns(ctx, base):
+    """True when the caller is base or one of its part clones
+    (base@pN): clones use the base tools unchanged."""
+    prod = (ctx or {}).get("producer", "")
+    return prod == base or \
+        re.fullmatch(re.escape(base) + r"@p\d+", prod or "") \
+        is not None
 
 
 def _get_json(url):
@@ -115,7 +125,7 @@ def _license_ok(lic):
 def pc_search_images(ctx, args):
     """Pia's photo search: Openverse hits into the run log (never
     stored). At most 2 queries per cut per run."""
-    if (ctx or {}).get("producer") != "photo_pia":
+    if not _owns(ctx, "photo_pia"):
         return {"error": "pc_search_images is Pia's tool"}
     cut_id = ((args or {}).get("cut_id") or "").strip()
     q = ((args or {}).get("query") or "").strip()
@@ -147,7 +157,7 @@ def pc_search_images(ctx, args):
 def pc_pick_image(ctx, args):
     """Pia's pick: download one licensed photo into the Image PC
     (file + source URL + license + reason, always credited)."""
-    if (ctx or {}).get("producer") != "photo_pia":
+    if not _owns(ctx, "photo_pia"):
         return {"error": "pc_pick_image is Pia's tool"}
     args = args or {}
     missing = [k for k in ("image_url", "page_url", "license",
@@ -168,7 +178,9 @@ def pc_pick_image(ctx, args):
     try:
         saved = pc.image_store_pick(
             ctx.get("order_id", ""), args["page_url"].strip(), blob,
-            lic, args["reason"].strip(), suffix=suffix)
+            lic, args["reason"].strip(),
+            set_by=(ctx or {}).get("producer", "photo_pia"),
+            suffix=suffix)
     except (OSError, ValueError) as exc:
         return {"error": "store failed: %s" % exc}
     _log_research(ctx, {"ev": "pick", "ref": saved["ref"],
@@ -209,14 +221,24 @@ def _muse_image(prompt):
 def pc_generate_image(ctx, args):
     """Gene's image call: at most 6 per run; the same prompt
     reuses the stored image without a new call."""
-    if (ctx or {}).get("producer") != "image_gene":
+    if not _owns(ctx, "image_gene"):
         return {"error": "pc_generate_image is Gene's tool"}
     prompt = ((args or {}).get("prompt") or "").strip()
     if not prompt:
         return {"error": "give {prompt}"}
+    producer = (ctx or {}).get("producer", "image_gene")
+    quota = (ctx or {}).get("gene_quota")
+    cap = GEN_IMAGE_CAP if quota is None else quota
     doc_id = pc.content_id("generated:" + prompt)
     try:
         entry = pc.load_entry_by_ref(pc.entry_ref("generated", doc_id))
+        try:
+            pc.set_recipients(
+                "generated", doc_id, ctx.get("order_id", ""),
+                pc.media_grantees("generated", producer), producer,
+                kind="full")
+        except (OSError, ValueError) as exc:
+            return {"error": "reuse grant failed: %s" % exc}
         return {"ok": True, "ref": entry["ref"],
                 "file": entry.get("file", ""), "reused_entry": True,
                 "model": entry.get("model", ""),
@@ -226,9 +248,12 @@ def pc_generate_image(ctx, args):
     countp = os.path.join(ctx["run_dir"], "gen_images.json")
     counts = _counter(countp)
     n = int(counts.get("n", 0)) + 1
-    if n > GEN_IMAGE_CAP:
-        return {"error": "run already used %d generated images"
-                % GEN_IMAGE_CAP}
+    if n > cap:
+        if quota is None:
+            return {"error": "run already used %d generated images"
+                    % GEN_IMAGE_CAP}
+        return {"error": "part quota allows %d new images"
+                % quota}
     try:
         if _IMAGE_FN is not None:
             blob, model, cost = _IMAGE_FN(prompt)
@@ -238,7 +263,8 @@ def pc_generate_image(ctx, args):
         return {"error": str(exc)}
     try:
         saved = pc.generated_store(ctx.get("order_id", ""), prompt,
-                                   blob, cost, model)
+                                   blob, cost, model,
+                                   set_by=producer)
     except (OSError, ValueError) as exc:
         return {"error": "store failed: %s" % exc}
     counts["n"] = n
@@ -256,6 +282,10 @@ def _resolve_view(ctx, args):
             entry = pc.load_entry_by_ref(ref)
         except (OSError, ValueError, KeyError) as exc:
             return None, "no such ref: %s" % exc
+        if not pc.entry_parts_allow(
+                entry, (ctx or {}).get("producer", ""),
+                (ctx or {}).get("order_id", ""), ref):
+            return None, "no access to this item"
         sub = {"image": "files", "generated": "files"}.get(
             entry.get("pc"), "figures")
         fname = entry.get("file", "")
@@ -292,7 +322,7 @@ def _stage_view(ctx, tool, cut_id, full):
 def vera_view_image(ctx, args):
     """Vera opens one candidate file and looks at it (vision).
     At most 4 files per cut per run."""
-    if (ctx or {}).get("producer") != "board_vera":
+    if not _owns(ctx, "board_vera"):
         return {"error": "vera_view_image is Vera's tool"}
     cut_id = ((args or {}).get("cut_id") or "").strip()
     if not cut_id:
@@ -315,7 +345,7 @@ def vera_view_image(ctx, args):
 def remy_view_slide(ctx, args):
     """Remy looks at one rendered slide with vision (raster PNG
     in live runs; the render cap governs re-renders)."""
-    if (ctx or {}).get("producer") != "slide_remy":
+    if not _owns(ctx, "slide_remy"):
         return {"error": "remy_view_slide is Remy's tool"}
     cut_id = ((args or {}).get("cut_id") or "").strip()
     if not cut_id:

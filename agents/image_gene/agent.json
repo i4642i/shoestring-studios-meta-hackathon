@@ -31,14 +31,19 @@
  "flow": {
   "inputs": [
    {
+    "category": "split_plan",
+    "required": true,
+    "description": "Part split: this part's cuts plus the shared context."
+   },
+   {
+    "category": "narration",
+    "required": true,
+    "description": "Wren's lines and cut times for this part."
+   },
+   {
     "category": "storyboard",
     "required": true,
     "description": "Penn's per-cut screen plan to illustrate."
-   },
-   {
-    "category": "style_guide",
-    "required": false,
-    "description": "Image tone to match."
    }
   ],
   "outputs": [

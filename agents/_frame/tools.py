@@ -1340,6 +1340,14 @@ def write_gen_picks(ctx, args):
     errors = validate_gen_picks(obj, board)
     if errors:
         return {"ok": False, "errors": errors}
+    quota = (ctx or {}).get("gene_quota")
+    if quota is not None:
+        fresh = [im for im in (obj.get("images") or [])
+                 if isinstance(im, dict) and not im.get("reused")]
+        if len(fresh) > quota:
+            return {"ok": False, "errors": [
+                "part quota allows %d new images, got %d"
+                % (quota, len(fresh))]}
     order_id = (ctx or {}).get("order_id", "")
     for i, im in enumerate(obj["images"]):
         if not isinstance(im, dict):

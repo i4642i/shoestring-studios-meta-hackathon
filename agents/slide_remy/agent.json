@@ -31,19 +31,24 @@
  "flow": {
   "inputs": [
    {
+    "category": "split_plan",
+    "required": true,
+    "description": "Part split: this part's cuts plus the shared context."
+   },
+   {
     "category": "slide_draft",
     "required": true,
     "description": "Vera's per-cut slide plan to build."
    },
    {
-    "category": "style_guide",
-    "required": true,
-    "description": "Look to render with."
-   },
-   {
     "category": "narration",
     "required": false,
     "description": "Wren's cut times for reference."
+   },
+   {
+    "category": "storyboard",
+    "required": false,
+    "description": "Penn's screen ideas for reference."
    }
   ],
   "outputs": [

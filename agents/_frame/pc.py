@@ -2253,6 +2253,24 @@ MEDIA_CONSUMERS = {
     "generated": ["image_gene", "board_vera", "slide_remy"],
 }
 
+_CLONE_GRANT_RE = re.compile(r"^([A-Za-z0-9_]+)@p(\d+)$")
+
+
+def media_grantees(pcname, set_by):
+    """Recipient agents for a fresh image/generated pick. Whole
+    runs keep the base consumers; a clone's pick goes only to
+    its part's Vera/Remy clones plus video_production."""
+    m = _CLONE_GRANT_RE.match(set_by or "")
+    if not m:
+        return list(MEDIA_CONSUMERS.get(pcname, []))
+    base, no = m.group(1), m.group(2)
+    out = ["%s@p%s" % (c, no)
+           for c in MEDIA_CONSUMERS.get(pcname, [])
+           if c != base]
+    if "video_production" not in out:
+        out.append("video_production")
+    return out
+
 
 def voice_save(order_id, cut_id, wav_bytes, text, seconds, attempt,
                engine, root=None):
@@ -2317,7 +2335,7 @@ def image_store_pick(order_id, source_url, blob, license, reason,
     have = {(r.get("agent"), r.get("order_id")) for r in rows
             if isinstance(r, dict)}
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
-    for a in MEDIA_CONSUMERS["image"]:
+    for a in media_grantees("image", set_by):
         if (a, order_id) not in have:
             rows.append({"agent": a, "order_id": order_id,
                          "kind": "full", "parts": [],
@@ -2358,7 +2376,7 @@ def generated_store(order_id, prompt, blob, cost_usd, model,
     have = {(r.get("agent"), r.get("order_id")) for r in rows
             if isinstance(r, dict)}
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
-    for a in MEDIA_CONSUMERS["generated"]:
+    for a in media_grantees("generated", set_by):
         if (a, order_id) not in have:
             rows.append({"agent": a, "order_id": order_id,
                          "kind": "full", "parts": [],

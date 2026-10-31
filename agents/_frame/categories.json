@@ -880,6 +880,44 @@
   },
   "version": 3
  },
+ "split_plan": {
+  "version": 1,
+  "description": "Part split: per-part cuts, quotas, and the shared context (concept, style guide, parts list).",
+  "schema": {
+   "type": "object",
+   "required": [
+    "parts",
+    "shared"
+   ],
+   "properties": {
+    "parts": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "no",
+       "part_id",
+       "cuts"
+      ],
+      "properties": {
+       "no": {
+        "type": "integer"
+       },
+       "part_id": {
+        "type": "string"
+       },
+       "cuts": {
+        "type": "array"
+       }
+      }
+     }
+    },
+    "shared": {
+     "type": "object"
+    }
+   }
+  }
+ },
  "storyboard": {
   "version": 2,
   "description": "Penn's per-cut screen description: what to show and why, plus on-screen text (max 3 lines).",

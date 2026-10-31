@@ -32,6 +32,11 @@
  "flow": {
   "inputs": [
    {
+    "category": "split_plan",
+    "required": true,
+    "description": "Part split: this part's cuts plus the shared context."
+   },
+   {
     "category": "narration",
     "required": true,
     "description": "Wren's cuts with times to plan slides for."
@@ -42,24 +47,19 @@
     "description": "Penn's screen ideas."
    },
    {
-    "category": "style_guide",
-    "required": false,
-    "description": "Look to plan with."
-   },
-   {
     "category": "photo_picks",
     "required": false,
-    "description": "Pia's photo candidates."
+    "description": "Pia's photo candidates for this part."
    },
    {
     "category": "gen_picks",
     "required": false,
-    "description": "Gene's generated candidates."
+    "description": "Gene's generated candidates for this part."
    },
    {
     "category": "anim_picks",
     "required": false,
-    "description": "Max's animation candidates."
+    "description": "Max's animation candidates for this part."
    }
   ],
   "outputs": [

@@ -1586,8 +1586,8 @@ private).
 ## 16. Workflow design v8 (storyboard team + video production team)
 
 The default flow, exactly as drawn in the Flow tab: solid lines
-carry result categories, dotted lines show PC links. 20 nodes
-(12 crew + 1 code step + 6 PCs + final), 37 solid lines, 44
+carry result categories, dotted lines show PC links. 21 nodes
+(12 crew + 2 code steps + 6 PCs + final), 47 solid lines, 44
 dotted lines. No Order node: the flow starts at Sam. Layout
 follows the owner's drawn design (kept private).
 
@@ -1606,12 +1606,19 @@ Solid lines (one category each):
 | c40 | Marty \u2192 Wren | `concept` |
 | c41 | Marty \u2192 Penn | `concept` |
 | c42 | Wren \u2192 Penn | `narration` |
-| c43 | Wren \u2192 Vera | `narration` |
 | c44 | Wren \u2192 video | `narration` |
-| c45 | Wren \u2192 Remy | `narration` |
-| c46\u2013c49 | Penn \u2192 Pia/Gene/Max/Vera | `storyboard` |
 | c50 | Penn \u2192 video | `storyboard` |
-| c51\u2013c55 | Penn \u2192 Pia/Gene/Max/Vera/Remy | `style_guide` |
+| c81 | Marty \u2192 split | `structure` |
+| c82 | Marty \u2192 split | `concept` |
+| c83 | Ash \u2192 split | `storyboard_draft` |
+| c84 | Wren \u2192 split | `narration` |
+| c85 | Penn \u2192 split | `storyboard` |
+| c86 | Penn \u2192 split | `style_guide` |
+| c87\u2013c89 | split \u2192 Pia | `split_plan`, `narration`, `storyboard` |
+| c90\u2013c92 | split \u2192 Gene | `split_plan`, `narration`, `storyboard` |
+| c93\u2013c95 | split \u2192 Max | `split_plan`, `narration`, `storyboard` |
+| c96\u2013c98 | split \u2192 Vera | `split_plan`, `narration`, `storyboard` |
+| c99\u2013c101 | split \u2192 Remy | `split_plan`, `narration`, `storyboard` |
 | c56 | Pia \u2192 Vera | `photo_picks` |
 | c57 | Gene \u2192 Vera | `gen_picks` |
 | c58 | Max \u2192 Vera | `anim_picks` |
@@ -1659,6 +1666,10 @@ New categories (all versioned, writer-checked):
   `issues[]`. Content equals Vera's.
 - `storyboard_table` v1 (video step): rows of `part, scene_n,
   cut_id, start_s, end_s, narration, screen, materials`.
+- `split_plan` v1 (part_split): `parts[]` (no, part_id, cuts,
+  scenes, materials, gene quota) + `shared` (parts list,
+  concept, style guide). Clones see their own part in full
+  and other parts as one line each.
 
 New PCs (same recipients mechanism, \u00a78.9):
 

@@ -49,8 +49,8 @@ ok(set(reg) == {"brief", "cases", "concept", "concepts", "source",
                 "video", "storyboard_draft", "storyboard",
                 "narration", "style_guide", "photo_picks", "gen_picks",
                 "anim_picks", "slide_draft", "render_log",
-                "storyboard_table"},
-   "registry has 18 incl v8 cats")
+                "storyboard_table", "split_plan"},
+   "registry has 19 incl v8 cats")
 ok(reg["source"]["version"] == 3 and reg["structure"]["version"] == 3
    and reg["storyboard"]["version"] == 2
    and reg["narration"]["version"] == 2
