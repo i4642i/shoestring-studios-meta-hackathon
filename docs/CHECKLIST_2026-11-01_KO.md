@@ -57,7 +57,7 @@
 - [x] 3 J5 Order tab adaptive (0180077)
 - [x] 4 Flow box (B1/B3/B5 re-test) (c11651b)
 - [x] 5 J1/J2 Crew portraits (dda766c)
-- [ ] 6 J12 Menu order
+- [x] 6 J12 Menu order (93dd36d)
 - [ ] 7 J6/J7 Run controls
 - [ ] 8 J10/J11 Studio office live states + click to chat
 - [ ] 9 J8/J9 Employee project memory + chat
