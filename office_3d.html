@@ -166,7 +166,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.Fog(SKY, 40, 80);
+// No fog: the camera sits 60 m out, so any near fog would haze the scene.
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
 let booted = false;
 function showError(msg, detail) {
@@ -511,15 +511,14 @@ function buildServerRoom() {
     scene.add(stripe);
     const parts = pc.name.split(" ");
     const plate = textPlate(parts.length > 2 ? [parts.slice(0, -1).join(" "), parts[parts.length - 1]] : parts,
-      0.7, 0.34, { bg: "#101418", fg: "#f5f2ea", fs: 72 });
-    plate.position.set(pc.x, 1.45, pc.z + (pc.z < 0 ? 0.36 : -0.36));
-    if (pc.z > 0) plate.rotation.y = Math.PI;
+      0.76, 0.44, { bg: "#101418", fg: "#ffffff", fs: 104 });
+    plate.position.set(pc.x, 1.45, pc.z + 0.36);
     scene.add(plate);
     for (let r = 0; r < 4; r++) {
       for (let c = 0; c < 3; c++) {
         const led = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.02),
           new THREE.MeshStandardMaterial({ color: 0x111111, emissive: pc.c, emissiveIntensity: 2 }));
-        led.position.set(pc.x - 0.2 + c * 0.2, 0.35 + r * 0.22, pc.z + (pc.z < 0 ? 0.36 : -0.36));
+        led.position.set(pc.x - 0.2 + c * 0.2, 0.35 + r * 0.22, pc.z + 0.36);
         scene.add(led);
         leds.push({ m: led, ph: rand(0, Math.PI * 2), rate: rand(1.5, 6) });
       }
