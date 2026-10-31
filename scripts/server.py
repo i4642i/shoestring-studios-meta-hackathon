@@ -949,6 +949,8 @@ class Handler(BaseHTTPRequestHandler):
                 key=lambda n: os.path.getmtime(os.path.join(rdir, n)),
                 reverse=True)[:20]
             for n in names:
+                if not os.path.isdir(os.path.join(rdir, n)):
+                    continue
                 st = {"run_id": n, "state": "unknown"}
                 try:
                     with open(os.path.join(rdir, n, "STATUS.json"),

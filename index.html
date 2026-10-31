@@ -291,6 +291,7 @@
     <button data-p="pc">PC</button>
     <button data-p="settings">Settings</button>
     <button data-p="flow">Flow</button>
+    <button data-p="board">Board</button>
   </nav>
   <nav class="about">
     <button data-p="about">About</button>
@@ -673,6 +674,761 @@
   </div>
 </div>
 
+<style>
+#p-board { max-width: none; margin: 0 12px; }
+#bd-card { padding: 16px 20px 24px; }
+#bd-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#bd-head h2 { margin: 0 8px 0 0; }
+#bd-run { max-width: 260px; }
+#bd-target { font-size: 12px; font-weight: 700; color: var(--dim); }
+#bd-legend { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap;
+  font-size: 11px; color: var(--dim); align-items: center; }
+#bd-legend i { display: inline-block; width: 12px; height: 12px;
+  border-radius: 3px; margin-right: 3px; vertical-align: -1px; }
+#bd-strip { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+.bd-pill { border: 1px solid var(--line); background: #fff; border-radius: 999px;
+  padding: 4px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.bd-pill small { font-weight: 600; color: var(--dim); }
+.bd-pill .bd-pp { font-size: 11px; font-weight: 700; margin-left: 6px; }
+#bd-main { display: flex; gap: 12px; align-items: flex-start; }
+#bd-tablewrap { flex: 1; min-width: 0; overflow: auto;
+  border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+#bd-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+#bd-table th, #bd-table td { border: 1px solid var(--line); padding: 6px 8px;
+  vertical-align: top; text-align: left; }
+#bd-table thead th { position: sticky; top: 0; background: #fff; z-index: 2; }
+#bd-table thead tr:first-child th { top: 0; }
+#bd-table thead tr:nth-child(2) th { top: 33px; }
+#bd-table .bd-grp-story { background: #0064e0; color: #fff; text-align: center;
+  font-size: 12px; letter-spacing: 1px; }
+#bd-table .bd-grp-video { background: #c2571b; color: #fff; text-align: center;
+  font-size: 12px; letter-spacing: 1px; }
+#bd-table thead small { display: block; font-weight: 600; color: var(--dim);
+  font-size: 10px; }
+#bd-table td .clamp { display: -webkit-box; -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical; overflow: hidden; }
+#bd-table td.st-wait { background: #eef0f3; color: #6b7280; }
+#bd-table td.st-run { background: #fff4cc; }
+#bd-table td.st-done { background: #dbeafe; }
+#bd-table td.st-ok { background: #dcfce7; }
+#bd-table td.st-err { background: #fee2e2; }
+#bd-table td.st-none { background: repeating-linear-gradient(45deg, #f3f4f6,
+  #f3f4f6 6px, #e5e7eb 6px, #e5e7eb 12px); color: #6b7280; }
+#bd-table td.bd-cell { cursor: pointer; }
+#bd-table td.bd-cell:hover, #bd-table td.bd-sel { outline: 2px solid #111;
+  outline-offset: -2px; }
+#bd-table img.bd-thumb { width: 44px; height: 25px; object-fit: cover;
+  border-radius: 3px; border: 1px solid var(--line); margin: 2px 4px 0 0;
+  vertical-align: middle; }
+.bd-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: #b45309; margin-right: 4px; animation: bd-pulse 1.2s infinite; }
+@keyframes bd-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) {
+  .bd-dot { animation: none; }
+}
+#bd-side { width: 380px; flex: none; background: #f7f9fc;
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+  max-height: calc(100dvh - 260px); overflow-y: auto; font-size: 12px; }
+#bd-side .bd-who { font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+#bd-side h3 { margin: 2px 0 6px; font-size: 15px; }
+#bd-side .bd-chip { display: inline-block; border-radius: 999px; padding: 1px 10px;
+  font-size: 11px; font-weight: 700; margin: 0 6px 8px 0; }
+#bd-side .bd-clone { font-family: monospace; font-size: 11px; color: var(--dim); }
+#bd-side .bd-card { background: #fff; border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; margin: 0 0 8px; }
+#bd-side .bd-card h5 { margin: 0 0 4px; font-size: 10px; letter-spacing: 1px;
+  color: var(--dim); }
+#bd-side .bd-card code { background: #eef0f3; border-radius: 4px; padding: 0 5px;
+  margin: 0 4px 2px 0; display: inline-block; font-size: 11px; }
+#bd-side audio { width: 100%; margin-top: 4px; }
+#bd-side .bd-gal { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#bd-side .bd-gal figure { margin: 0; }
+#bd-side .bd-gal img { width: 100%; border-radius: 6px; cursor: zoom-in;
+  border: 1px solid var(--line); }
+#bd-side .bd-gal figcaption { font-size: 10px; color: var(--dim); }
+#bd-side .bd-big { width: 100%; border-radius: 6px; border: 1px solid var(--line); }
+#bd-side .bd-mini { position: relative; width: 100%; aspect-ratio: 16/9;
+  background: #111827; border-radius: 6px; overflow: hidden; }
+#bd-side .bd-mini i { position: absolute; border: 1px solid #93c5fd;
+  background: rgba(147,197,253,.25); color: #dbeafe; font-size: 9px;
+  font-style: normal; padding: 0 3px; overflow: hidden; white-space: nowrap; }
+#bd-side ul.bd-log { margin: 4px 0; padding-left: 16px; }
+#bd-side .bd-sw { display: inline-block; width: 12px; height: 12px;
+  border-radius: 3px; border: 1px solid var(--line); vertical-align: -1px; }
+#bd-light { position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 99;
+  display: none; align-items: center; justify-content: center; cursor: zoom-out; }
+#bd-light.open { display: flex; }
+#bd-light img { max-width: 90vw; max-height: 90vh; border-radius: 8px; }
+@media (max-width: 1000px) {
+  #bd-main { flex-direction: column; }
+  #bd-side { width: auto; }
+  #bd-tablewrap { max-height: 70vh; }
+}
+</style>
+<div class="page" id="p-board">
+  <div class="card" id="bd-card">
+    <div id="bd-head">
+      <h2>BOARD</h2>
+      <select id="bd-run" aria-label="Run"></select>
+      <span id="bd-target">Target: —</span>
+      <select id="bd-part" aria-label="Part"><option value="">all parts</option></select>
+      <button class="cta" id="bd-step">Run step</button>
+      <button id="bd-approve">Approve</button>
+      <button id="bd-rerun">Re-run with note</button>
+      <input id="bd-note" maxlength="500" placeholder="Owner note (re-run)" aria-label="Owner note">
+      <button id="bd-stop">Stop</button>
+      <div id="bd-legend"></div>
+    </div>
+    <div id="bd-strip"></div>
+    <div id="bd-main">
+      <div id="bd-tablewrap"><table id="bd-table"></table></div>
+      <div id="bd-side">Click any cell to see the result.</div>
+    </div>
+    <p id="bd-err"></p>
+  </div>
+</div>
+<div id="bd-light"><img alt=""></div>
+<script>
+(function () {
+  "use strict";
+  const COLS = [
+    { id: "part_time", stage: "marty", title: "Part time", who: "Marty" },
+    { id: "part", stage: "marty", title: "Part", who: "Marty" },
+    { id: "scene", stage: "ash", title: "Scene", who: "Ash" },
+    { id: "line", stage: "wren", title: "Line", who: "Wren" },
+    { id: "cut_time", stage: "wren", title: "Cut time", who: "Wren" },
+    { id: "screen", stage: "penn", title: "Screen", who: "Penn" },
+    { id: "photo", stage: "pia", title: "Photo search", who: "Pia" },
+    { id: "image", stage: "gene", title: "Image gen", who: "Gene" },
+    { id: "anim", stage: "max", title: "Anim \u00b7 formula \u00b7 graph",
+      who: "Max" },
+    { id: "slide_plan", stage: "vera", title: "Slide plan", who: "Vera" },
+    { id: "slide_build", stage: "remy", title: "Slide build", who: "Remy" },
+    { id: "video", stage: "video", title: "Video", who: "Program" }
+  ];
+  const BDNODES = { marty: "pd_marty", ash: "plan_ash", wren: "voice_wren",
+    penn: "board_penn", pia: "photo_pia", gene: "image_gene",
+    max: "anim_max", vera: "board_vera", remy: "slide_remy",
+    video: "video_production" };
+  const CLONES = ["pia", "gene", "max", "vera", "remy"];
+  const STNAME = { wait: "Waiting", run: "Running", done: "Done \u00b7 review",
+    ok: "Approved", err: "Error", none: "Not needed" };
+  const STBG = { wait: "#eef0f3", run: "#fff4cc", done: "#dbeafe",
+    ok: "#dcfce7", err: "#fee2e2", none: "#e5e7eb" };
+  const TEAMC = { story: "#0064e0", video: "#c2571b" };
+  const B = { runs: [], run: "", flowId: "", orderId: "", board: null,
+    sel: null, timer: 0, loaded: false, poll: 0 };
+  const $ = id => document.getElementById(id);
+  function err(t) { $("bd-err").textContent = t || ""; }
+  function fmtT(s) {
+    if (!((typeof s === "number") && isFinite(s)) || s < 0) return "\u2013";
+    const m = Math.floor(s / 60), r = Math.floor(s % 60);
+    return m + ":" + (r < 10 ? "0" : "") + r;
+  }
+  function bdCost(u) {
+    if (!u) return "\u2014";
+    if (u.reused) return "reused";
+    if (u.code) return "code";
+    return (u.llm_calls || 0) + " calls, " +
+      (u.prompt_tokens || 0) + "+" + (u.completion_tokens || 0) + " tok";
+  }
+  function chip(st) {
+    return '<span class="bd-chip" style="background:' +
+      (STBG[st] || "#eef0f3") + '">' + esc(STNAME[st] || st) + "</span>";
+  }
+  function stageOf(key) {
+    return (B.board.stages || []).find(s => s.key === key) || {};
+  }
+  function thumb(url) {
+    if (!url) return "";
+    return '<img class="bd-thumb" src="' + esc(url) +
+      '" alt="" loading="lazy">';
+  }
+  async function loadRuns() {
+    const d = await api.get("api/flows/runs");
+    B.runs = d.runs || [];
+    const sel = $("bd-run");
+    const keep = sel.value || B.run;
+    sel.innerHTML = B.runs.map(r =>
+      '<option value="' + esc(r.run_id) + '">' + esc(r.run_id) +
+      " \u00b7 " + esc(r.state || "?") + "</option>").join("");
+    if (!B.runs.length) {
+      sel.innerHTML = '<option value="">no runs</option>';
+      B.run = "";
+      return;
+    }
+    sel.value = B.runs.some(r => r.run_id === keep) ? keep
+      : B.runs[0].run_id;
+    B.run = sel.value;
+    const cur = B.runs.find(r => r.run_id === B.run) || {};
+    B.flowId = cur.flow_id || "";
+    B.orderId = cur.order_id || "";
+  }
+  async function loadBoard() {
+    if (!B.run) return;
+    err("");
+    const wrap = $("bd-tablewrap");
+    const sl = wrap.scrollLeft, st = wrap.scrollTop;
+    B.board = await api.get("api/flows/runs/" +
+      encodeURIComponent(B.run) + "/board");
+    if (!B.board.ok) throw new Error(B.board.error || "board failed");
+    fillParts();
+    renderStrip();
+    renderTable();
+    renderTarget();
+    renderSide();
+    wrap.scrollLeft = sl;
+    wrap.scrollTop = st;
+    armRefresh();
+  }
+  function fillParts() {
+    const sel = $("bd-part");
+    const keep = sel.value;
+    const nos = (B.board.parts || []).map(p => p.no);
+    sel.innerHTML = '<option value="">all parts</option>' +
+      nos.map(n => '<option value="' + n + '">part ' + n +
+        "</option>").join("");
+    if (nos.map(String).includes(keep)) sel.value = keep;
+  }
+  function renderStrip() {
+    const el = $("bd-strip");
+    el.innerHTML = (B.board.stages || []).map(s => {
+      let inner = esc(s.who) + " <small>" +
+        esc(STNAME[s.status] || s.status) + "</small>";
+      (s.parts || []).forEach(p => {
+        const sym = p.status === "ok" ? "\u2713"
+          : p.status === "done" ? "\u2026"
+          : p.status === "run" ? "\u25cf"
+          : p.status === "err" ? "\u2717" : "\u2013";
+        inner += '<span class="bd-pp">P' + p.no + " " + sym + "</span>";
+      });
+      return '<button class="bd-pill" data-stage="' + esc(s.key) +
+        '" style="background:' + (STBG[s.status] || "#fff") + '">' +
+        inner + "</button>";
+    }).join("");
+    el.querySelectorAll("[data-stage]").forEach(b => {
+      b.onclick = () => {
+        B.sel = { kind: "stage", key: b.dataset.stage };
+        renderTarget();
+        renderSide();
+        paintSel();
+      };
+    });
+  }
+  function cellHtml(col, part, scene, cut, clock) {
+    const st = (cut.cell_status || {})[col.id] || "wait";
+    const cls = "bd-cell st-" + st;
+    const at = ' data-cut="' + esc(cut.cut_id) + '" data-col="' +
+      col.id + '"';
+    let h = "";
+    if (col.id === "line") h = '<div class="clamp">' +
+      esc(cut.line || "\u2013") + "</div>";
+    else if (col.id === "cut_time") h = (cut.sec == null ? "\u2013"
+      : "<b>" + cut.sec + " s</b><br>" + esc(clock));
+    else if (col.id === "screen") h = '<div class="clamp">' +
+      esc(cut.screen || "\u2013") + "</div>";
+    else if (col.id === "photo") {
+      const picks = cut.pia || [];
+      h = picks.length ? "<b>" + picks.length + " pick" +
+        (picks.length > 1 ? "s" : "") + "</b><br>" +
+        picks.map(p => thumb(p.file)).join("")
+        : (["done", "ok", "none"].includes(st) ? "No photo" : "\u2013");
+    } else if (col.id === "image") {
+      h = cut.gene ? "1 image<br>" + thumb(cut.gene.file)
+        : st === "run" ? '<span class="bd-dot"></span>Generating\u2026'
+        : st === "none" ? "Not needed" : "\u2013";
+    } else if (col.id === "anim") {
+      const m = cut.max || {};
+      h = m.template ? esc(m.template)
+        : m.skipped_reason ? "Skipped: " + esc(m.skipped_reason)
+        : st === "none" ? "Not needed" : "\u2013";
+    } else if (col.id === "slide_plan") {
+      const v = cut.vera;
+      h = v ? esc(v.preset || "plan") + " \u00b7 " +
+        (v.blocks || []).length + " blocks" : "\u2013";
+    } else if (col.id === "slide_build") {
+      h = cut.remy && cut.remy.png ? thumb(cut.remy.png) : "\u2013";
+    } else if (col.id === "video") {
+      const v = cut.video || {};
+      h = (v.t0 == null || v.t1 == null) ? "\u2013"
+        : esc(fmtT(v.t0) + "\u2013" + fmtT(v.t1));
+    }
+    return '<td class="' + cls + '"' + at + ">" + h + "</td>";
+  }
+  function renderTable() {
+    const t = $("bd-table");
+    const parts = B.board.parts || [];
+    let h = "<thead><tr>" +
+      '<th colspan="6" class="bd-grp-story">STORYBOARD TEAM</th>' +
+      '<th colspan="6" class="bd-grp-video">VIDEO TEAM</th></tr><tr>' +
+      COLS.map(c => "<th>" + esc(c.title) + "<small>" + esc(c.who) +
+        "</small></th>").join("") + "</tr></thead><tbody>";
+    if (!parts.length ||
+        !parts.some(p => (p.scenes || []).some(s => (s.cuts || [])
+          .length))) {
+      t.innerHTML = h + '</tbody><tbody><tr><td colspan="12">' +
+        "No cuts yet \u2014 run Marty, Ash and Wren first.</td></tr></tbody>";
+      return;
+    }
+    let cum = 0;
+    parts.forEach(part => {
+      const scenes = part.scenes || [];
+      const rows = scenes.reduce(
+        (n, s) => n + ((s.cuts || []).length || 1), 0);
+      let firstPart = true;
+      scenes.forEach(scene => {
+        const cuts = scene.cuts || [];
+        let firstScene = true;
+        (cuts.length ? cuts : [null]).forEach(cut => {
+          h += "<tr>";
+          if (firstPart) {
+            h += '<td class="st-' +
+              ((B.board.stages.find(
+                s => s.key === "marty") || {}).status || "wait") +
+              '" rowspan="' + rows + '"><b>' +
+              esc(fmtT(part.time)) + "</b></td>";
+            h += '<td class="bd-cell st-' +
+              ((B.board.stages.find(
+                s => s.key === "marty") || {}).status || "wait") +
+              '" rowspan="' + rows + '" data-part="' + part.no +
+              '" data-col="part"><b>Part ' + part.no + "</b><br>" +
+              esc(part.title || "") + "</td>";
+            firstPart = false;
+          }
+          if (firstScene) {
+            const st = ((B.board.stages.find(
+              s => s.key === "ash") || {}).status || "wait");
+            h += '<td class="bd-cell st-' + st + '" rowspan="' +
+              (cuts.length || 1) + '" data-part="' + part.no +
+              '" data-scene="' + scene.n + '" data-col="scene"><b>' +
+              esc(fmtT(scene.time)) + "</b><br>" +
+              esc(scene.msg || "") + "</td>";
+            firstScene = false;
+          }
+          if (!cut) {
+            h += '<td colspan="9">No cuts in this scene yet.</td></tr>';
+            return;
+          }
+          const clock = cut.sec == null ? "\u2013"
+            : fmtT(cum) + "\u2013" + fmtT(cum + cut.sec);
+          if (cut.sec != null) cum += cut.sec;
+          COLS.slice(3).forEach(c => {
+            h += cellHtml(c, part, scene, cut, clock);
+          });
+          h += "</tr>";
+        });
+      });
+    });
+    t.innerHTML = h + "</tbody>";
+    t.querySelectorAll("[data-cut]").forEach(td => {
+      td.onclick = () => selectCell(td.dataset.cut, td.dataset.col);
+    });
+    t.querySelectorAll('[data-col="part"], [data-col="scene"]')
+      .forEach(td => {
+        td.onclick = () => selectCell(td.dataset.cut || "",
+          td.dataset.col, td.dataset.part, td.dataset.scene);
+      });
+    paintSel();
+  }
+  function paintSel() {
+    const t = $("bd-table");
+    t.querySelectorAll(".bd-sel").forEach(x =>
+      x.classList.remove("bd-sel"));
+    if (!B.sel || B.sel.kind !== "cell") return;
+    let td = null;
+    if (B.sel.cut) {
+      td = t.querySelector('[data-cut="' + B.sel.cut +
+        '"][data-col="' + B.sel.col + '"]');
+    } else if (B.sel.col === "scene") {
+      td = t.querySelector('[data-col="scene"][data-part="' +
+        B.sel.part + '"][data-scene="' + B.sel.scene + '"]');
+    } else if (B.sel.col === "part") {
+      td = t.querySelector('[data-col="part"][data-part="' +
+        B.sel.part + '"]');
+    }
+    if (td) td.classList.add("bd-sel");
+  }
+  function findCut(cutId) {
+    for (const part of B.board.parts || []) {
+      for (const scene of part.scenes || []) {
+        for (const cut of scene.cuts || []) {
+          if (cut.cut_id === cutId) return { part, scene, cut };
+        }
+      }
+    }
+    return {};
+  }
+  function selectCell(cutId, col, partNo, sceneN) {
+    B.sel = { kind: "cell", cut: cutId, col,
+      part: partNo ? +partNo : null,
+      scene: (sceneN == null || sceneN === "") ? null : +sceneN };
+    const f = cutId ? findCut(cutId) : {};
+    if (f.cut && f.cut.part != null &&
+        CLONES.includes((COLS.find(c => c.id === col) || {})
+          .stage)) {
+      $("bd-part").value = String(f.cut.part);
+    } else if (!CLONES.includes((COLS.find(c => c.id === col) || {})
+      .stage)) {
+      $("bd-part").value = "";
+    }
+    renderTarget();
+    renderSide();
+    paintSel();
+  }
+  function card(title, body) {
+    return '<div class="bd-card"><h5>' + esc(title) + "</h5>" + body +
+      "</div>";
+  }
+  function stageCard(key) {
+    const s = stageOf(key);
+    const files = s.files || {};
+    const order = ["report.md", "result.json", "INPUTS.md",
+      "INPUTS.json"];
+    const links = order.filter(n => files[n]).map(n =>
+      '<a href="' + esc(files[n]) +
+      '" target="_blank" rel="noopener">' + esc(n) + "</a>")
+      .join(" \u00b7 ");
+    return card("STAGE", esc(s.who || "") + " \u00b7 cost " +
+      esc(bdCost(s.cost)) + (links ? "<br>" + links : ""));
+  }
+  function renderSide() {
+    const el = $("bd-side");
+    if (!B.board) {
+      el.textContent = "Click any cell to see the result.";
+      return;
+    }
+    if (!B.sel) {
+      el.textContent = "Click any cell to see the result.";
+      return;
+    }
+    if (B.sel.kind === "stage") {
+      renderStageSide(el, B.sel.key);
+      return;
+    }
+    const col = COLS.find(c => c.id === B.sel.col) || COLS[3];
+    const s = stageOf(col.stage);
+    const color = TEAMC[s.team] || "#111";
+    const f = B.sel.cut ? findCut(B.sel.cut) : {};
+    const part = f.part ||
+      (B.board.parts || []).find(p => p.no === B.sel.part) || {};
+    const scene = f.scene ||
+      (part.scenes || []).find(x => x.n === B.sel.scene) || {};
+    const cut = f.cut || {};
+    const no = part.no || B.sel.part || "?";
+    const sn = scene.n == null ? "?" : scene.n;
+    let title = "Part " + no;
+    if (scene.n != null) title += " \u00b7 Scene " + sn;
+    if (cut.cut_id) {
+      const idx = (scene.cuts || [])
+        .findIndex(c => c.cut_id === cut.cut_id) + 1;
+      title += " \u00b7 Cut " + (idx || "?");
+    }
+    const st = cut.cut_id ? ((cut.cell_status || {})[col.id] || "wait")
+      : (s.status || "wait");
+    let h = '<div class="bd-who" style="color:' + color + '">' +
+      esc((s.who || "") + " \u00b7 " + (s.label || "")) + "</div><h3>" +
+      esc(title) + "</h3>" + chip(st);
+    if (cut.cut_id && CLONES.includes(col.stage) &&
+        cut.part != null) {
+      h += '<span class="bd-clone">' +
+        esc(BDNODES[col.stage] + "@p" + cut.part) + "</span>";
+    }
+    if (col.id === "part_time" || col.id === "part") {
+      const pages = (part.pages || []).length
+        ? "pp. " + part.pages.join(", ") : "\u2013";
+      h += card("PART", esc(part.title || "") + "<br>Time: <b>" +
+        esc(fmtT(part.time)) + "</b><br>Source pages: " + esc(pages) +
+        "<br>Scenes: " + (part.scenes || []).length);
+    } else if (col.id === "scene") {
+      const mats = (scene.materials || []).map(m =>
+        "<code>" + esc(String(m.ref || "").split("#").pop()) +
+        "</code>").join("") || "\u2013";
+      h += card("SCENE", esc(scene.msg || "") + "<br>Time: <b>" +
+        esc(fmtT(scene.time)) + "</b><br>Cuts: " +
+        (scene.cuts || []).length + "<br>Source items:<br>" + mats);
+    } else if (col.id === "line" || col.id === "cut_time") {
+      h += card("LINE", "\u201c" + esc(cut.line || "") + "\u201d");
+      const v = cut.voice || {};
+      let vb = "Length: <b>" +
+        (cut.sec == null ? "\u2013" : cut.sec + " s") + "</b>";
+      if (cut.t0 != null && cut.sec != null)
+        vb += "<br>Range: " + esc(fmtT(cut.t0) + "\u2013" +
+          fmtT(cut.t0 + cut.sec));
+      vb += "<br>Attempts: " + esc((v.attempts == null ? "\u2013"
+        : v.attempts + " of 2")) + "<br>Engine: " +
+        esc(v.engine || "\u2013");
+      if (v.file) {
+        let fn = String(v.file).split("/").pop().split("?")[0];
+        try { fn = decodeURIComponent(fn); } catch (e) { /* raw */ }
+        vb += "<br>File: " + esc(fn) +
+          '<br><audio controls preload="none" src="' +
+          esc(v.file) + '"></audio>';
+      } else {
+        vb += "<br>No audio yet.";
+      }
+      h += card("VOICE", vb);
+    } else if (col.id === "screen") {
+      h += card("SCREEN", esc(cut.screen || "\u2013"));
+      const g = B.board.style_guide || {};
+      const pal = g.palette || {};
+      let gb = ["background", "text", "accent"].map(k =>
+        pal[k] ? '<span class="bd-sw" style="background:' + esc(pal[k]) +
+        '"></span> ' + esc(k + " " + pal[k]) : "").join("<br>");
+      const fo = g.fonts || {};
+      if (fo.heading || fo.body)
+        gb += "<br>Fonts: " + esc((fo.heading || "?") + " / " +
+          (fo.body || "?"));
+      if (g.image_tone) gb += "<br>Tone: " + esc(g.image_tone);
+      (g.rules || []).forEach(r => { gb += "<br>\u2013 " + esc(r); });
+      h += card("STYLE GUIDE", gb || "\u2013");
+      const txt = (cut.text || []).map(t => "<b>" + esc(t) +
+        "</b>").join("<br>");
+      if (txt) h += card("ON-SCREEN TEXT", txt);
+    } else if (col.id === "photo") {
+      const picks = cut.pia || [];
+      if (!picks.length) {
+        h += card("PHOTO SEARCH", "No photo for this cut.");
+      } else {
+        h += card("PHOTO SEARCH", '<div class="bd-gal">' +
+          picks.map(p => "<figure>" +
+            (p.file ? '<img src="' + esc(p.file) +
+              '" alt="" loading="lazy" data-big="' + esc(p.file) +
+              '">' : "no file") + "<figcaption>" +
+            esc(p.source || "") + "<br>" + esc(p.license || "") +
+            "</figcaption></figure>").join("") + "</div>");
+        h += card("WHY", picks.map(p => esc(p.reason || ""))
+          .join("<br>") || "\u2013");
+      }
+    } else if (col.id === "image") {
+      const g = cut.gene;
+      h += card("IMAGE GEN", g
+        ? esc(g.prompt || "") +
+          (g.file ? '<br><img class="bd-big" src="' + esc(g.file) +
+            '" alt="" loading="lazy">' : "")
+        : (st === "run" ? "Generating with muse-image-1.0\u2026"
+          : "Not needed for this cut."));
+    } else if (col.id === "anim") {
+      const m = cut.max || {};
+      let ab = m.template ? "Template: <b>" + esc(m.template) +
+        "</b>" : "Not needed for this cut.";
+      if (m.template && m.values != null)
+        ab += "<br>Values:<pre>" +
+          esc(JSON.stringify(m.values, null, 1)) + "</pre>";
+      if (m.skipped_reason)
+        ab = "Skipped: " + esc(m.skipped_reason);
+      h += card("ANIM", ab);
+    } else if (col.id === "slide_plan") {
+      const v = cut.vera;
+      if (!v) {
+        h += card("SLIDE PLAN", "\u2013");
+      } else {
+        const boxes = (v.blocks || []).map(b => {
+          const x = b.box || {};
+          if (![x.x, x.y, x.w, x.h].every(
+            n => typeof n === "number" && isFinite(n))) return "";
+          return "<i style=\"left:" + (x.x / 1280 * 100) +
+            "%;top:" + (x.y / 720 * 100) + "%;width:" +
+            (x.w / 1280 * 100) + "%;height:" +
+            (x.h / 720 * 100) + '%">' + esc(b.type || "") + "</i>";
+        }).join("");
+        h += card("SLIDE PLAN", '<div class="bd-mini">' + boxes +
+          "</div>Preset: <b>" + esc(v.preset || "") + "</b>");
+        const rows = (v.blocks || []).map((b, i) =>
+          "<li><b>" + esc(b.type || "") + "</b> " +
+          esc(b.ref || "") + " \u2014 " +
+          esc((v.reasons || [])[i] || "") + "</li>").join("");
+        if (rows) h += card("BLOCKS", "<ul>" + rows + "</ul>");
+      }
+    } else if (col.id === "slide_build") {
+      const r = cut.remy;
+      h += card("SLIDE BUILD", r && r.png
+        ? '<img class="bd-big" src="' + esc(r.png) + '" alt="">'
+        : "\u2013");
+      if (r)
+        h += card("RENDER LOG", "Renders: <b>" +
+          esc(String(r.renders == null ? "?" : r.renders)) +
+          " / 3</b><ul class=\"bd-log\">" +
+          (r.log || []).map(x => "<li>" + esc(x) + "</li>")
+            .join("") + "</ul>");
+    } else if (col.id === "video") {
+      const v = cut.video || {};
+      h += card("VIDEO", (v.t0 == null || v.t1 == null) ? "\u2013"
+        : "Range: <b>" + esc(fmtT(v.t0) + "\u2013" + fmtT(v.t1)) +
+          "</b><br>Subtitle: " + esc(v.subtitle || ""));
+    }
+    h += stageCard(col.stage);
+    el.innerHTML = h;
+    el.querySelectorAll("[data-big]").forEach(img => {
+      img.onclick = () => {
+        const l = $("bd-light");
+        l.querySelector("img").src = img.dataset.big;
+        l.classList.add("open");
+      };
+    });
+  }
+  function renderStageSide(el, key) {
+    const s = stageOf(key);
+    const color = TEAMC[s.team] || "#111";
+    let h = '<div class="bd-who" style="color:' + color + '">' +
+      esc((s.who || "") + " \u00b7 " + (s.label || "")) + "</div><h3>" +
+      esc((s.who || key) + " report") + "</h3>" +
+      chip(s.status || "wait") + stageCard(key);
+    const url = (s.files || {})["report.md"];
+    if (url) {
+      h += card("REPORT", '<div class="bd-rep">Loading\u2026</div>');
+      el.innerHTML = h;
+      api.text(url).then(t => {
+        const d = el.querySelector(".bd-rep");
+        if (d) d.innerHTML = "<pre>" +
+          esc(t.length > 3000 ? t.slice(0, 3000) + "\u2026" : t) +
+          "</pre>";
+      }).catch(e => {
+        const d = el.querySelector(".bd-rep");
+        if (d) d.textContent = "Could not load the report.";
+      });
+    } else {
+      el.innerHTML = h;
+    }
+  }
+  function targetNode() {
+    let key = null, part = $("bd-part").value || "";
+    if (B.sel && B.sel.kind === "stage") {
+      key = B.sel.key;
+    } else if (B.sel && B.sel.kind === "cell") {
+      key = (COLS.find(c => c.id === B.sel.col) || {}).stage;
+      const f = B.sel.cut ? findCut(B.sel.cut) : {};
+      if (f.cut && f.cut.part != null && CLONES.includes(key))
+        part = String(f.cut.part);
+    }
+    if (!key && B.board) {
+      const open = (B.board.stages || [])
+        .find(s => s.status !== "ok");
+      key = open ? open.key : null;
+    }
+    if (!key || !BDNODES[key]) return "";
+    if (part && CLONES.includes(key)) return BDNODES[key] + "@p" + part;
+    return BDNODES[key];
+  }
+  function renderTarget() {
+    const t = targetNode();
+    let key = B.sel && B.sel.kind === "stage" ? B.sel.key
+      : B.sel && B.sel.kind === "cell"
+      ? (COLS.find(c => c.id === B.sel.col) || {}).stage : null;
+    if (!key && B.board) {
+      const open = (B.board.stages || [])
+        .find(s => s.status !== "ok");
+      key = open ? open.key : null;
+    }
+    const s = key ? stageOf(key) : {};
+    const part = $("bd-part").value;
+    $("bd-target").textContent = "Target: " + (t
+      ? (s.who || t) + (part && CLONES.includes(key) ? " P" + part
+        : "")
+      : "\u2014");
+  }
+  async function pollRun() {
+    try {
+      for (let i = 0; i < 900; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          const d = await api.get("api/flows/runs/" +
+            encodeURIComponent(B.run));
+          if (d.state !== "running") break;
+        } catch (e) { break; }
+      }
+      await loadRuns();
+      await loadBoard();
+    } catch (e) { err("Error: " + e.message); }
+  }
+  function armRefresh() {
+    if (B.timer) { clearTimeout(B.timer); B.timer = 0; }
+    const running = B.board &&
+      (((B.board.stages || []).some(s => s.status === "run")) ||
+        B.board.run_state === "running");
+    if (running && B.run)
+      B.timer = setTimeout(() => loadBoard().catch(e =>
+        err("Error: " + e.message)), 3000);
+  }
+  function init() {
+    B.loaded = true;
+    const lg = [["#eef0f3", "Waiting"], ["#fff4cc", "Running"],
+      ["#dbeafe", "Done \u00b7 review"], ["#dcfce7", "Approved"],
+      ["#fee2e2", "Error"], ["#e5e7eb", "Not needed"]];
+    $("bd-legend").innerHTML = lg.map(x =>
+      '<span><i style="background:' + x[0] + '"></i>' + esc(x[1]) +
+      "</span>").join("");
+    $("bd-run").onchange = () => {
+      B.run = $("bd-run").value;
+      const cur = B.runs.find(r => r.run_id === B.run) || {};
+      B.flowId = cur.flow_id || "";
+      B.orderId = cur.order_id || "";
+      B.sel = null;
+      loadBoard().catch(e => err("Error: " + e.message));
+    };
+    $("bd-part").onchange = renderTarget;
+    $("bd-light").onclick = () =>
+      $("bd-light").classList.remove("open");
+    $("bd-step").onclick = async () => {
+      try {
+        err("");
+        const t = targetNode();
+        if (!B.run || !B.flowId || !B.orderId || !t)
+          throw new Error("pick a run with a flow and order first");
+        await api.send("POST", "api/flows/" +
+          encodeURIComponent(B.flowId) + "/step",
+          { order_id: B.orderId, target: t, run_id: B.run });
+        pollRun();
+      } catch (e) { err("Error: " + e.message); }
+    };
+    $("bd-approve").onclick = async () => {
+      try {
+        err("");
+        const t = targetNode();
+        if (!B.run || !t) throw new Error("nothing to approve");
+        await api.send("POST", "api/flows/runs/" +
+          encodeURIComponent(B.run) + "/approve", { node: t });
+        await loadRuns();
+        await loadBoard();
+      } catch (e) { err("Error: " + e.message); }
+    };
+    $("bd-rerun").onclick = async () => {
+      try {
+        err("");
+        const t = targetNode();
+        if (!B.run || !B.flowId || !B.orderId || !t)
+          throw new Error("pick a run with a flow and order first");
+        await api.send("POST", "api/flows/runs/" +
+          encodeURIComponent(B.run) + "/invalidate", { node: t });
+        await api.send("POST", "api/flows/" +
+          encodeURIComponent(B.flowId) + "/step",
+          { order_id: B.orderId, target: t, run_id: B.run,
+            note: $("bd-note").value.trim() || null });
+        $("bd-note").value = "";
+        pollRun();
+      } catch (e) { err("Error: " + e.message); }
+    };
+    $("bd-stop").onclick = async () => {
+      try {
+        err("");
+        if (!B.run) throw new Error("no run selected");
+        await api.send("POST", "api/flows/runs/" +
+          encodeURIComponent(B.run) + "/stop", {});
+        await loadRuns();
+        await loadBoard();
+      } catch (e) { err("Error: " + e.message); }
+    };
+    loadRuns()
+      .then(() => loadBoard())
+      .catch(e => err("Error: " + e.message));
+  }
+  window.__boardShown = () => {
+    if (!B.loaded) init();
+    else loadRuns().then(() => loadBoard())
+      .catch(e => err("Error: " + e.message));
+  };
+})();
+</script>
+
 <div class="page" id="p-about">
   <div class="card">
     <h2>ABOUT — WHY WE BUILD THIS</h2>
@@ -769,6 +1525,8 @@
     document.getElementById("p-" + b.dataset.p).classList.add("active");
     if (b.dataset.p === "flow" && window.__flowShown)
       window.__flowShown();
+    if (b.dataset.p === "board" && window.__boardShown)
+      window.__boardShown();
   });
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
