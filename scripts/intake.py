@@ -41,6 +41,14 @@ def missing_of(answers, files):
     return missing
 
 
+def chat_reply_payload(reply, ready, missing):
+    """Chat/upload reply envelope: the client needs the missing list
+    with every reply (PDF button shows only when it is exactly
+    ["source PDF"])."""
+    return {"reply": reply, "ready": bool(ready),
+            "missing": list(missing or [])}
+
+
 def build_sections(parsed_md):
     """Turn parsed PDF markdown into sections: numbered heading lines
     ("1.1 ...") become markdown headings (depth follows the dot count),

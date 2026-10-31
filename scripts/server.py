@@ -1095,6 +1095,8 @@ class Handler(BaseHTTPRequestHandler):
                                and turns[i + 1]["role"] == "assistant" else ""}
                               for i in range(0, len(turns), 2)
                               if turns[i]["role"] == "user"]
+        meta["missing"] = intake.missing_of(meta.get("answers", {}),
+                                            meta.get("files", {}))
         return self._json(200, meta)
 
     @staticmethod
@@ -1331,8 +1333,11 @@ class Handler(BaseHTTPRequestHandler):
         self._order_save_meta(d, meta)
         print("order upload %s/%s (%d bytes, stored; Sam parses it "
               "after Yes)" % (oid, base, len(raw)), flush=True)
+        missing = intake.missing_of(meta.get("answers", {}),
+                                    meta.get("files", {}))
         return self._json(200, {"ok": True, "file": "source.pdf",
-                                "bytes": len(raw), "name": base})
+                                "bytes": len(raw), "name": base,
+                                "missing": missing})
 
     def _api_order_intake(self, oid):
         d = self._order_dir(oid)
@@ -1428,7 +1433,8 @@ class Handler(BaseHTTPRequestHandler):
         if ready:
             text = text + " " + intake.READY_QUESTION
         self._chat_append(d, msgs[-1]["content"], text)
-        return self._json(200, {"reply": text, "ready": ready})
+        return self._json(200, intake.chat_reply_payload(
+            text, ready, missing))
 
     @staticmethod
     def _chat_append(d, user, reply):

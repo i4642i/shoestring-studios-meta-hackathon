@@ -235,6 +235,14 @@
     width: 10px; height: 10px; background: #fff; border-right: 2px solid #111;
     border-bottom: 2px solid #111; transform: translateX(-50%) rotate(45deg); }
   .bub-sam b { display: block; font-size: 10px; letter-spacing: 1px; color: #0064e0; }
+  .pdfbtn { display: inline-block; margin-top: 8px; padding: 6px 14px;
+    background: #111; color: #fff; font-size: 12px; font-weight: 700;
+    border-radius: 999px; cursor: pointer; pointer-events: auto;
+    white-space: nowrap; }
+  .pdfbtn input { display: none; }
+  .pdfdone { margin-top: 6px; font-size: 11px; color: #1a7f37; font-weight: 700;
+    white-space: nowrap; }
+  #o-recep.pdfdrop { outline: 3px dashed #0064e0; outline-offset: -3px; }
   #o-mebub { position: absolute; right: 10px; bottom: 24px; display: flex;
     flex-direction: column; gap: 6px; align-items: flex-end; max-width: 55%; }
   #o-bubbles .bub { max-width: min(55%, 440px); }
@@ -341,7 +349,6 @@
           </div>
         </div>
         <form class="cform" id="o-form" autocomplete="off">
-          <label class="filebtn" title="Attach source PDF">Attach PDF<input type="file" id="o-chatpdf" accept=".pdf" aria-label="Attach source PDF"></label>
           <input id="o-input" maxlength="500" placeholder="Talk to sales…" aria-label="Message">
           <button type="submit">Send</button>
         </form>
@@ -2276,6 +2283,8 @@ body.tab-flow { padding-bottom: 0; }
     let approved = false;
     let approvedSnap = "";
     let serverPdf = false;
+    let serverPdfName = "";
+    let chatMissing = [];
     const history = [];
     function readAnswers() {
       return {
@@ -2320,7 +2329,54 @@ body.tab-flow { padding-bottom: 0; }
       const line = document.createElement("span");
       line.textContent = text;
       el.append(who, line);
+      if (text !== "…") appendPdfAttach(el);
       return el;
+    }
+    // J4: the PDF button lives inside Sam's bubble. It shows only when
+    // the only thing missing is the source PDF; after upload it becomes
+    // a "check + filename" label.
+    function appendPdfAttach(el) {
+      if (serverPdf) {
+        const done = document.createElement("div");
+        done.className = "pdfdone";
+        done.textContent = "\u2713 " + (serverPdfName || "PDF attached");
+        el.appendChild(done);
+        return;
+      }
+      if (chatMissing.length === 1 && chatMissing[0] === "source PDF") {
+        const lab = document.createElement("label");
+        lab.className = "pdfbtn";
+        lab.textContent = "Attach PDF";
+        const inp = document.createElement("input");
+        inp.type = "file";
+        inp.accept = ".pdf";
+        inp.setAttribute("aria-label", "Attach source PDF");
+        inp.onchange = () => {
+          if (inp.files.length) uploadPdfFile(inp.files[0]);
+          inp.value = "";
+        };
+        lab.appendChild(inp);
+        el.appendChild(lab);
+      }
+    }
+    async function uploadPdfFile(file) {
+      if (!file || !oid) return;
+      try {
+        addMsg("sys", "Attaching " + file.name + "…");
+        const fd = new FormData();
+        fd.append("file", file);
+        const r = await api.send("POST", "api/orders/" + oid + "/upload", null, fd);
+        addMsg("sys", "Attached " + file.name + " (" + r.bytes + " bytes, stored).");
+        document.getElementById("o-pdfname").textContent = file.name + " (attached in chat)";
+        msg.textContent = "PDF attached through chat: " + file.name + ".";
+        serverPdf = true;
+        serverPdfName = r.name || file.name;
+        chatMissing = Array.isArray(r.missing) ? r.missing : [];
+        checkReady();
+        if (lastSam) samSay(lastSam);
+      } catch (err) {
+        addMsg("sys", "Attach failed: " + err.message);
+      }
     }
     document.querySelectorAll("#o-modes [data-m]").forEach((b) => {
       b.onclick = () => {
@@ -2429,6 +2485,8 @@ body.tab-flow { padding-bottom: 0; }
       document.getElementById("o-pdf").value = "";
       document.getElementById("o-pdfname").textContent = "No file chosen";
       serverPdf = false;
+      serverPdfName = "";
+      chatMissing = [];
       history.length = 0;
       document.getElementById("o-result").style.display = "none";
       try {
@@ -2443,9 +2501,12 @@ body.tab-flow { padding-bottom: 0; }
             if (o.status === "consulting" && member(o.assignee)) {
               oid = o.id;
               whoId = o.assignee;
-              if (o.files && o.files.parsed) {
+              chatMissing = Array.isArray(o.missing) ? o.missing : [];
+              if (o.files && o.files.source) {
                 serverPdf = true;
-                document.getElementById("o-pdfname").textContent = "(PDF already attached)";
+                serverPdfName = o.files.upload_name || "";
+                document.getElementById("o-pdfname").textContent =
+                  (serverPdfName || "source.pdf") + " (attached in chat)";
               }
               (o.transcript || []).forEach((t) => {
                 history.push({ role: "user", content: t.user });
@@ -2495,6 +2556,7 @@ body.tab-flow { padding-bottom: 0; }
       addMsg("typing", "…");
       try {
         const r = await api.send("POST", "api/orders/" + oid + "/chat", { messages: history, mode: mode });
+        chatMissing = Array.isArray(r.missing) ? r.missing : [];
         addMsg("them", r.reply);
         history.push({ role: "assistant", content: r.reply });
         showConfirm(!!r.ready);
@@ -2526,27 +2588,24 @@ body.tab-flow { padding-bottom: 0; }
         msg.textContent = "Approved — press START PRODUCTION.";
       } catch (e) { fail(e); }
     };
-    document.getElementById("o-chatpdf").onchange = async (e) => {
-      try {
-        if (!e.target.files.length) return;
-        if (!oid) throw new Error("no order yet");
-        const name = e.target.files[0].name;
-        addMsg("sys", "Attaching " + name + "…");
-        const fd = new FormData();
-        fd.append("file", e.target.files[0]);
-        const r = await api.send("POST", "api/orders/" + oid + "/upload", null, fd);
-        addMsg("sys", "Attached " + name + " (" + r.bytes +
-          " bytes, stored).");
-        document.getElementById("o-pdfname").textContent = name + " (attached in chat)";
-        msg.textContent = "PDF attached through chat: " + name + ".";
-        serverPdf = true;
-        checkReady();
-      } catch (err) {
-        addMsg("sys", "Attach failed: " + err.message);
-      } finally {
-        e.target.value = "";
+    // J4: a PDF can also be dropped onto the 3D room at any time.
+    const recep = document.getElementById("o-recep");
+    recep.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      recep.classList.add("pdfdrop");
+    });
+    recep.addEventListener("dragleave", () => recep.classList.remove("pdfdrop"));
+    recep.addEventListener("drop", (e) => {
+      e.preventDefault();
+      recep.classList.remove("pdfdrop");
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f) return;
+      if (!/\.pdf$/i.test(f.name)) {
+        addMsg("sys", "Only .pdf files are accepted.");
+        return;
       }
-    };
+      uploadPdfFile(f);
+    });
     document.getElementById("start").onclick = async () => {
       const btn = document.getElementById("start");
       try {

@@ -81,5 +81,14 @@ md2, heads2 = intake.build_sections("## Page 1\n\nJust prose, no numbers.\n")
 ok(heads2 == [] and "Just prose, no numbers." in md2,
    "no headings passes text through")
 
+# ---- chat reply envelope: missing rides with every reply (J4) ----
+p = intake.chat_reply_payload("hi", False, ["source PDF"])
+ok(p == {"reply": "hi", "ready": False, "missing": ["source PDF"]},
+   "chat payload carries reply+ready+missing")
+ok(intake.chat_reply_payload("ok", True, [])["missing"] == [],
+   "ready payload has empty missing")
+ok(intake.chat_reply_payload("x", False, None)["missing"] == [],
+   "missing None becomes []")
+
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
 sys.exit(1 if FAILS else 0)
