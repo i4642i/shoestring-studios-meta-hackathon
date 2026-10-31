@@ -45,5 +45,15 @@
 - [x] I2 docs/REPORT_2026-11-01_INPUTS_EN.md (한국어 요약 먼저)
 
 ## Order 간판
-- [ ] J3 라운지 왼쪽 벽 간판 "MAKE AI PROVE IT." + 1280 기본뷰 캡처
-  이유: 기본 카메라에 왼벽이 안 잡혀서 정면 가독 불가 — 뒷벽 이동/카메라 조정/유지 중 결정 필요
+- [x] J3 라운지 왼쪽 벽 간판 "MAKE AI PROVE IT." + 1280 기본뷰 캡처
+  left wall, visible after spin (owner's choice)
+
+## 대기열 (2026-11-01 오후)
+- [ ] 1 J3 sign + default camera
+- [ ] 2 J5 Order adaptive
+- [ ] 3 Flow box (B1/B3/B5 re-test)
+- [ ] 4 J1/J2 Crew portraits
+- [ ] 5 J4 PDF button in Sam's bubble
+- [ ] 6 J6/J7 run controls
+- [ ] 7 J8/J9 employee memory + chat
+- [ ] 8 J10/J11 office live states + click to chat
