@@ -127,9 +127,13 @@ turn (the planned fallback becomes the design).
 - `gen_picks` v1 (Gene): per cut prompt or null + `images[]`
   (≤6/run, prompt reuse by hash). Checks: count cap,
   concept-only (no photoreal-fact look — persona rule).
-- `anim_picks` v1 (Max): per cut template or "none" with
-  values + checked refs. Checks: values trace to checked
-  source tables/formulas only.
+- `anim_picks` v2 (Max): per cut `use|none` with template
+  (bar|line|table|formula|steps) + structured `values` +
+  `refs[]` ({ref, quote}). Checks: cut match; values shaped
+  by template; every ref a CHECKED source table/formula
+  quoted verbatim; every data scalar traced to the quotes
+  (steps items exempt: Max's own compression, refs still
+  required).
 - `slide_draft` v2 (Vera): per cut `preset` +
   `blocks[1..4]` (kind, 1280x720 box, order, appear_s,
   reason + kind data), `on_screen_text, transitions[],

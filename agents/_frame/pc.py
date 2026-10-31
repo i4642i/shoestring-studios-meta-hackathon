@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import struct
 import time
 
 MAP_VERSION = 2  # has items carry kind (+file for figures) and equations
@@ -2174,6 +2175,77 @@ def blank_map(entry, llm_model):
                          for s in entry.get("sections", [])
                          if not s.get("non_content")]}
 
+def media_dims_from_bytes(blob):
+    """(width, height) from PNG/GIF/JPEG bytes, stdlib only. None
+    when the format is unknown or the blob is too short."""
+    if not isinstance(blob, (bytes, bytearray)) or len(blob) < 26:
+        return None
+    b = bytes(blob)
+    if b[:8] == b"\x89PNG\r\n\x1a\n" and len(b) >= 24:
+        w, h = struct.unpack(">II", b[16:24])
+        return (w, h) if w > 0 and h > 0 else None
+    if b[:6] in (b"GIF87a", b"GIF89a"):
+        w, h = struct.unpack("<HH", b[6:10])
+        return (w, h) if w > 0 and h > 0 else None
+    if b[:2] == b"\xff\xd8":
+        i = 2  # scan markers for a Start Of Frame with dims
+        while i + 9 < len(b):
+            if b[i] != 0xFF:
+                i += 1
+                continue
+            m = b[i + 1]
+            if m in (0xC0, 0xC1, 0xC2, 0xC3):
+                h, w = struct.unpack(">HH", b[i + 5:i + 9])
+                return (w, h) if w > 0 and h > 0 else None
+            if m in (0xD8, 0xD9) or 0xD0 <= m <= 0xD7 or m == 0x01:
+                i += 2
+                continue
+            if i + 3 >= len(b):
+                return None
+            (seglen,) = struct.unpack(">H", b[i + 2:i + 4])
+            if seglen < 2:
+                return None
+            i += 2 + seglen
+    return None
+
+
+def media_dims(path):
+    """(width, height) of an image file, or None. Reads the head
+    only (a JPEG Start Of Frame past 64 KB is missed)."""
+    try:
+        with open(path, "rb") as f:
+            return media_dims_from_bytes(f.read(65536))
+    except OSError:
+        return None
+
+
+def resolve_material_file(ref):
+    """(full_path, entry, fig_or_None) for an image/generated entry
+    ref or a source figure ref (#fig addr). Raises ValueError
+    (not a material ref), KeyError (nothing stored there), or
+    OSError (stored file missing)."""
+    rpc, rid, frag = parse_ref(ref)
+    entry = load_entry_by_ref(entry_ref(rpc, rid))
+    edir = entry_dir(rpc, rid)
+    if rpc in ("image", "generated"):
+        fname = entry.get("file", "")
+        if not fname:
+            raise KeyError("entry has no file")
+        full = os.path.join(edir, "files", fname)
+        if not os.path.isfile(full):
+            raise OSError("stored file is missing")
+        return full, entry, None
+    if rpc == "source" and frag:
+        for fig in entry.get("figures", []):
+            if fig.get("addr") == frag and fig.get("file"):
+                full = os.path.join(edir, "figures", fig["file"])
+                if not os.path.isfile(full):
+                    raise OSError("stored file is missing")
+                return full, entry, fig
+        raise KeyError("no such figure: %r" % frag)
+    raise ValueError("not a material ref: %r" % ref)
+
+
 # ---- media PCs: voice, image, generated (v8) ----
 MEDIA_CONSUMERS = {
     "voice": ["voice_wren"],
@@ -2238,6 +2310,8 @@ def image_store_pick(order_id, source_url, blob, license, reason,
     with open(os.path.join(edir, "files", fname), "wb") as f:
         f.write(blob)
     entry["file"] = fname
+    dims = media_dims_from_bytes(blob)
+    entry["width"], entry["height"] = dims if dims else (None, None)
     entry["reason"] = reason
     rows = recipients_of(entry) or []
     have = {(r.get("agent"), r.get("order_id")) for r in rows
@@ -2274,6 +2348,9 @@ def generated_store(order_id, prompt, blob, cost_usd, model,
         with open(os.path.join(edir, "files", fname), "wb") as f:
             f.write(blob)
         entry["file"] = fname
+        dims = media_dims_from_bytes(blob)
+        entry["width"], entry["height"] = dims if dims else (None,
+                                                             None)
     else:
         with open(ep, encoding="utf-8") as f:
             entry = json.load(f)

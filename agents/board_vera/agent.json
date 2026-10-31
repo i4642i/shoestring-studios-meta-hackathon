@@ -5,7 +5,7 @@
  "done": [
   "cut set equals Wren's narration exactly",
   "every cut holds 1-4 boxed blocks inside the safe area",
-  "every material backed by a helper pick or an opened ref",
+  "data blocks copy Max's values; images backed, readable, aspect-fit",
   "slide_draft written (result.json)"
  ],
  "frame_version": 1,

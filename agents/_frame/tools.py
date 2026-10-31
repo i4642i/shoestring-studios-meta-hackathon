@@ -6,6 +6,7 @@ ctx: {"run_dir":..., "agent_dir":..., "input_md":...}
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -1367,8 +1368,9 @@ def _prompt_doc(prompt):
 
 
 def write_anim_picks(ctx, args):
-    """Max's picks: cut match, template + values + refs per use,
-    every ref a CHECKED source table/formula readable by Max."""
+    """Max's picks v2: cut match, template + structured values per
+    use, every ref a CHECKED source table/formula quoted verbatim,
+    every data value traced to the quotes."""
     obj = (args or {}).get("anim_picks")
     if not isinstance(obj, dict):
         return {"ok": False, "errors": [
@@ -1385,10 +1387,20 @@ def write_anim_picks(ctx, args):
     for i, cut in enumerate(obj["cuts"]):
         if not isinstance(cut, dict) or cut.get("decision") != "use":
             continue
-        for j, ref in enumerate(cut.get("refs", []) or []):
-            where = "cuts[%d].refs[%d]" % (i, j)
-            _readable_ref(errors, ref, producer, order_id, where)
-            _checked_table_formula(errors, ref, where)
+        where = "cuts[%d]" % i
+        quotes = []
+        for j, r in enumerate(cut.get("refs", []) or []):
+            rw = "%s.refs[%d]" % (where, j)
+            if not isinstance(r, dict):
+                continue
+            _readable_ref(errors, r.get("ref"), producer,
+                          order_id, rw)
+            _check_quote(errors, r.get("ref"), r.get("quote"), rw)
+            _checked_table_formula(errors, r.get("ref"), rw)
+            if isinstance(r.get("quote"), str):
+                quotes.append(r["quote"])
+        _values_trace(errors, cut.get("template"),
+                      cut.get("values"), quotes, where)
     if errors:
         return {"ok": False, "errors": errors}
     return _save_category(ctx, "anim_picks", obj)
@@ -1404,10 +1416,193 @@ def _use_cuts(report):
     return out
 
 
+_ANIM_TMPL_FOR = {"table": ("table",), "formula": ("formula",),
+                  "chart": ("bar", "line"), "steps": ("steps",)}
+
+
+def _cells_equal(a, b):
+    """Normalized str-list compare (None-safe)."""
+    if not isinstance(a, list) or not isinstance(b, list):
+        return False
+    if len(a) != len(b):
+        return False
+    return all(_norm_ws(x) == _norm_ws(y)
+               for x, y in zip(a, b))
+
+
+def _rows_equal(a, b):
+    if not isinstance(a, list) or not isinstance(b, list):
+        return False
+    if len(a) != len(b):
+        return False
+    return all(_cells_equal(x, y) for x, y in zip(a, b))
+
+
+def _nums_equal(a, b):
+    if not isinstance(a, list) or not isinstance(b, list):
+        return False
+    if len(a) != len(b):
+        return False
+    for x, y in zip(a, b):
+        try:
+            if float(x) != float(y):
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
+def _anim_backed(errors, maxp, cut_id, kind, block, where):
+    """A data block copies Max's use pick for its cut exactly:
+    matching template, equal values."""
+    pick = maxp.get(cut_id)
+    if pick is None:
+        errors.append("%s: no anim pick for cut %r (data blocks "
+                      "copy Max's values)" % (where, cut_id))
+        return
+    if pick.get("template") not in _ANIM_TMPL_FOR[kind]:
+        errors.append("%s: Max's pick for cut %r is template %r, "
+                      "need %s" % (where, cut_id,
+                                   pick.get("template"),
+                                   "/".join(_ANIM_TMPL_FOR[kind])))
+        return
+    data = block.get("data") if isinstance(block.get("data"), dict) \
+        else {}
+    pv = pick.get("values") if isinstance(pick.get("values"), dict) \
+        else {}
+    same = False
+    if kind == "table":
+        same = _cells_equal(data.get("headers"), pv.get("headers")) \
+            and _rows_equal(data.get("rows"), pv.get("rows"))
+    elif kind == "chart":
+        same = data.get("subtype") == pick.get("template") \
+            and _cells_equal(data.get("labels"), pv.get("labels")) \
+            and _nums_equal(data.get("values"), pv.get("values"))
+    elif kind == "formula":
+        same = _cells_equal(data.get("lines"), pv.get("lines"))
+    elif kind == "steps":
+        same = _cells_equal(data.get("items"), pv.get("items"))
+    if not same:
+        errors.append("%s: data != Max's anim pick for cut %r"
+                      % (where, cut_id))
+
+
+def _figure_kind(errors, ref, where):
+    """A source_figure block points at a figure passage, not a
+    table or paragraph."""
+    if not isinstance(ref, str) or not ref.strip():
+        return  # missing refs are reported by readability
+    try:
+        rpc, rid, _frag = pc.parse_ref(ref)
+        entry = pc.load_entry_by_ref(pc.entry_ref(rpc, rid))
+        passage = pc.open_ref(entry, ref)
+    except (OSError, ValueError, KeyError):
+        return  # open failures are reported by readability
+    if passage.get("kind") != "figure":
+        errors.append("%s: %r is a %s, not a figure"
+                      % (where, ref, passage.get("kind")))
+
+
+def _material_aspect(errors, ref, box, where):
+    """Box aspect matches the stored material within 50%. Unknown
+    dims (old entries, parser figures without w/h) skip quietly."""
+    if not isinstance(ref, str) or not ref.strip():
+        return
+    try:
+        rpc, rid, frag = pc.parse_ref(ref)
+        entry = pc.load_entry_by_ref(pc.entry_ref(rpc, rid))
+    except (OSError, ValueError, KeyError):
+        return
+    w = h = None
+    if rpc in ("image", "generated"):
+        w, h = entry.get("width"), entry.get("height")
+        if not (w and h):
+            try:
+                full, _e, _f = pc.resolve_material_file(ref)
+                dims = pc.media_dims(full)
+            except (OSError, ValueError, KeyError):
+                dims = None
+            if dims:
+                w, h = dims
+    elif rpc == "source" and frag:
+        fig = next((f for f in entry.get("figures", [])
+                    if f.get("addr") == frag), None)
+        if fig is None:
+            return
+        w, h = fig.get("w"), fig.get("h")
+        if not (w and h) and fig.get("file"):
+            dims = pc.media_dims(os.path.join(
+                pc.entry_dir(rpc, rid), "figures", fig["file"]))
+            if dims:
+                w, h = dims
+    else:
+        return
+    if not all(isinstance(v, (int, float))
+               and not isinstance(v, bool) and v > 0
+               for v in (w, h)):
+        return
+    bw, bh = (box or {}).get("w"), (box or {}).get("h")
+    if not all(isinstance(v, (int, float))
+               and not isinstance(v, bool) and v > 0
+               for v in (bw, bh)):
+        return
+    rel = abs(bw / bh - w / h) / (w / h)
+    if rel > 0.5:
+        errors.append("%s: box aspect %.2f vs material %.2f "
+                      "(over 50%% off)" % (where, bw / bh, w / h))
+
+
+def _values_trace(errors, template, values, quotes, where):
+    """Every data scalar appears in the quoted source (numbers may
+    match numerically: 2.5 finds "2.50"). Steps items are Max's own
+    compression, so steps are exempt (refs still required)."""
+    vals = values if isinstance(values, dict) else {}
+    want = []
+    if template == "table":
+        want += [c for c in vals.get("headers", [])
+                 if isinstance(c, str)]
+        for r in vals.get("rows", []):
+            if isinstance(r, list):
+                want += [c for c in r if isinstance(c, str)]
+    elif template in ("bar", "line"):
+        want += [c for c in vals.get("labels", [])
+                 if isinstance(c, str)]
+        want += [v for v in vals.get("values", [])
+                 if isinstance(v, (int, float))
+                 and not isinstance(v, bool)]
+    elif template == "formula":
+        want += [c for c in vals.get("lines", [])
+                 if isinstance(c, str)]
+    else:
+        return
+    hay = _norm_ws("\n".join(q for q in quotes
+                              if isinstance(q, str)))
+    nums = set()
+    for tok in re.findall(r"-?\d+(?:\.\d+)?", hay):
+        try:
+            nums.add(float(tok))
+        except ValueError:
+            pass
+    for s in want:
+        t = _norm_ws(s)
+        if t and t in hay:
+            continue
+        try:
+            f = float(str(s).replace(",", ""))
+        except ValueError:
+            errors.append("%s: value %r is not in the quoted "
+                          "source" % (where, s))
+            continue
+        if f not in nums:
+            errors.append("%s: value %r is not in the quoted "
+                          "source" % (where, s))
+
+
 def write_slide_draft(ctx, args):
     """Vera's slide plan v2: cut+time match vs Wren's narration,
-    layout-checked blocks, photo/generated backed by helper picks,
-    source figures readable."""
+    layout-checked blocks, photo/generated backed by helper picks
+    and readable, data blocks copying Max's values exactly, source
+    figures readable, image boxes matching material aspect."""
     obj = (args or {}).get("slide_draft")
     if not isinstance(obj, dict):
         return {"ok": False, "errors": [
@@ -1426,6 +1621,12 @@ def write_slide_draft(ctx, args):
                                                   "gen_picks")),
             "animation": _use_cuts(_received_data(ctx,
                                                   "anim_picks"))}
+    maxp = {}
+    for mc in ((_received_data(ctx, "anim_picks") or {}).get("cuts")
+               or []):
+        if isinstance(mc, dict) and mc.get("decision") == "use" \
+                and mc.get("cut_id"):
+            maxp[mc["cut_id"]] = mc
     for i, cut in enumerate(obj["cuts"]):
         for j, b in enumerate(cut.get("blocks", []) or []):
             if not isinstance(b, dict):
@@ -1436,11 +1637,20 @@ def write_slide_draft(ctx, args):
                 if cut.get("cut_id") not in have.get(kind, set()):
                     errors.append("%s: no %s pick for cut %r"
                                   % (where, kind, cut.get("cut_id")))
+                _readable_ref(errors, b.get("ref"), producer,
+                              order_id, where)
+                _material_aspect(errors, b.get("ref"),
+                                 b.get("box") or {}, where)
             elif kind == "source_figure":
                 _readable_ref(errors, b.get("ref"), producer,
                               order_id, where)
-            elif kind not in ("table", "formula", "chart",
-                              "steps", "text"):
+                _figure_kind(errors, b.get("ref"), where)
+                _material_aspect(errors, b.get("ref"),
+                                 b.get("box") or {}, where)
+            elif kind in ("table", "formula", "chart", "steps"):
+                _anim_backed(errors, maxp, cut.get("cut_id"), kind,
+                             b, where)
+            elif kind != "text":
                 errors.append("%s: unknown block kind %r"
                               % (where, kind))
     if errors:
@@ -1772,8 +1982,8 @@ TOOLS = {
         write_anim_picks,
         "Save Max's animation picks as this run's result.json "
         "(anim_picks category). Fails unless cuts match and every "
-        "use pick names a template with values from CHECKED "
-        "source tables/formulas.",
+        "use pick names a template with structured values quoted "
+        "verbatim from CHECKED source tables/formulas.",
         {"type": "object",
          "properties": {"anim_picks": {"type": "object"}},
          "required": ["anim_picks"], "additionalProperties": False},
@@ -1782,7 +1992,8 @@ TOOLS = {
         write_slide_draft,
         "Save Vera's slide plan as this run's result.json "
         "(slide_draft category). Fails unless cuts match Wren's "
-        "narration and every material is backed by a helper pick.",
+        "narration, images are backed and readable, and data "
+        "blocks copy Max's values exactly.",
         {"type": "object",
          "properties": {"slide_draft": {"type": "object"}},
          "required": ["slide_draft"],

@@ -1,6 +1,6 @@
 {
  "anim_picks": {
-  "version": 1,
+  "version": 2,
   "description": "Max's per-cut template pick (values from checked source tables/formulas) or none.",
   "schema": {
    "type": "object",
@@ -21,29 +21,16 @@
         "type": "string"
        },
        "decision": {
-        "enum": [
-         "use",
-         "none"
-        ]
-       },
-       "template": {
-        "enum": [
-         "bar_chart",
-         "line_chart",
-         "step_arrows",
-         "formula_steps",
-         "table_highlight",
-         "none"
-        ]
-       },
-       "values": {
         "type": "string"
        },
+       "template": {
+        "type": "string"
+       },
+       "values": {
+        "type": "object"
+       },
        "refs": {
-        "type": "array",
-        "items": {
-         "type": "string"
-        }
+        "type": "array"
        },
        "reason": {
         "type": "string"

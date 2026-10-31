@@ -10,6 +10,7 @@ import struct
 import sys
 import tempfile
 import wave
+import zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -75,12 +76,36 @@ SLIDE = {"cuts": [
     {"cut_id": "s1c2", "start_s": 20, "end_s": 40, "preset": "full",
      "blocks": [
          {"kind": "photo",
-          "box": {"x": 300, "y": 130, "w": 680, "h": 460},
+          "box": {"x": 64, "y": 170, "w": 560, "h": 378},
           "order": 0, "appear_s": 0,
           "reason": "Plains photo for the line",
-          "ref": "pc://image/0123456789ab"}],
+          "ref": "pc://image/0123456789ab"},
+         {"kind": "source_figure",
+          "box": {"x": 648, "y": 170, "w": 504, "h": 378},
+          "order": 1, "appear_s": 0,
+          "reason": "Source figure for the line",
+          "ref": "pc://source/0123456789ab#fig1.1.1"}],
      "on_screen_text": ["Plains"], "transitions": [],
      "why": "stub"}]}
+
+def _png(w, h):
+    """Minimal true-color PNG bytes (solid black)."""
+    import struct
+    import zlib
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    raw = (b"\x00" + b"\x00" * (w * 3)) * h
+
+    def _chunk(typ, data):
+        return (struct.pack(">I", len(data)) + typ + data
+                + struct.pack(">I", zlib.crc32(typ + data)
+                              & 0xffffffff))
+
+    return (b"\x89PNG\r\n\x1a\n"
+            + _chunk(b"IHDR", ihdr)
+            + _chunk(b"IDAT", zlib.compress(raw))
+            + _chunk(b"IEND", b""))
+
+
 
 tmp = tempfile.mkdtemp(prefix="videocheck_")
 
@@ -119,7 +144,8 @@ ok(table == {"rows": [
      "screen": "Card", "materials": ["table", "text"]},
     {"part": "p1", "scene_n": 1, "cut_id": "s1c2", "start_s": 20,
      "end_s": 40, "narration": "Plains only",
-     "screen": "Card", "materials": ["pc://image/0123456789ab"]}]},
+     "screen": "Card", "materials": ["pc://image/0123456789ab",
+                                     "pc://source/0123456789ab#fig1.1.1"]}]},
    "storyboard table exact")
 asm = video.build_assembly(NARR, {"s1c1": "a.png", "s1c2": "b.png"},
                            {"s1c1": "a.wav", "s1c2": "b.wav"})
@@ -259,6 +285,31 @@ try:
                    {"cut_id": "s1c2", "decision": "none",
                     "reason": "stub"}]}
     ok(validate_anim_picks(AN, BOARD) == [], "max stub accepts")
+    AU = {"cuts": [{"cut_id": "s1c1", "decision": "use",
+                    "template": "table",
+                    "values": {"headers": ["Y"],
+                               "rows": [["1"]]},
+                    "refs": [{"ref": "pc://source/0123456789ab"
+                                     "#tab1.1.1",
+                              "quote": "| 1 |"}],
+                    "reason": "x"},
+                   {"cut_id": "s1c2", "decision": "none",
+                    "reason": "y"}]}
+    ok(validate_anim_picks(AU, BOARD) == [], "max use-pick accepts")
+    au_bad1 = json.loads(json.dumps(AU))
+    au_bad1["cuts"][0]["template"] = "confetti"
+    ok("template" in " ".join(validate_anim_picks(au_bad1, BOARD)),
+       "wild template refuses")
+    au_bad2 = json.loads(json.dumps(AU))
+    au_bad2["cuts"][0]["values"] = {"headers": ["Y"],
+                                    "rows": [["1", "2"]]}
+    ok("match headers" in " ".join(validate_anim_picks(au_bad2,
+                                                       BOARD)),
+       "ragged values refuse")
+    au_bad3 = json.loads(json.dumps(AU))
+    au_bad3["cuts"][1]["values"] = {}
+    ok("none pick" in " ".join(validate_anim_picks(au_bad3, BOARD)),
+       "none pick with values refuses")
     ok(validate_slide_draft(SLIDE, NARR) == [], "vera draft accepts")
     thin = json.loads(json.dumps(SLIDE))
     thin["cuts"][0]["blocks"] = []
@@ -306,7 +357,7 @@ try:
 
     # ---- v8 writers (stub payloads) ----
     seed = _pc.image_store_pick("ov", "https://example.org/pick-1",
-                                b"\x89PNG\r\n\x1a\nSEED", "cc0",
+                                _png(680, 460), "cc0",
                                 "Plains photo", suffix=".png")
     PH["cuts"][1]["ref"] = seed["ref"]
     PH["cuts"][1]["file"] = seed["file"]
@@ -326,13 +377,71 @@ try:
     mout = write_anim_picks(ctx_for(mdir, "anim_max"),
                             {"anim_picks": AN})
     ok(mout.get("ok") is True, "max stub saves")
+    _TROWS = [["Year", "Sales"], ["2024", "120"], ["2025", "150"]]
+    sent = _pc.ingest_source(
+        "ov", "s.pdf", "2026-10-30T00:00:00", "sales_sam",
+        ["1.1 Alpha\nSource alpha text."],
+        [{"page": 1, "top": 100, "caption": "Plains photo.",
+          "number": "1", "bbox": [0, 100, 800, 700],
+          "w": 800, "h": 600, "blob": _png(800, 600)}],
+        [{"page": 1, "top": 0, "caption": "Sales by year.",
+          "number": "1", "bbox": [0, 0, 100, 50],
+          "rows": _TROWS, "markdown": _pc.rows_to_md(_TROWS),
+          "blob": None}], 0)
+    _pc.set_recipients("source", sent["doc_id"], "ov",
+                       ["anim_max", "board_vera"], "sales_sam",
+                       kind="full")
+    sentry = _pc.load_entry_by_ref(sent["ref"])
+    tabref = sent["ref"] + "#" + sentry["tables"][0]["addr"]
+    figref = sent["ref"] + "#" + sentry["figures"][0]["addr"]
+    SLIDE["cuts"][1]["blocks"][1]["ref"] = figref
+    ok(sentry["tables"][0]["addr"].startswith("tab")
+       and sentry["figures"][0]["addr"].startswith("fig"),
+       "seeded entry carries table + figure addresses")
+    ok(_pc.media_dims_from_bytes(_png(12, 34)) == (12, 34)
+       and _pc.media_dims_from_bytes(
+           b"not an image at all.........") is None,
+       "png dims read from bytes, unknown gives none")
+    seeded = _pc.load_entry_by_ref(seed["ref"])
+    ok(seeded.get("width") == 680 and seeded.get("height") == 460,
+       "image entry stores material dims")
+    AN2 = {"cuts": [{"cut_id": "s1c1", "decision": "use",
+                     "template": "table",
+                     "values": {"headers": ["Year", "Sales"],
+                                "rows": [["2024", "120"],
+                                         ["2025", "150"]]},
+                     "refs": [{"ref": tabref,
+                               "quote": "| Year | Sales |\n"
+                                        "| --- | --- |\n"
+                                        "| 2024 | 120 |\n"
+                                        "| 2025 | 150 |"}],
+                     "reason": "Numbers teach better as a table."},
+                    {"cut_id": "s1c2", "decision": "none",
+                     "reason": "Photo covers it."}]}
+    mdir2 = wdir("anim_max2")
+    received(mdir2, "board_penn", "storyboard", 2, BOARD)
+    mout2 = write_anim_picks(ctx_for(mdir2, "anim_max"),
+                             {"anim_picks": AN2})
+    ok(mout2.get("ok") is True, "max table pick saves")
+    maxbad1 = json.loads(json.dumps(AN2))
+    maxbad1["cuts"][0]["refs"][0]["quote"] = "sales tripled (!)"
+    ok("verbatim" in " ".join(write_anim_picks(
+        ctx_for(mdir2, "anim_max"),
+        {"anim_picks": maxbad1}).get("errors", [])),
+       "invented quote refuses")
+    maxbad2 = json.loads(json.dumps(AN2))
+    maxbad2["cuts"][0]["values"]["rows"][0][1] = "999"
+    ok("not in the quoted" in " ".join(write_anim_picks(
+        ctx_for(mdir2, "anim_max"),
+        {"anim_picks": maxbad2}).get("errors", [])),
+       "untraced value refuses")
     vdir = wdir("board_vera")
     received(vdir, "voice_wren", "narration", 2, NARR)
     received(vdir, "board_penn", "storyboard", 2, BOARD)
     received(vdir, "board_penn", "style_guide", 1, GUIDE)
     received(vdir, "photo_pia", "photo_picks", 1, PH)
     received(vdir, "image_gene", "gen_picks", 1, GE)
-    received(vdir, "anim_max", "anim_picks", 1, AN)
+    received(vdir, "anim_max", "anim_picks", 2, AN2)
     vout = write_slide_draft(ctx_for(vdir, "board_vera"),
                              {"slide_draft": SLIDE})
     ok(vout.get("ok") is True, "vera layout draft saves")
@@ -347,6 +456,35 @@ try:
         {"slide_draft": badv}).get("errors", [])
     ok("no photo pick" in " ".join(verrs),
        "unbacked photo block refuses")
+    badm = json.loads(json.dumps(SLIDE))
+    badm["cuts"][0]["blocks"][0]["data"]["rows"][0][1] = "999"
+    ok("!= Max" in " ".join(write_slide_draft(
+        ctx_for(vdir, "board_vera"),
+        {"slide_draft": badm}).get("errors", [])),
+       "vera data differing from Max refuses")
+    bads = json.loads(json.dumps(SLIDE))
+    bads["cuts"][1]["blocks"].append(
+        {"kind": "steps", "box": {"x": 64, "y": 560, "w": 1152,
+                                 "h": 90},
+         "order": 2, "appear_s": 0, "reason": "No Max pick here",
+         "font_size": 26, "data": {"items": ["First", "Second"]}})
+    ok("no anim pick" in " ".join(write_slide_draft(
+        ctx_for(vdir, "board_vera"),
+        {"slide_draft": bads}).get("errors", [])),
+       "data block without Max pick refuses")
+    badar = json.loads(json.dumps(SLIDE))
+    badar["cuts"][1]["blocks"][0]["box"] = {"x": 64, "y": 64,
+                                            "w": 680, "h": 100}
+    ok("aspect" in " ".join(write_slide_draft(
+        ctx_for(vdir, "board_vera"),
+        {"slide_draft": badar}).get("errors", [])),
+       "wrong-aspect photo box refuses")
+    badf = json.loads(json.dumps(SLIDE))
+    badf["cuts"][1]["blocks"][1]["ref"] = tabref
+    ok("not a figure" in " ".join(write_slide_draft(
+        ctx_for(vdir, "board_vera"),
+        {"slide_draft": badf}).get("errors", [])),
+       "figure block on a table refuses")
     ldir = wdir("slide_remy2")
     received(ldir, "board_vera", "slide_draft", 2, SLIDE)
     lout = write_render_log(ctx_for(ldir, "slide_remy"),
@@ -492,7 +630,7 @@ try:
     received(vrun, "board_penn", "style_guide", 1, GUIDE)
     received(vrun, "photo_pia", "photo_picks", 1, PH)
     received(vrun, "image_gene", "gen_picks", 1, GE)
-    received(vrun, "anim_max", "anim_picks", 1, AN)
+    received(vrun, "anim_max", "anim_picks", 2, AN2)
     vmd = os.path.join(vrun, "INPUTS.md")
     with open(vmd, "w", encoding="utf-8") as f:
         f.write("# inputs\n")

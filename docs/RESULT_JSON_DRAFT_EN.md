@@ -1644,12 +1644,16 @@ New categories (all versioned, writer-checked):
   Licenses: cc0/pdm/by/by-sa, never nd; unviewed never used.
 - `gen_picks` v1 (Gene): per cut `generate|none` with prompt;
   `images[]` (\u22646/run, prompt reuse by hash). Concept-only.
-- `anim_picks` v1 (Max): per cut `use|none` with template +
-  values + refs. Values trace to checked source tables/formulas
-  only.
-- `slide_draft` v1 (Vera): per cut `materials[1..2], layout,
-  on_screen_text, cut_time, transitions[], why`. Times match
-  Wren; materials backed by helper picks or opened refs.
+- `anim_picks` v2 (Max): per cut `use|none` with template +
+  structured values + `refs[]` ({ref, quote}). Values trace to
+  CHECKED source tables/formulas quoted verbatim (steps items
+  exempt); Vera copies use picks exactly.
+- `slide_draft` v2 (Vera): per cut `preset` + `blocks[1..4]`
+  (kind, 1280x720 box, order, appear_s, reason + kind data),
+  `on_screen_text, transitions[], why`. Times match Wren;
+  photo/generated backed by helper picks and readable, data
+  blocks copying Max's values, figure refs pointing at
+  figures, image boxes matching material aspect.
 - `render_log` v1 (Remy): per cut `slide_file,
   adjustments[]` (layout values only), `renders_n \u22643`,
   `issues[]`. Content equals Vera's.

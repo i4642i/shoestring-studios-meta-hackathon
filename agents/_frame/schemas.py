@@ -1098,7 +1098,6 @@ TTS_FIT = 0.15  # cut audio must sit within ±15% of the cut plan
 VOICE_MAX_ATTEMPTS = 2
 GEN_IMAGES_MAX = 6
 REMY_MAX_RENDERS = 3
-VERA_MAX_MATERIALS = 2
 PICK_LICENSES = ("cc0", "pdm", "by", "by-sa")
 LAYOUT_FIELDS = ("position", "size", "font_size", "alignment",
                  "crop", "zoom", "padding", "accent", "x", "y",
@@ -1257,8 +1256,59 @@ def validate_gen_picks(obj, storyboard):
     return errors
 
 
+ANIM_TEMPLATES = ("bar", "line", "table", "formula", "steps")
+
+
+def _anim_values_ok(template, values, where, errors):
+    """Template-shaped values object for a Max use pick."""
+    if not isinstance(values, dict):
+        errors.append("%s.values must be an object for a use pick"
+                      % where)
+        return
+    if template == "table":
+        heads = values.get("headers")
+        rows = values.get("rows")
+        if not isinstance(heads, list) or not heads or \
+                not all(isinstance(t, str) and t for t in heads):
+            errors.append("%s.values.headers nonempty str list"
+                          % where)
+            heads = []
+        if not isinstance(rows, list) or not rows or len(rows) > 10:
+            errors.append("%s.values.rows 1-10" % where)
+        else:
+            for r in rows:
+                if not isinstance(r, list) or len(r) != len(heads) \
+                        or not all(isinstance(t, str) for t in r):
+                    errors.append("%s.values.rows match headers"
+                                  % where)
+                    break
+    elif template in ("bar", "line"):
+        labs = values.get("labels")
+        vals = values.get("values")
+        if not isinstance(labs, list) or len(labs) < 2 or \
+                not all(isinstance(t, str) and t for t in labs):
+            errors.append("%s.values.labels >= 2 nonempty" % where)
+            labs = []
+        if not isinstance(vals, list) or len(vals) != len(labs) \
+                or not all(_is_num(v) for v in vals):
+            errors.append("%s.values.values match labels" % where)
+    elif template == "formula":
+        lines = values.get("lines")
+        if not isinstance(lines, list) or not lines or \
+                len(lines) > 8 or \
+                not all(isinstance(t, str) and t for t in lines):
+            errors.append("%s.values.lines 1-8 nonempty" % where)
+    elif template == "steps":
+        items = values.get("items")
+        if not isinstance(items, list) or \
+                not (2 <= len(items) <= 8) or \
+                not all(isinstance(t, str) and t for t in items):
+            errors.append("%s.values.items 2-8 nonempty" % where)
+
+
 def validate_anim_picks(obj, storyboard):
-    """Max's picks: cut match, template + values + refs per use."""
+    """Max's picks v2: cut match, template + structured values +
+    verbatim refs per use."""
     errors = []
     if not isinstance(obj, dict):
         return ["anim_picks must be an object"]
@@ -1280,18 +1330,34 @@ def validate_anim_picks(obj, storyboard):
             errors.append("%s.cut_id %r is not in the storyboard"
                           % (where, cut["cut_id"]))
         if cut.get("decision") == "use":
-            if cut.get("template") in (None, "", "none"):
-                errors.append("%s.template must name a template "
-                              "for a use pick" % where)
-            for k in ("values", "reason"):
-                if not cut.get(k) or not isinstance(cut[k], str):
-                    errors.append("%s.%s must be a non-empty string "
-                                  "for a use pick" % (where, k))
-            if not isinstance(cut.get("refs"), list) \
-                    or not cut["refs"]:
+            if cut.get("template") not in ANIM_TEMPLATES:
+                errors.append("%s.template one of %s for a use pick"
+                              % (where, ANIM_TEMPLATES))
+            else:
+                _anim_values_ok(cut["template"], cut.get("values"),
+                                where, errors)
+            refs = cut.get("refs")
+            if not isinstance(refs, list) or not refs:
                 errors.append("%s.refs must be a non-empty list "
                               "for a use pick" % where)
-        elif cut.get("decision") != "none":
+            else:
+                for j, r in enumerate(refs):
+                    if not isinstance(r, dict) or \
+                            not isinstance(r.get("ref"), str) or \
+                            not r.get("ref") or \
+                            not isinstance(r.get("quote"), str) or \
+                            not r.get("quote"):
+                        errors.append("%s.refs[%d] needs "
+                                      "{ref, quote}" % (where, j))
+            if not cut.get("reason") or \
+                    not isinstance(cut["reason"], str):
+                errors.append("%s.reason must be a non-empty string "
+                              "for a use pick" % where)
+        elif cut.get("decision") == "none":
+            if "template" in cut or "values" in cut:
+                errors.append("%s: a none pick holds no "
+                              "template/values" % where)
+        else:
             errors.append("%s.decision must be use or none" % where)
     if sorted(got) != sorted(want):
         errors.append("cut set must equal the storyboard's")

@@ -12,8 +12,6 @@ import subprocess
 from xml.sax.saxutils import escape
 
 RENDER_MAX = 3
-CARD_W = 1280
-CARD_H = 720
 
 
 def _color(guide, key, default):
@@ -34,53 +32,6 @@ def _font(guide, key, default):
     if isinstance(val, str) and val.strip():
         return val.strip()
     return default
-
-
-def render_text_card(cut, guide, out_path):
-    """Render one cut's text card as an SVG file. Returns out_path.
-
-    cut: Vera slide_draft cut {cut_id, on_screen_text[], layout}.
-    guide: Penn style_guide {palette, fonts}. Missing style falls
-    back to safe defaults so a stub guide still renders.
-    """
-    cut = cut or {}
-    lines = cut.get("on_screen_text") or []
-    if not isinstance(lines, list):
-        raise ValueError("on_screen_text must be a list")
-    lines = [str(t) for t in lines[:3]]
-    bg = _color(guide, "background", "#101418")
-    fg = _color(guide, "text", "#f5f2ea")
-    accent = _color(guide, "accent", "#e0a458")
-    body = _font(guide, "body", "sans-serif")
-    heading = _font(guide, "heading", "sans-serif")
-    head = escape(str(cut.get("cut_id", "")))
-    Hedge = escape(str(cut.get("layout", "")))
-    items = []
-    y0 = CARD_H // 2 - (len(lines) - 1) * 44 if lines else CARD_H // 2
-    for i, t in enumerate(lines):
-        items.append(
-            '<text x="640" y="%d" text-anchor="middle" '
-            'font-family="%s" font-size="56" fill="%s">%s</text>'
-            % (y0 + i * 88, escape(body), fg, escape(t)))
-    svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" width="%d" '
-        'height="%d" viewBox="0 0 %d %d">'
-        '<rect width="%d" height="%d" fill="%s"/>'
-        '<rect x="0" y="0" width="%d" height="14" fill="%s"/>'
-        '<text x="48" y="80" font-family="%s" font-size="30" '
-        'fill="%s">%s</text>'
-        '<text x="48" y="660" font-family="%s" font-size="24" '
-        'fill="%s">%s</text>'
-        '%s</svg>'
-        % (CARD_W, CARD_H, CARD_W, CARD_H, CARD_W, CARD_H, bg,
-           CARD_W, accent, escape(heading), accent, head,
-           escape(body), accent, Hedge, "".join(items)))
-    folder = os.path.dirname(out_path)
-    if folder:
-        os.makedirs(folder, exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(svg)
-    return out_path
 
 
 def srt_timestamp(seconds):

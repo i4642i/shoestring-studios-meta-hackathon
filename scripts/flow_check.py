@@ -372,7 +372,7 @@ GEN = {"cuts": [{"cut_id": "s1c1", "decision": "none",
                  "reason": "stub"}],
        "images": []}
 ANIM = {"cuts": [{"cut_id": "s1c1", "decision": "none",
-                  "template": "none", "reason": "stub"}]}
+                  "reason": "stub"}]}
 SLIDE = {"cuts": [{"cut_id": "s1c1", "start_s": 0, "end_s": 20,
                    "preset": "full",
                    "blocks": [{"kind": "text",
@@ -486,7 +486,7 @@ ok(wren["status"] == "checked"
    and wren["categories"]["narration"]["version"] == 2, "wren checked")
 for _aid, _cat, _ver in (("photo_pia", "photo_picks", 1),
                          ("image_gene", "gen_picks", 1),
-                         ("anim_max", "anim_picks", 1),
+                         ("anim_max", "anim_picks", 2),
                          ("board_vera", "slide_draft", 2),
                          ("slide_remy", "render_log", 1)):
     _res = results.load_result(os.path.join(rdir, _aid, "result.json"))
