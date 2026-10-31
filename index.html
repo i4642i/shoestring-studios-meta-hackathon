@@ -389,6 +389,18 @@
 <div class="page" id="p-studio">
   <div class="card">
     <h2>STUDIO — WATCH THE CREW WORK</h2>
+    <div id="st-ctl">
+      <select id="st-run" aria-label="Run"></select>
+      <span id="st-chip">No run</span>
+      <span id="st-now"></span>
+      <span id="st-cost"></span>
+      <button id="st-resume">Resume</button>
+      <button id="st-pause">Pause</button>
+      <button id="st-step">One step</button>
+      <button id="st-stop">Stop</button>
+      <label id="st-eachlab"><input type="checkbox" id="st-each"> Pause after each employee</label>
+      <span id="st-err"></span>
+    </div>
     <div class="studiowrap">
       <div class="officebox"><iframe class="office" src="office_3d.html" title="3D office"></iframe><button id="chatopen" type="button">CHAT</button></div>
       <div class="chatbox">
@@ -627,6 +639,31 @@ body.tab-flow { padding-bottom: 0; }
 #p-flow .hint { display: none; }
 #p-flow .hint.show { display: block; }
 #fl-help { font-weight: 800; }
+#st-ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin: 0 0 10px; font-size: 13px; }
+#st-chip { font-weight: 800; font-size: 12px; border-radius: 999px;
+  padding: 3px 12px; background: #e5e7eb; color: #374151; }
+#st-chip.running { background: #dbeafe; color: #1d4ed8; }
+#st-chip.pausing { background: #fef3c7; color: #92400e; }
+#st-chip.paused { background: #fef3c7; color: #92400e; }
+#st-chip.done { background: #dcfce7; color: #166534; }
+#st-chip.stopped { background: #e5e7eb; color: #374151; }
+#st-chip.error { background: #fee2e2; color: #b91c1c; }
+#st-now { font-weight: 700; }
+#st-cost, #st-err { color: var(--dim); font-size: 12px; }
+#st-err { color: #b91c1c; }
+#st-eachlab { display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--dim); }
+#bd-chip { font-weight: 800; font-size: 12px; border-radius: 999px;
+  padding: 3px 12px; background: #e5e7eb; color: #374151; }
+#bd-chip.running { background: #dbeafe; color: #1d4ed8; }
+#bd-chip.pausing, #bd-chip.paused { background: #fef3c7;
+  color: #92400e; }
+#bd-chip.done { background: #dcfce7; color: #166534; }
+#bd-chip.error { background: #fee2e2; color: #b91c1c; }
+button.linklike { background: none; border: none; padding: 0;
+  color: var(--accent); text-decoration: underline; cursor: pointer;
+  font-size: inherit; font-family: inherit; }
 #fl-crew { background: #fff; }
 #fl-crew h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: 2px;
   color: var(--dim); }
@@ -819,6 +856,10 @@ body.tab-flow { padding-bottom: 0; }
       <button id="bd-approve">Approve</button>
       <button id="bd-rerun">Re-run with note</button>
       <input id="bd-note" maxlength="500" placeholder="Owner note (re-run)" aria-label="Owner note">
+      <span id="bd-chip">—</span>
+      <button id="bd-resume">Resume</button>
+      <button id="bd-pause">Pause</button>
+      <button id="bd-onestep">One step</button>
       <button id="bd-stop">Stop</button>
       <div id="bd-legend"></div>
     </div>
@@ -923,6 +964,27 @@ body.tab-flow { padding-bottom: 0; }
     wrap.scrollLeft = sl;
     wrap.scrollTop = st;
     armRefresh();
+    refreshCtl().catch(() => {});
+  }
+  async function refreshCtl() {
+    const el = $("bd-chip");
+    if (!B.run) {
+      el.textContent = "\u2014";
+      el.className = "";
+      return;
+    }
+    const d = await api.get("api/flows/runs/" +
+      encodeURIComponent(B.run) + "/state");
+    const names = { running: "Running", pausing: "Pausing\u2026",
+      paused: "Paused", done: "Done", stopped: "Stopped",
+      error: "Error" };
+    el.textContent = names[d.state] || d.state;
+    el.className = names[d.state] ? d.state : "";
+    $("bd-pause").disabled = d.state !== "running";
+    $("bd-resume").disabled = d.state !== "paused";
+    $("bd-onestep").disabled = d.state !== "paused";
+    $("bd-stop").disabled = d.state !== "running" &&
+      d.state !== "pausing" && d.state !== "paused";
   }
   function fillParts() {
     const sel = $("bd-part");
@@ -1450,16 +1512,22 @@ body.tab-flow { padding-bottom: 0; }
         pollRun();
       } catch (e) { err("Error: " + e.message); }
     };
-    $("bd-stop").onclick = async () => {
+    async function ctl(which) {
       try {
         err("");
         if (!B.run) throw new Error("no run selected");
+        if (which === "stop" && !window.confirm(
+          "Stop this run? It cannot be resumed.")) return;
         await api.send("POST", "api/flows/runs/" +
-          encodeURIComponent(B.run) + "/stop", {});
+          encodeURIComponent(B.run) + "/" + which, {});
         await loadRuns();
         await loadBoard();
       } catch (e) { err("Error: " + e.message); }
-    };
+    }
+    $("bd-resume").onclick = () => ctl("resume");
+    $("bd-pause").onclick = () => ctl("pause");
+    $("bd-onestep").onclick = () => ctl("step");
+    $("bd-stop").onclick = () => ctl("stop");
     loadRuns()
       .then(() => loadBoard())
       .catch(e => err("Error: " + e.message));
@@ -1576,6 +1644,8 @@ body.tab-flow { padding-bottom: 0; }
       window.__boardShown();
     if (b.dataset.p === "order" && window.__orderShown)
       window.__orderShown();
+    if (b.dataset.p === "studio" && window.__studioShown)
+      window.__studioShown();
   });
   (function initTabBody() {
     const init = document.querySelector("nav button.active");
@@ -2312,6 +2382,127 @@ body.tab-flow { padding-bottom: 0; }
     show.onclick = () => wrap.classList.remove("chat-hidden");
   })();
 
+  /* Studio run controls: one bar above the office, same API as Board. */
+  (function studioCtl() {
+    const runSel = document.getElementById("st-run");
+    const chip = document.getElementById("st-chip");
+    const nowEl = document.getElementById("st-now");
+    const costEl = document.getElementById("st-cost");
+    const errEl = document.getElementById("st-err");
+    const eachBox = document.getElementById("st-each");
+    if (!runSel || !chip) return;
+    const btns = {
+      resume: document.getElementById("st-resume"),
+      pause: document.getElementById("st-pause"),
+      step: document.getElementById("st-step"),
+      stop: document.getElementById("st-stop"),
+    };
+    let roster = [];
+    let timer = 0;
+    const CHIP = { running: "Running", pausing: "Pausing\u2026",
+      paused: "Paused", done: "Done", stopped: "Stopped",
+      error: "Error" };
+    function nameOf(cur) {
+      if (!cur) return "";
+      const at = cur.indexOf("@");
+      const base = at >= 0 ? cur.slice(0, at) : cur;
+      const m = roster.find((x) => x.id === base);
+      const nm = m ? m.name : base;
+      if (at < 0) return nm;
+      const pm = /^p(\d+)$/.exec(cur.slice(at + 1));
+      return nm + (pm ? " (Part " + pm[1] + ")" : " (@" +
+        cur.slice(at + 1) + ")");
+    }
+    function render(st) {
+      const state = (st && st.state) || "unknown";
+      chip.textContent = CHIP[state] || state;
+      chip.className = CHIP[state] ? state : "";
+      nowEl.textContent = st && st.current
+        ? "Now: " + nameOf(st.current) : "";
+      const c = (st && st.cost) || {};
+      costEl.textContent = "Cost: " + (c.llm_calls || 0) +
+        " calls \u00b7 " + (c.prompt_tokens || 0) + "/" +
+        (c.completion_tokens || 0) + " tok";
+      btns.pause.disabled = state !== "running";
+      btns.resume.disabled = state !== "paused";
+      btns.step.disabled = state !== "paused";
+      btns.stop.disabled = state !== "running" &&
+        state !== "pausing" && state !== "paused";
+      eachBox.disabled = !runSel.value;
+      if (st && typeof st.pause_each_stage === "boolean" &&
+          document.activeElement !== eachBox)
+        eachBox.checked = st.pause_each_stage;
+    }
+    async function refresh() {
+      if (!runSel.value) {
+        chip.textContent = "No run";
+        chip.className = "";
+        nowEl.textContent = "";
+        costEl.textContent = "";
+        Object.values(btns).forEach((b) => { b.disabled = true; });
+        eachBox.disabled = true;
+        return;
+      }
+      try {
+        render(await api.get("api/flows/runs/" +
+          encodeURIComponent(runSel.value) + "/state"));
+      } catch (e) { errEl.textContent = "Error: " + e.message; }
+    }
+    async function loadRuns() {
+      try {
+        roster = await api.get("api/crew");
+      } catch (e) { roster = []; }
+      try {
+        const r = await api.get("api/flows/runs");
+        const runs = r.runs || [];
+        const keep = runSel.value;
+        runSel.innerHTML = runs.map((x) =>
+          '<option value="' + esc(x.run_id) + '">' + esc(x.run_id) +
+          " \u2014 " + esc(x.state) + "</option>").join("");
+        if (runs.some((x) => x.run_id === keep)) runSel.value = keep;
+        else if (runs.length) runSel.value = runs[0].run_id;
+        await refresh();
+      } catch (e) { errEl.textContent = "Error: " + e.message; }
+    }
+    async function act(which) {
+      errEl.textContent = "";
+      if (!runSel.value) return;
+      if (which === "stop" && !window.confirm(
+        "Stop this run? It cannot be resumed.")) return;
+      try {
+        await api.send("POST", "api/flows/runs/" +
+          encodeURIComponent(runSel.value) + "/" + which, {});
+        await refresh();
+      } catch (e) { errEl.textContent = "Error: " + e.message; }
+    }
+    btns.resume.onclick = () => act("resume");
+    btns.pause.onclick = () => act("pause");
+    btns.step.onclick = () => act("step");
+    btns.stop.onclick = () => act("stop");
+    runSel.onchange = () => { errEl.textContent = ""; refresh(); };
+    eachBox.onchange = async () => {
+      errEl.textContent = "";
+      if (!runSel.value) return;
+      try {
+        await api.send("POST", "api/flows/runs/" +
+          encodeURIComponent(runSel.value) + "/control",
+          { pause_each_stage: eachBox.checked });
+        await refresh();
+      } catch (e) {
+        errEl.textContent = "Error: " + e.message;
+        eachBox.checked = !eachBox.checked;
+      }
+    };
+    window.__studioShown = () => {
+      loadRuns();
+      if (timer) clearInterval(timer);
+      timer = setInterval(() => {
+        const p = document.getElementById("p-studio");
+        if (p && p.classList.contains("active")) refresh();
+      }, 2500);
+    };
+  })();
+
   /* Order consultation: assignee + chat + 5 questions + PDF + mini-3D seat. */
   (function order() {
     const statusEl = document.getElementById("o-status");
@@ -2680,6 +2871,15 @@ body.tab-flow { padding-bottom: 0; }
         fail(e);
       }
     };
+    function studioLink() {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "linklike";
+      b.textContent = "Studio";
+      b.onclick = () => document.querySelector(
+        'nav button[data-p="studio"]').click();
+      return b;
+    }
     function showStarted(r) {
       msg.textContent = "Order " + oid + " in production: " + r.files.join(", ");
       const pre = document.getElementById("o-result");
@@ -2688,7 +2888,17 @@ body.tab-flow { padding-bottom: 0; }
       pre.innerHTML = esc(stages + "=== intake.json ===\n" + JSON.stringify(r.intake, null, 2) +
         "\n\n=== report.md (generated, do not edit) ===\n" + r.report_md).replace(/\[([^\]]+)\]\(api\/ref\?ref=([^)]+)\)/g, '<a href="api/ref?ref=$2" target="_blank" rel="noopener">$1</a>');
       statusEl.textContent = "Order " + oid + " — in production.";
-      document.getElementById("queued").textContent = "Production started.";
+      const q = document.getElementById("queued");
+      q.innerHTML = "";
+      if (r.run_id) {
+        q.append("Production started \u2014 watch it in ",
+          studioLink(), " (" + r.run_id + ").");
+      } else if (r.auto_run_error) {
+        q.textContent = "Production started, but the crew flow did not " +
+          "start: " + r.auto_run_error;
+      } else {
+        q.textContent = "Production started.";
+      }
       sessionStorage.removeItem("shoestring_order");
     }
     document.getElementById("o-yes").onclick = async () => {
@@ -2714,7 +2924,7 @@ body.tab-flow { padding-bottom: 0; }
         samSay(prog);
         msg.textContent = "Answers saved, PDF sectioned. Sales is writing the production request… (may take a minute)";
         const r = await api.send("POST", "api/orders/" + oid + "/start", {});
-        samSay(prog + "\nProduction started.");
+        samSay(prog + "\nProduction started \u2014 watch it in Studio.");
         showStarted(r);
       } catch (e) {
         samSay((prog ? prog + "\n" : "") + "Couldn't start: " + e.message);

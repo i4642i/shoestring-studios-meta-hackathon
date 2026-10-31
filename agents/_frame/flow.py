@@ -747,6 +747,7 @@ def _run_one_clone(run_dir, agent_id, order_id, order_brief,
     cid = parts.clone_id(agent_id, no)
     cdir = os.path.join(run_dir, agent_id, "p%d" % no)
     os.makedirs(cdir, exist_ok=True)
+    _patch_status(run_dir, {"current": cid})
     emit({"ev": "agent_start", "agent": cid})
     received = []
     dest = os.path.join(agent_id, "p%d" % no)
@@ -968,16 +969,74 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
             with open(events_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(ev, ensure_ascii=False) + "\n")
 
+    completed = []
+
     def fail(msg):
         _write_json(os.path.join(run_dir, "STATUS.json"),
                     {"run_id": run_id, "flow_id": flow_id,
-                     "order_id": order_id, "state": "failed", "error": msg})
+                     "order_id": order_id, "state": "failed",
+                     "error": msg, "current": "",
+                     "completed": list(completed),
+                     "cost": _run_cost(run_dir)})
         emit({"ev": "flow_error", "error": msg})
         return {"ok": False, "run_id": run_id, "error": msg}
 
+    def halted(where, nid):
+        _write_json(os.path.join(run_dir, "STATUS.json"),
+                    {"run_id": run_id, "flow_id": flow_id,
+                     "order_id": order_id, "state": "stopped",
+                     "error": "", "current": "",
+                     "completed": list(completed),
+                     "cost": _run_cost(run_dir)})
+        emit({"ev": "step_stopped", "at": nid})
+        return {"ok": False, "run_id": run_id,
+                "error": "stopped: halted %s %s" % (where, nid)}
+
+    def gate(after, nid):
+        """Stage-boundary control: stop, wait (paused), or go."""
+        try:
+            legacy = bool(stop_check()) if stop_check else False
+        except Exception:  # noqa: BLE001 - a bad flag stops us
+            legacy = True
+        ctl = read_control(run_dir)
+        if legacy or ctl["stop"]:
+            return "stop"
+        if not after:
+            if ctl["step_ack"]:
+                return "go"  # a granted single step runs
+            return "wait" if ctl["pause"] else "go"
+        if ctl["step_ack"]:
+            write_control(run_dir, {"step_ack": False})
+            return "wait"
+        if ctl["pause_each_stage"] or ctl["pause"]:
+            return "wait"
+        return "go"
+
+    def wait_paused():
+        _patch_status(run_dir, {"state": "paused", "current": ""})
+        emit({"ev": "flow_paused"})
+        while True:
+            time.sleep(0.4)
+            ctl = read_control(run_dir)
+            if ctl["stop"]:
+                return "stop"
+            if ctl["step_once"]:
+                write_control(run_dir, {"step_once": False,
+                                        "step_ack": True})
+                emit({"ev": "flow_step"})
+                _patch_status(run_dir, {"state": "running"})
+                return "once"
+            if ctl["wake"]:
+                write_control(run_dir, {"wake": False})
+                emit({"ev": "flow_resumed"})
+                _patch_status(run_dir, {"state": "running"})
+                return "go"
+
     _write_json(os.path.join(run_dir, "STATUS.json"),
                 {"run_id": run_id, "flow_id": flow_id,
-                 "order_id": order_id, "state": "running"})
+                 "order_id": order_id, "state": "running",
+                 "current": "", "completed": [],
+                 "cost": _run_cost(run_dir)})
     emit({"ev": "flow_start", "flow": flow_id, "order": order_id})
     order = _order_brief(order_id)
     if not order["ok"]:
@@ -992,21 +1051,14 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
     code_nodes = {n.get("id") for n in flow.get("nodes", [])
                   if isinstance(n, dict) and n.get("code")}
     for nid in sequence:
-        if stop_check is not None:
-            try:
-                stopped = bool(stop_check())
-            except Exception:  # noqa: BLE001 - a bad flag stops us
-                stopped = True
-            if stopped:
-                _write_json(os.path.join(run_dir, "STATUS.json"),
-                            {"run_id": run_id, "flow_id": flow_id,
-                             "order_id": order_id, "state": "stopped",
-                             "error": ""})
-                emit({"ev": "step_stopped", "at": nid})
-                return {"ok": False, "run_id": run_id,
-                        "error": "stopped: halted before %s" % nid}
+        pre = gate(False, nid)
+        if pre == "stop":
+            return halted("before", nid)
+        if pre == "wait" and wait_paused() == "stop":
+            return halted("before", nid)
         if nid == FINAL_NODE or _is_draft(nid):
             continue
+        _patch_status(run_dir, {"current": nid, "state": "running"})
         if nid in code_nodes:
             step = _run_code_node(run_dir, nid, order_id,
                                   order["brief"],
@@ -1019,6 +1071,15 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
                 flow_settings=settings)
         if not step["ok"]:
             return fail(step["error"])
+        completed.append(nid)
+        _patch_status(run_dir, {"completed": list(completed),
+                                "current": "",
+                                "cost": _run_cost(run_dir)})
+        post = gate(True, nid)
+        if post == "stop":
+            return halted("after", nid)
+        if post == "wait" and wait_paused() == "stop":
+            return halted("after", nid)
     final = _collect_final(run_dir, order_id,
                            incoming.get(FINAL_NODE, []), emit)
     if not final["ok"]:
@@ -1026,7 +1087,9 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
     _write_json(os.path.join(run_dir, "STATUS.json"),
                 {"run_id": run_id, "flow_id": flow_id,
                  "order_id": order_id, "state": "done",
-                 "received": final["received"]})
+                 "received": final["received"], "current": "",
+                 "completed": list(completed),
+                 "cost": _run_cost(run_dir)})
     emit({"ev": "flow_done", "run": run_id})
     return {"ok": True, "run_id": run_id, "received": final["received"]}
 
@@ -1190,6 +1253,7 @@ def _run_code_node(run_dir, node_id, order_id, order_brief, incoming,
     video record, subtitles, and storyboard table. Pure code, no
     model. Never renders the MP4 itself (see assembly.json)."""
     from . import video
+    _patch_status(run_dir, {"current": node_id})
     if node_id == parts.SPLIT_NODE:
         return _run_part_split(run_dir, node_id, order_id,
                                order_brief, incoming, emit)
@@ -1334,6 +1398,210 @@ def _run_code_node(run_dir, node_id, order_id, order_brief, incoming,
     emit({"ev": "agent_done", "agent": node_id, "code": True,
           "outputs": ["video", "storyboard_table"]})
     return {"ok": True}
+
+
+CONTROL_FILE = "CONTROL.json"
+RUN_STATES = ("running", "pausing", "paused", "done", "stopped",
+              "error")
+_CONTROL_DEFAULTS = {"pause": False, "stop": False,
+                     "step_once": False, "step_ack": False,
+                     "wake": False, "pause_each_stage": False}
+
+
+def _control_path(run_dir):
+    return os.path.join(run_dir, CONTROL_FILE)
+
+
+def read_control(run_dir):
+    """Run controls file (written by the API, polled by the runner
+    at stage boundaries). Missing file = defaults."""
+    ctl = dict(_CONTROL_DEFAULTS)
+    try:
+        with open(_control_path(run_dir), encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return ctl
+    if isinstance(raw, dict):
+        for k in ctl:
+            if isinstance(raw.get(k), bool):
+                ctl[k] = raw[k]
+    return ctl
+
+
+def write_control(run_dir, patch):
+    """Merge boolean control flags; returns the merged control."""
+    ctl = read_control(run_dir)
+    for k, v in (patch or {}).items():
+        if k in ctl and isinstance(v, bool):
+            ctl[k] = v
+    _write_json(_control_path(run_dir), ctl)
+    return ctl
+
+
+def _patch_status(run_dir, patch):
+    st = _read_step_status(run_dir)
+    st.update(patch or {})
+    _write_json(_step_status_path(run_dir), st)
+
+
+def _run_cost(run_dir):
+    """Summed usage over every stage dir (clones included)."""
+    cost = {"llm_calls": 0, "prompt_tokens": 0,
+            "completion_tokens": 0}
+    if not os.path.isdir(run_dir):
+        return cost
+    for nid in os.listdir(run_dir):
+        ndir = os.path.join(run_dir, nid)
+        if not os.path.isdir(ndir):
+            continue
+        dirs = [ndir]
+        for sub in os.listdir(ndir):
+            sdir = os.path.join(ndir, sub)
+            if os.path.isdir(sdir) and sub.startswith("p"):
+                try:
+                    int(sub[1:])
+                except ValueError:
+                    continue
+                dirs.append(sdir)
+        for d in dirs:
+            try:
+                with open(os.path.join(d, "usage.json"),
+                          encoding="utf-8") as f:
+                    u = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(u, dict):
+                continue
+            for k in cost:
+                if isinstance(u.get(k), int):
+                    cost[k] += u[k]
+    return cost
+
+
+def log_run_event(run_dir, ev):
+    """Append one audit event (owner pause/resume/stop/step)."""
+    os.makedirs(run_dir, exist_ok=True)
+    ev = dict(ev or {})
+    ev["at"] = time.strftime("%H:%M:%S")
+    with open(os.path.join(run_dir, "events.jsonl"), "a",
+              encoding="utf-8") as f:
+        f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+
+
+def run_state(run_id, runs_root=None, live=None):
+    """Control-bar state for one run. live tells whether the run
+    thread is alive (the server knows; tests pass it in). A run
+    that claims running/pausing with no live thread is reported
+    as error (server restarted)."""
+    run_dir = os.path.join(runs_root or RUNS_DIR, run_id)
+    st = _read_step_status(run_dir)
+    if not st:
+        return {"ok": False, "error": "no such run: %r" % run_id}
+    ctl = read_control(run_dir)
+    state = st.get("state", "unknown")
+    if state == "failed":
+        state = "error"  # control-bar name; the file keeps "failed"
+    error = st.get("error", "")
+    if state in ("running", "pausing") and live is False:
+        state, error = "error", "run thread gone (server restarted?)"
+    return {"ok": True, "run_id": run_id, "state": state,
+            "flow_id": st.get("flow_id", ""),
+            "order_id": st.get("order_id", ""),
+            "current": st.get("current", "") or "",
+            "completed": st.get("completed", []) or [],
+            "cost": _run_cost(run_dir), "error": error or "",
+            "pause_each_stage": ctl["pause_each_stage"],
+            "live": live}
+
+
+def _ctl_base(run_id, runs_root, live):
+    run_dir = os.path.join(runs_root or RUNS_DIR, run_id)
+    st = _read_step_status(run_dir)
+    if not st:
+        return None, {"ok": False,
+                      "error": "no such run: %r" % run_id}
+    if st.get("state") == "failed":
+        st = dict(st, state="error")
+    return (run_dir, st), None
+
+
+def ctl_pause(run_id, live, runs_root=None):
+    """Pause at the next stage boundary (the current stage
+    finishes; its result is kept)."""
+    base, err = _ctl_base(run_id, runs_root, live)
+    if err:
+        return err
+    run_dir, st = base
+    state = st.get("state", "unknown")
+    if state == "paused":
+        return {"ok": True, "run_id": run_id, "state": "paused"}
+    if state in ("done", "stopped", "error"):
+        return {"ok": False, "error": "run is %s" % state}
+    if not live:
+        return {"ok": False, "error": "no live run to pause"}
+    write_control(run_dir, {"pause": True})
+    _patch_status(run_dir, {"state": "pausing"})
+    log_run_event(run_dir, {"ev": "run_pause", "by": "owner"})
+    return {"ok": True, "run_id": run_id, "state": "pausing"}
+
+
+def ctl_resume(run_id, live, runs_root=None):
+    """Continue a paused run (or clear a pending pause)."""
+    base, err = _ctl_base(run_id, runs_root, live)
+    if err:
+        return err
+    run_dir, st = base
+    state = st.get("state", "unknown")
+    if state in ("done", "stopped", "error"):
+        return {"ok": False, "error": "run is %s" % state}
+    if state == "running":
+        return {"ok": True, "run_id": run_id, "state": "running"}
+    if not live:
+        return {"ok": False,
+                "error": "no live run (use step mode)"}
+    write_control(run_dir, {"pause": False, "wake": True})
+    _patch_status(run_dir, {"state": "running"})
+    log_run_event(run_dir, {"ev": "run_resume", "by": "owner"})
+    return {"ok": True, "run_id": run_id, "state": "running"}
+
+
+def ctl_step(run_id, live, runs_root=None):
+    """Run exactly one more stage, then pause again."""
+    base, err = _ctl_base(run_id, runs_root, live)
+    if err:
+        return err
+    run_dir, st = base
+    state = st.get("state", "unknown")
+    if state in ("done", "stopped", "error"):
+        return {"ok": False, "error": "run is %s" % state}
+    if state != "paused":
+        return {"ok": False,
+                "error": "pause the run before stepping"}
+    if not live:
+        return {"ok": False,
+                "error": "no live run (use step mode)"}
+    write_control(run_dir, {"step_once": True})
+    log_run_event(run_dir, {"ev": "run_step", "by": "owner"})
+    return {"ok": True, "run_id": run_id, "state": "paused"}
+
+
+def ctl_stop(run_id, live, runs_root=None):
+    """Stop at the next stage boundary. Final: no resume."""
+    base, err = _ctl_base(run_id, runs_root, live)
+    if err:
+        return err
+    run_dir, st = base
+    state = st.get("state", "unknown")
+    if state == "stopped":
+        return {"ok": True, "run_id": run_id, "state": "stopped"}
+    if state in ("done", "error"):
+        return {"ok": False, "error": "run is %s" % state}
+    write_control(run_dir, {"stop": True})
+    log_run_event(run_dir, {"ev": "run_stop", "by": "owner"})
+    if not live:
+        _patch_status(run_dir, {"state": "stopped", "current": ""})
+        return {"ok": True, "run_id": run_id, "state": "stopped"}
+    return {"ok": True, "run_id": run_id, "state": state}
 
 
 def _step_status_path(run_dir):

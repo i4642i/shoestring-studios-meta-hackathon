@@ -229,6 +229,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 5 \
                 and parts[2] == "runs" and parts[4] == "board":
             return self._api_flow_board(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "state":
+            return self._api_flow_run_state(parts[3])
         return self._static(parts)
 
     def do_PUT(self):
@@ -296,6 +299,13 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 5 \
                 and parts[2] == "runs" and parts[4] == "stop":
             return self._api_flow_stop(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] in (
+                    "pause", "resume", "step"):
+            return self._api_flow_ctl(parts[3], parts[4])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "control":
+            return self._api_flow_control(parts[3])
         return self._json(404, {"error": "not found"})
 
     def do_DELETE(self):
@@ -914,6 +924,12 @@ class Handler(BaseHTTPRequestHandler):
         if not os.path.isfile(os.path.join(ROOT, "orders", order_id,
                                             "meta.json")):
             return self._json(404, {"error": "no such order"})
+        run_id = self._launch_flow_run(fid, flow_obj, order_id)
+        return self._json(200, {"started": True, "run_id": run_id})
+
+    def _launch_flow_run(self, fid, flow_obj, order_id):
+        """Start a run_flow thread; returns run_id. Shared by the
+        manual run endpoint and the post-Sam auto-start."""
         run_id = flows.new_run_id()
         job = {"run_id": run_id, "flow_id": fid, "order_id": order_id,
                "state": "running", "error": ""}
@@ -938,7 +954,7 @@ class Handler(BaseHTTPRequestHandler):
                 job["error"] = str(exc)[:1000]
 
         threading.Thread(target=_work, daemon=True).start()
-        return self._json(200, {"started": True, "run_id": run_id})
+        return run_id
 
     def _api_flow_runs(self):
         runs = []
@@ -962,8 +978,13 @@ class Handler(BaseHTTPRequestHandler):
                     st["error"] = d.get("error", "")
                 except (OSError, ValueError):
                     pass
-                if n in _FLOW_JOBS and _FLOW_JOBS[n]["state"] == "running":
+                if n in _FLOW_JOBS and _FLOW_JOBS[n]["state"] == "running" \
+                        and st["state"] not in ("paused", "done",
+                                                "stopped", "error",
+                                                "failed"):
                     st["state"] = "running"
+                if st["state"] == "failed":
+                    st["state"] = "error"
                 runs.append(st)
         return self._json(200, {"runs": runs})
 
@@ -1192,8 +1213,11 @@ class Handler(BaseHTTPRequestHandler):
         job = _FLOW_JOBS.get(run_id)
         if job is not None and job.get("state") == "running":
             job["stop"] = True
+            ctl = flows.ctl_stop(run_id, True)
             return self._json(200, {"ok": True, "run_id": run_id,
-                                    "state": "stopping"})
+                                    "state": "stopping",
+                                    "control": ctl.get("state",
+                                                       "")})
         out = flows.stop_run(run_id, node)
         if not out.get("ok"):
             return self._json(400, out)
@@ -1207,13 +1231,59 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, out)
         return self._json(200, out)
 
+    def _run_live(self, run_id):
+        job = _FLOW_JOBS.get(run_id)
+        return bool(job) and job.get("state") == "running"
+
+    def _api_flow_run_state(self, run_id):
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        out = flows.run_state(run_id, live=self._run_live(run_id))
+        if not out.get("ok"):
+            return self._json(404, out)
+        return self._json(200, out)
+
+    def _api_flow_ctl(self, run_id, which):
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        fn = {"pause": flows.ctl_pause, "resume": flows.ctl_resume,
+              "step": flows.ctl_step}[which]
+        out = fn(run_id, self._run_live(run_id))
+        if not out.get("ok"):
+            if out.get("error", "").startswith("no such run"):
+                return self._json(404, out)
+            return self._json(409, out)
+        return self._json(200, out)
+
+    def _api_flow_control(self, run_id):
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        run_dir = os.path.join(flows.RUNS_DIR, run_id)
+        if not os.path.isfile(os.path.join(run_dir, "STATUS.json")):
+            return self._json(404, {"error": "no such run"})
+        body = self._read_json()
+        if not isinstance(body, dict) or \
+                not isinstance(body.get("pause_each_stage"), bool):
+            return self._json(400, {"error":
+                                    "need {pause_each_stage: bool}"})
+        ctl = flows.write_control(
+            run_dir, {"pause_each_stage":
+                      body["pause_each_stage"]})
+        flows.log_run_event(
+            run_dir, {"ev": "run_each_stage",
+                      "on": body["pause_each_stage"], "by": "owner"})
+        return self._json(200, {"ok": True, "run_id": run_id,
+                                "control": ctl})
+
     def _api_flow_board(self, run_id):
         if not self._run_id_ok(run_id):
             return self._json(404, {"error": "no such run"})
         job = _FLOW_JOBS.get(run_id)
+        live = bool(job) and job.get("state") == "running"
+        st = flows.run_state(run_id, live=live)
         out = board.build_board(
-            run_id, running=bool(job) and job.get("state")
-            == "running")
+            run_id, running=st.get("state") in ("running",
+                                                "pausing"))
         if not out.get("ok"):
             return self._json(404, out)
         return self._json(200, out)
@@ -1563,7 +1633,8 @@ class Handler(BaseHTTPRequestHandler):
             return (200, {"ok": True, "repeated": True, "intake": intake,
                           "report_md": md,
                           "files": ["intake.json", "result.json",
-                                    "report.md"]})
+                                    "report.md"],
+                          "run_id": self._latest_run_for_order(oid)})
         if isinstance(body, dict) and body.get("extract"):
             problem = self._extract_intake(d, meta)
             if problem:
@@ -1629,10 +1700,57 @@ class Handler(BaseHTTPRequestHandler):
               % ("start" if final_status == "in_production" else "complete",
                  oid, source.get("ref", "?"), result.get("usage")),
               flush=True)
-        return (200, {"ok": True, "intake": intake, "report_md": md,
-                      "files": ["intake.json", "result.json", "report.md"],
-                      "usage": result.get("usage"), "source": source,
-                      "stages": stages})
+        out = {"ok": True, "intake": intake, "report_md": md,
+               "files": ["intake.json", "result.json", "report.md"],
+               "usage": result.get("usage"), "source": source,
+               "stages": stages, "run_id": ""}
+        if final_status == "in_production":
+            run_id, auto_err = self._auto_start_flow(oid)
+            out["run_id"] = run_id
+            if auto_err:
+                out["auto_run_error"] = auto_err
+        return (200, out)
+
+    def _latest_run_for_order(self, oid):
+        """Newest run dir whose STATUS names this order ("" if none)."""
+        rdir = flows.RUNS_DIR
+        if not os.path.isdir(rdir):
+            return ""
+        names = sorted(
+            os.listdir(rdir),
+            key=lambda n: os.path.getmtime(os.path.join(rdir, n)),
+            reverse=True)
+        for n in names:
+            if not os.path.isdir(os.path.join(rdir, n)):
+                continue
+            try:
+                with open(os.path.join(rdir, n, "STATUS.json"),
+                          encoding="utf-8") as f:
+                    st = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if isinstance(st, dict) and st.get("order_id") == oid:
+                return n
+        return ""
+
+    def _auto_start_flow(self, oid):
+        """Start the default crew flow after Sam's request is
+        written. Returns (run_id, error); a failure never fails
+        the order (Sam's work is done)."""
+        try:
+            flow_obj = flows.load_flow("default")
+        except (ValueError, OSError) as exc:
+            return "", "default flow missing (%s)" % exc
+        errs = flows.validate_flow(flow_obj)
+        if errs:
+            return "", errs[0].get("message", "invalid flow")
+        try:
+            run_id = self._launch_flow_run("default", flow_obj, oid)
+        except Exception as exc:  # noqa: BLE001 - reported, not raised
+            return "", str(exc)[:200]
+        print("order %s auto-started run %s" % (oid, run_id),
+              flush=True)
+        return run_id, ""
 
     def _try_fill_answers(self, d, meta, extra=""):
         """Best-effort fill of meta["answers"] from the chat, one LLM call.
