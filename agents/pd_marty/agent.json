@@ -44,5 +44,6 @@
   "pc_list_source",
   "pc_read_source",
   "write_structure"
- ]
+ ],
+ "team": "story"
 }

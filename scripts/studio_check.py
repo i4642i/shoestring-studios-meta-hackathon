@@ -2,8 +2,9 @@
 
 Opens index.html at 1280x720, 1920x1080 and 390x844, clicks the
 Studio tab, waits for the office to boot, and records: office
-canvas size vs viewport, bubble overlap, horizontal scroll, and
-the chat collapse round-trip. Screenshots go to runs/.
+canvas size vs viewport, bubble overlap, horizontal scroll, the
+chat collapse round-trip, crew/desks/doorways from the boot
+status, and console errors. Screenshots go to runs/.
 
 Usage: .venv\\Scripts\\python scripts/studio_check.py
 Needs: Edge (no install), free ports 8765 (server) and 9333 (CDP).
@@ -61,6 +62,7 @@ class CDP:
             raise RuntimeError("cdp handshake: %r" % head[:80])
         self.mid = 0
         self.buf = b""
+        self.events = []
 
     def _frame(self, text):
         raw = text.encode()
@@ -124,12 +126,37 @@ class CDP:
                     raise RuntimeError("cdp %s: %s"
                                        % (method, m["error"]))
                 return m.get("result", {})
+            if "id" not in m:
+                self.events.append(m)
+
+    def drain(self, seconds=2):
+        """Collect trailing protocol events (console/exceptions)."""
+        end = time.time() + seconds
+        while time.time() < end:
+            try:
+                m = self.recv_msg(
+                    timeout=max(0.05, end - time.time()))
+            except (TimeoutError, RuntimeError):
+                break
+            if "id" not in m:
+                self.events.append(m)
 
     def close(self):
         try:
             self.sock.close()
         except OSError:
             pass
+
+
+def console_errors(events):
+    n = 0
+    for m in events:
+        if m.get("method") == "Runtime.consoleAPICalled" \
+                and m.get("params", {}).get("type") == "error":
+            n += 1
+        elif m.get("method") == "Runtime.exceptionThrown":
+            n += 1
+    return n
 
 
 def http_get(path, port=SRV_PORT):
@@ -177,11 +204,17 @@ MEASURE_OFFICE = """(() => {
           a[1] < b[1] + b[3] && b[1] < a[1] + a[3])
         clash.push(i + "/" + j);
     }
+  const pill = d.getElementById("pill");
+  const err = d.getElementById("error");
   return { inner: [w2.innerWidth, w2.innerHeight],
     backing: c ? [c.width, c.height] : null,
     dpr: w2.devicePixelRatio || 1,
     bubbles: bs.length, clash,
     faded: bs.filter(b => b[4] < 1).length,
+    allBubbles: d.querySelectorAll(".bubble").length,
+    pill: pill ? pill.textContent : null,
+    status: w2.__officeStatus || null,
+    errHidden: !err || err.style.display !== "block",
     loadingGone: d.getElementById("loading").style.display
       === "none" };
 })()"""
@@ -257,10 +290,12 @@ def main():
                                {"targetId": tgt["targetId"],
                                 "flatten": True})["sessionId"]
                 cdp.call("Page.enable", session=sid)
+                cdp.call("Runtime.enable", session=sid)
                 cdp.call("Emulation.setDeviceMetricsOverride",
                          {"width": w, "height": h,
                           "deviceScaleFactor": 1,
                           "mobile": False}, session=sid)
+                ev0 = len(cdp.events)
                 cdp.call("Page.navigate",
                          {"url": "http://127.0.0.1:%d/index.html"
                           % SRV_PORT}, session=sid)
@@ -275,15 +310,15 @@ def main():
                             "document.querySelector("
                             "'#p-studio.active') !== null", 10),
                    "%s studio tab shows" % name)
-                # office boots inside the iframe; crew count proves
-                # spawnCrew finished (loading hides on errors too)
+                # office boots inside the iframe; the ready flag
+                # proves spawnCrew finished (loading hides on
+                # errors too)
                 good = wait_for(
                     cdp, sid,
                     "(() => { const f = document.querySelector("
-                    "'#p-studio iframe.office'); try { return f && "
-                    "f.contentDocument.getElementById('crewn')"
-                    ".textContent.trim() !== ''; } catch (e) { "
-                    "return false; } })()", 180)
+                    "'#p-studio iframe.office'); try { return !!(f "
+                    "&& f.contentWindow.__officeReady); } "
+                    "catch (e) { return false; } })()", 180)
                 ok(good, "%s office boots" % name)
                 time.sleep(4)  # chatter + bubbles settle
                 m = js_eval(cdp, sid, MEASURE_PARENT)
@@ -294,7 +329,9 @@ def main():
                 with open(os.path.join(ROOT, "runs", name + ".png"),
                           "wb") as f:
                     f.write(base64.b64decode(shot["data"]))
-                report.append((name, w, h, m, om))
+                cdp.drain()
+                errs = console_errors(cdp.events[ev0:])
+                report.append((name, w, h, m, om, errs))
                 cdp.call("Target.closeTarget",
                          {"targetId": tgt["targetId"]})
             # collapse round-trip on the desktop layout
@@ -345,7 +382,7 @@ def main():
             cdp.call("Target.closeTarget",
                      {"targetId": tgt["targetId"]})
             cdp.close()
-            for name, w, h, m, om in report:
+            for name, w, h, m, om, errs in report:
                 print("--- %s (viewport %dx%d) ---" % (name, w, h))
                 if not m or not m.get("iframe"):
                     ok(False, "%s measurements present" % name)
@@ -363,6 +400,9 @@ def main():
                               om["backing"], om["dpr"],
                               om["bubbles"], om["clash"] or "none",
                               om["faded"]))
+                    print("pill %r status %s console_errors %d"
+                          % (om.get("pill"), om.get("status"),
+                             errs))
                 else:
                     print("office metrics missing")
                 cw = m["clientW"]
@@ -390,6 +430,22 @@ def main():
                        "%s canvas covers its box" % name)
                     ok(om["clash"] == [],
                        "%s no bubble overlaps" % name)
+                    st = om.get("status") or {}
+                    ok(st.get("crew") == 12
+                       and om.get("allBubbles") == 12,
+                       "%s 12 crew spawned" % name)
+                    ok(st.get("story") == 7
+                       and st.get("video") == 5,
+                       "%s 7 story + 5 video" % name)
+                    ok(st.get("desksOk") is True,
+                       "%s every crew member has a desk" % name)
+                    ok(st.get("doorwaysClear") is True,
+                       "%s no furniture blocks either doorway"
+                       % name)
+                    ok(errs == 0,
+                       "%s 0 console errors" % name)
+                    ok(om.get("errHidden"),
+                       "%s no error overlay" % name)
         finally:
             proc.kill()
             proc.wait()

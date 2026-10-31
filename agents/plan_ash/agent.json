@@ -63,5 +63,6 @@
     "description": "Scene plan with refs + handoff."
    }
   ]
- }
+ },
+ "team": "story"
 }

@@ -309,6 +309,7 @@ class Handler(BaseHTTPRequestHandler):
             agent = self._load_agent(path)
             out.append({"id": agent["id"], "name": agent["name"],
                         "stage": agent.get("stage"),
+                        "team": agent.get("team"),
                         "title": agent["title"], "model": agent["model"],
                         "tools": agent["tools"],
                         "appearance": self._appearance(path),

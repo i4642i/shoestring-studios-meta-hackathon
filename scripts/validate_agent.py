@@ -18,7 +18,7 @@ ALLOW_MODELS = ("muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.1",
 ALLOW_PREFIX = ("muse-glimmer-", "muse-spark-open-")
 AGENT_REQUIRED = ("frame_version", "id", "name", "title", "model", "tools",
                   "bounds", "io", "done")
-AGENT_OPTIONAL = ("flow", "stage")
+AGENT_OPTIONAL = ("flow", "stage", "team")
 
 
 def validate(path):
@@ -88,6 +88,8 @@ def validate(path):
                                  or isinstance(agent["stage"], bool)
                                  or not 0 <= agent["stage"] <= 99):
             errs.append("stage must be int 0-99")
+        if "team" in agent and agent["team"] not in ("story", "video"):
+            errs.append("team must be story or video")
         model = agent.get("model", "")
         if not (model in ALLOW_MODELS or model.startswith(ALLOW_PREFIX)):
             errs.append("model not on allowlist: %s" % model)

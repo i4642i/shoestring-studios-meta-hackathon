@@ -53,7 +53,7 @@ No other top-level files are allowed without updating this standard.
 
 Rules:
 
-- All fields above are REQUIRED. Two OPTIONAL fields exist: `flow` (section 9) and `stage` (integer 0-99, crew-plan stage for Crew-page sorting; unstaged agents go last).
+- All fields above are REQUIRED. Three OPTIONAL fields exist: `flow` (section 9), `stage` (integer 0-99, crew-plan stage for Crew-page sorting; unstaged agents go last), and `team` (`story` or `video`, Studio office team; agents without it do not spawn in the office).
   Anything else unknown is rejected.
 - `frame_version`: integer; the runner refuses versions it does not support.
 - `id` MUST equal the parent folder name.
