@@ -48,6 +48,9 @@
 - [x] J3 라운지 왼쪽 벽 간판 "MAKE AI PROVE IT." + 1280 기본뷰 캡처
   left wall, second line HACKATHON 2026, visible in default view
 
+## Order 적응형
+- [x] J5 카드 1600·방 높이 자동·말풍선 55%·입력창 전체·1920/1280/390 캡처
+
 ## 대기열 (2026-11-01 오후)
 - [x] 1 J3 sign + default camera (10ac785)
 - [ ] 2 J5 Order adaptive

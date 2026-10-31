@@ -156,6 +156,35 @@ def console_errors(events):
     return n
 
 
+LAYOUT_JS = """(() => {
+  const q = (s) => document.querySelector(s)
+    .getBoundingClientRect();
+  const card = q("#order-form");
+  const room = q("#o-scene");
+  const form = q("#o-form");
+  const h1 = q("#p-order .hero h1");
+  const bub = document.getElementById("o-sambub")
+    .getBoundingClientRect();
+  const c = window.__recepCam;
+  return {
+    cardW: Math.round(card.width),
+    roomW: Math.round(room.width),
+    roomH: Math.round(room.height),
+    formW: Math.round(form.width),
+    formB: Math.round(form.bottom),
+    h1H: Math.round(h1.height),
+    bubW: Math.round(bub.width),
+    scrollX: document.documentElement.scrollWidth >
+      document.documentElement.clientWidth + 1,
+    scrollY: document.documentElement.scrollHeight >
+      document.documentElement.clientHeight + 1,
+    sloganX: c.ndc(0.03, 2.0, 2.0)[0],
+    signX: c.ndc(4.2, 1.7, 0.03)[0],
+    samX: c.ndc(2.13, 1.3, 1.19)[0]
+  };
+})()"""
+
+
 def stop_proc(proc, name):
     if proc is None or proc.poll() is not None:
         return
@@ -219,7 +248,7 @@ def main():
              "--disable-extensions",
              "--remote-debugging-port=%d" % CDP_PORT,
              "--user-data-dir=" + profile,
-             "--window-size=1280,720", "about:blank"])
+             "--window-size=1920,1080", "about:blank"])
         t0 = time.time()
         targets = None
         while time.time() - t0 < 40:
@@ -275,15 +304,59 @@ def main():
            == "META GLOBAL AI DEVELOPER HACKATHON 2026",
            "slogan sign added (%s)" % sign)
         time.sleep(8)
-        js_eval(ws, "document.getElementById('o-scene')"
-                    ".scrollIntoView({block: 'center'})")
-        time.sleep(1)
-        data = ws.call("Page.captureScreenshot",
-                       {"format": "png"})["data"]
-        with open(PNG, "wb") as f:
-            f.write(base64.b64decode(data))
-        ok(os.path.isfile(PNG) and os.path.getsize(PNG) > 1000,
-           "screenshot saved (%s)" % PNG)
+        for vw, vh, name in ((1920, 1000, "order_1920.png"),
+                             (1280, 720, "order_1280.png"),
+                             (390, 844, "order_390.png")):
+            ws.call("Emulation.setDeviceMetricsOverride",
+                    {"width": vw, "height": vh,
+                     "deviceScaleFactor": 1, "mobile": False})
+            js_eval(ws, "window.__orderShown"
+                         " && window.__orderShown()")
+            time.sleep(1.2)
+            js_eval(ws, "window.scrollTo(0, 0)")
+            lay = js_eval(ws, LAYOUT_JS)
+            cw = min(vw - 32, 1600)
+            ok(abs(lay["cardW"] - cw) <= 3,
+               "%d: card %dpx (want %d)"
+               % (vw, lay["cardW"], cw))
+            ok(320 <= lay["roomH"] <= 900,
+               "%d: room %dpx in [320, 900]"
+               % (vw, lay["roomH"]))
+            ok(lay["h1H"] < 44,
+               "%d: hero title one line (%dpx)"
+               % (vw, lay["h1H"]))
+            ok(lay["bubW"] <= 0.56 * lay["roomW"],
+               "%d: bubble %dpx <= 55%% of %dpx"
+               % (vw, lay["bubW"], lay["roomW"]))
+            ok(lay["formW"] >= lay["cardW"] - 60,
+               "%d: input spans card (%d/%d)"
+               % (vw, lay["formW"], lay["cardW"]))
+            ok(abs(lay["samX"]) <= 0.15,
+               "%d: sam centred (%s)" % (vw, lay["samX"]))
+            if vw >= 1280:
+                ok(lay["scrollX"] is False
+                   and lay["scrollY"] is False,
+                   "%d: no page scroll" % vw)
+                ok(-1.0 <= lay["sloganX"] <= 1.0
+                   and -1.0 <= lay["signX"] <= 1.0,
+                   "%d: both signs in frame (%s/%s)"
+                   % (vw, lay["sloganX"], lay["signX"]))
+            else:
+                fb = lay["formB"]
+                ok(lay["roomH"] >= 320 and fb <= vh,
+                   "390: room %dpx, input bottom %d/%d"
+                   % (lay["roomH"], fb, vh))
+            data = ws.call("Page.captureScreenshot",
+                           {"format": "png"})["data"]
+            path = os.path.join(RUNS, name)
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(data))
+            ok(os.path.isfile(path)
+               and os.path.getsize(path) > 1000,
+               "screenshot saved (%s)" % path)
+            if name == "order_1280.png":
+                with open(PNG, "wb") as f:
+                    f.write(base64.b64decode(data))
         cam0 = js_eval(ws, "(() => { const c = window.__recepCam;"
                          " if (!c) return null; return [c.camera.position.x,"
                          " c.camera.position.y, c.camera.position.z,"

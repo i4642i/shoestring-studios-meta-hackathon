@@ -38,8 +38,10 @@
   .card h2 { font-size: 15px; letter-spacing: 2px; margin: 0 0 12px; color: var(--ink); font-weight: 800; }
   .card p { color: var(--dim); font-size: 14px; line-height: 1.6; }
   /* hero */
-  #p-order { max-width: none; padding: 0 0 40px; }
-  #p-order .card { max-width: 1120px; margin-left: auto; margin-right: auto; }
+  #p-order { max-width: none; padding: 0 0 16px; }
+  #p-order .card { width: min(1600px, calc(100vw - 32px)); margin-left: auto; margin-right: auto; }
+  body.tab-order { padding-bottom: 0; }
+  body.tab-order footer { display: none; }
   #p-studio.active { max-width: none; padding: 12px 16px 16px; height: calc(100dvh - 72px);
     min-height: 480px; display: flex; flex-direction: column; }
   #p-studio .card { padding: 0; border: none; margin: 0; background: transparent;
@@ -219,6 +221,10 @@
     justify-content: center; color: #374151; font-size: 12px; letter-spacing: 2px; }
   .vhint-below { text-align: center; color: #374151; font-size: 11px;
     padding: 4px 0 2px; pointer-events: none; }
+  #o-scene > .vhint-below { position: absolute; left: 0; right: 0; bottom: 4px;
+    padding: 0; }
+  #o-scene > .vhint-below span { background: rgba(255,255,255,.8);
+    border-radius: 999px; padding: 2px 12px; }
   #o-bubbles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
   .bub { position: absolute; max-width: 68%; padding: 8px 12px; border-radius: 12px;
     font-size: 13px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
@@ -230,7 +236,8 @@
     border-bottom: 2px solid #111; transform: translateX(-50%) rotate(45deg); }
   .bub-sam b { display: block; font-size: 10px; letter-spacing: 1px; color: #0064e0; }
   #o-mebub { position: absolute; right: 10px; bottom: 24px; display: flex;
-    flex-direction: column; gap: 6px; align-items: flex-end; max-width: 60%; }
+    flex-direction: column; gap: 6px; align-items: flex-end; max-width: 55%; }
+  #o-bubbles .bub { max-width: min(55%, 440px); }
   #o-mebub .bub-me { position: static; background: var(--accent); color: #fff;
     border-bottom-right-radius: 4px; max-width: 100%; }
   #o-sysbub { position: absolute; top: 8px; left: 10px;
@@ -246,10 +253,21 @@
   #o-result { white-space: pre-wrap; font-size: 12px; background: #fafafa;
     border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 320px; overflow: auto; }
   /* order page: fit the working UI without page scroll (desktop) */
-  #p-order .hero { padding: 22px 24px 12px; }
-  #p-order .hero h1 { font-size: 32px; margin: 8px 0; }
-  #p-order .hero p { font-size: 15px; }
-  #order-form { padding-top: 14px; padding-bottom: 14px; }
+  #p-order .hero { padding: 10px 24px 8px; }
+  #p-order .hero .eyebrow { font-size: 12px; white-space: nowrap; }
+  #p-order .hero h1 { font-size: clamp(20px, 3.2vw, 26px); margin: 4px 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #p-order .hero p { font-size: 14px; margin: 0 auto; }
+  #order-form { padding-top: 10px; padding-bottom: 10px; }
+  #o-msg:empty, #queued:empty { margin: 0; min-height: 0; }
+  #o-form button { white-space: nowrap; flex: none; }
+  #o-form .filebtn { white-space: nowrap; flex: none; }
+  @media (max-width: 700px) {
+    #p-order .hero .eyebrow { white-space: normal; font-size: 11px;
+      letter-spacing: 2px; }
+    #o-modes button { white-space: nowrap; font-size: 12px;
+      padding-left: 10px; padding-right: 10px; }
+  }
   #order-form h2 { margin-bottom: 6px; }
   #order-form h3 { margin: 10px 0 6px; font-size: 14px; }
   #order-form > p { margin: 6px 0; }
@@ -1530,11 +1548,21 @@ body.tab-flow { padding-bottom: 0; }
     document.getElementById("p-" + b.dataset.p).classList.add("active");
     document.body.classList.toggle("tab-flow",
       b.dataset.p === "flow");
+    document.body.classList.toggle("tab-order",
+      b.dataset.p === "order");
     if (b.dataset.p === "flow" && window.__flowShown)
       window.__flowShown();
     if (b.dataset.p === "board" && window.__boardShown)
       window.__boardShown();
+    if (b.dataset.p === "order" && window.__orderShown)
+      window.__orderShown();
   });
+  (function initTabBody() {
+    const init = document.querySelector("nav button.active");
+    const p = init ? init.dataset.p : "order";
+    document.body.classList.toggle("tab-flow", p === "flow");
+    document.body.classList.toggle("tab-order", p === "order");
+  })();
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
@@ -2309,6 +2337,7 @@ body.tab-flow { padding-bottom: 0; }
         document.getElementById("start").style.display = free ? "none" : "";
         addMsg("sys", free ? "Free-chat mode." : "Guided mode.");
         checkReady();
+        requestAnimationFrame(fitOrderRoom);
       };
     });
     ["o-audience", "o-length", "o-depth", "o-theme"].forEach((id) => {
@@ -2364,6 +2393,25 @@ body.tab-flow { padding-bottom: 0; }
       }
       setTimeout(() => mountReception((waited || 0) + 120), 120);
     }
+    function fitOrderRoom() {
+      const page = document.getElementById("p-order");
+      if (!page || !page.classList.contains("active")) return;
+      const scene = document.getElementById("o-scene");
+      if (!scene || scene.offsetParent === null) return;
+      const r = scene.getBoundingClientRect();
+      if (r.width < 2) return;
+      scene.style.height =
+        Math.min(900, Math.max(320, window.innerHeight - r.top - 16)) + "px";
+      for (let i = 0; i < 4; i++) {
+        const de = document.documentElement;
+        const over = de.scrollHeight - de.clientHeight;
+        if (over <= 1) break;
+        scene.style.height =
+          Math.max(320, scene.clientHeight - over - 2) + "px";
+      }
+    }
+    window.__orderShown = () => requestAnimationFrame(fitOrderRoom);
+    window.addEventListener("resize", () => fitOrderRoom());
     async function newOrder() {
       statusEl.textContent = "Starting…";
       msg.textContent = "";
@@ -2585,6 +2633,7 @@ body.tab-flow { padding-bottom: 0; }
       } catch (e) { fail(e); }
     };
     newOrder().catch(fail);
+    requestAnimationFrame(fitOrderRoom);
   })();
 
   /* Flow tab: visual pipeline editor. */
@@ -5135,8 +5184,10 @@ function mountReception(box, appearance, bub) {
   box.appendChild(renderer.domElement);
   const hint = document.createElement("div");
   hint.className = "vhint-below";
-  hint.textContent = "Drag to spin · Double-click to reset";
-  box.parentElement.insertBefore(hint, box.nextSibling);
+  const hintPill = document.createElement("span");
+  hintPill.textContent = "Drag to spin · Double-click to reset";
+  hint.appendChild(hintPill);
+  box.appendChild(hint);
   if (vload) vload.style.display = "none";
   const timer = new THREE.Timer();
   timer.connect(document);
