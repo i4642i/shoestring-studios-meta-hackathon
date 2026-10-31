@@ -22,11 +22,16 @@ the whole video. Your outputs are the `storyboard` and
 
 ## Rules
 
-- You run AFTER Wren. Copy the cut set and times exactly: no
-  extras, none missing; cut_id/start_s/end_s match the narration.
-- Per cut: show_what (what is on screen, in order), show_why (why
+- You run AFTER Wren. Write one screen per cut_id from the
+  narration, no extras, none missing. Write NO timing: no
+  scene_n/start_s/end_s (you are not shown them; the writer copies
+  them from the narration into your result).
+- Per cut_id: show_what (what is on screen, in order), show_why (why
   this serves the narration), on_screen_text (0–3 non-empty
   lines).
+- Your PC input lists every Source figure/table/formula (addr +
+  title). You may name a better-fitting listed one than the one Ash
+  listed for the scene — say why.
 - Write ONE style guide: palette (background, text, accent),
   fonts (heading, body), image_tone, and rules the whole video
   obeys. Base it on Marty's concept.

@@ -78,10 +78,21 @@ def quotas_for(cut_counts, budget=GEN_BUDGET):
     return out
 
 
+def _cut_line(cut):
+    """One cut's spoken line (joined line texts)."""
+    return " ".join(
+        str((ln or {}).get("text", "")).strip()
+        for ln in ((cut or {}).get("lines") or [])
+        if isinstance(ln, dict) and str((ln or {}).get(
+            "text", "")).strip())
+
+
 def build_plan(structure, draft, narration, concept, guide):
     """Split plan data from Marty/Ash/Wren/Penn results. Raises
     ValueError naming the gap (unmapped scene, empty part). One
-    part takes every cut without needing the scene map."""
+    part takes every cut without needing the scene map. Each part
+    also carries boundary: the neighbor cuts' lines (read-only,
+    for transitions)."""
     parts = [p for p in ((structure or {}).get("parts") or [])
              if isinstance(p, dict) and p.get("id")]
     if not parts:
@@ -132,10 +143,31 @@ def build_plan(structure, draft, narration, concept, guide):
                            "seconds": secs.get(pid),
                            "scenes": sns,
                            "cuts": [c["cut_id"] for c in mine],
-                           "materials": mats, "quota": 0})
+                           "materials": mats, "quota": 0,
+                           "boundary": {"prev": None,
+                                        "next": None}})
     quotas = quotas_for([len(p["cuts"]) for p in plan_parts])
     for p, q in zip(plan_parts, quotas):
         p["quota"] = q
+    if len(plan_parts) > 1:
+        order = [c["cut_id"] for c in cuts]
+        by_id = {c["cut_id"]: c for c in cuts}
+        for p in plan_parts:
+            idx = [order.index(cid) for cid in p["cuts"]
+                   if cid in order]
+            if not idx:
+                continue
+            lo, hi = min(idx), max(idx)
+            if lo > 0:
+                pc = by_id[order[lo - 1]]
+                p["boundary"]["prev"] = {
+                    "cut_id": pc["cut_id"],
+                    "line": _cut_line(pc)}
+            if hi < len(order) - 1:
+                nc = by_id[order[hi + 1]]
+                p["boundary"]["next"] = {
+                    "cut_id": nc["cut_id"],
+                    "line": _cut_line(nc)}
     shared_parts = [{"no": p["no"], "part_id": p["part_id"],
                      "title": p["title"], "seconds": p["seconds"]}
                     for p in plan_parts]
@@ -173,12 +205,17 @@ def filter_data_for_cuts(data, cut_ids):
     return out
 
 
-def slim_split_plan(plan, part_no):
+def slim_split_plan(plan, part_no, agent_id=None):
     """A clone's view of the split plan: its own part in full,
     every other part as one line (no, id, title, time), row log
-    narrowed to its part. Nothing else from other parts."""
+    narrowed to its part. Nothing else from other parts. Pia and
+    Max get no concept (Gene and Vera keep it)."""
+    shared = dict((plan or {}).get("shared", {}))
+    base = (agent_id or "").split("@")[0]
+    if base and base not in CONCEPT_ROLES:
+        shared.pop("concept", None)
     out = {"version": (plan or {}).get("version", 1),
-           "parts": [], "shared": (plan or {}).get("shared", {})}
+           "parts": [], "shared": shared}
     for p in ((plan or {}).get("parts") or []):
         if not isinstance(p, dict):
             continue
@@ -204,11 +241,13 @@ def slim_split_plan(plan, part_no):
     return out
 
 
-def filter_clone_received(clone_dir, plan_part):
+def filter_clone_received(clone_dir, plan_part, agent_id=None):
     """Narrow a clone's received.*.json files to its part's cuts
     (writers then check cut sets against the part, not the run)
-    and slim the split plan to the shared one-line list.
-    Returns {category: kept cuts}."""
+    and slim the split plan to the shared one-line list. Remy
+    keeps only Vera's slide_draft: narration, storyboard and the
+    split plan files are removed for him. Returns {category:
+    kept cuts}."""
     no = (plan_part or {}).get("no")
     cut_ids = (plan_part or {}).get("cuts", [])
     kept = {}
@@ -216,12 +255,20 @@ def filter_clone_received(clone_dir, plan_part):
         names = sorted(os.listdir(clone_dir))
     except OSError:
         return kept
+    remy = (agent_id or "").split("@")[0] == "slide_remy"
     for fn in names:
         if not fn.startswith("received.") or not fn.endswith(".json"):
             continue
         core = fn[len("received."):-len(".json")]
         _sender, _dot, cat = core.partition(".")
         if not _dot:
+            continue
+        if remy and cat in ("narration", "storyboard",
+                            "split_plan"):
+            try:
+                os.remove(os.path.join(clone_dir, fn))
+            except OSError:
+                pass
             continue
         if cat not in CUT_CATEGORIES and cat != "split_plan":
             continue
@@ -235,7 +282,8 @@ def filter_clone_received(clone_dir, plan_part):
         if not isinstance(data, dict):
             continue
         if cat == "split_plan":
-            wrapped["data"] = slim_split_plan(data, no)
+            wrapped["data"] = slim_split_plan(data, no,
+                                              agent_id)
         else:
             sub = filter_data_for_cuts(data, cut_ids)
             wrapped["data"] = sub
@@ -245,13 +293,15 @@ def filter_clone_received(clone_dir, plan_part):
     return kept
 
 
-def shared_block(plan, part_no):
-    """Shared context markdown for every clone's INPUTS: the parts
-    list with this part marked, Marty's concept, Penn's guide."""
-    shared = (plan or {}).get("shared") or {}
-    lines = ["## Shared context (every part sees this)", "",
-             "You are Part %d." % part_no, ""]
-    lines.append("Parts in this video:")
+# Clone input sets (v8.2): who sees the concept and the
+# boundary lines. Remy sees neither and no parts list either.
+CONCEPT_ROLES = ("image_gene", "board_vera")
+BOUNDARY_ROLES = ("photo_pia", "image_gene", "anim_max",
+                  "board_vera")
+
+
+def _parts_list_lines(shared, part_no):
+    lines = ["Parts in this video:"]
     for p in shared.get("parts", []) or []:
         if not isinstance(p, dict):
             continue
@@ -260,33 +310,93 @@ def shared_block(plan, part_no):
                      % (p.get("no"), p.get("title") or
                         p.get("part_id"), p.get("seconds"),
                         mark))
+    return lines
+
+
+def _concept_lines(shared):
     concept = shared.get("concept") or {}
-    if concept:
-        lines += ["", "Concept (Marty):"]
-        for k in ("common_theme", "core_question",
-                  "viewer_takeaway", "intent_overall"):
-            if concept.get(k):
-                lines.append("- %s: %s" % (k, concept[k]))
+    if not concept:
+        return []
+    lines = ["Concept (Marty):"]
+    for k in ("common_theme", "core_question",
+              "viewer_takeaway", "intent_overall"):
+        if concept.get(k):
+            lines.append("- %s: %s" % (k, concept[k]))
+    return lines
+
+
+def _guide_lines(shared):
     guide = shared.get("style_guide") or {}
-    if guide:
-        lines += ["", "Style guide (Penn):"]
-        pal = guide.get("palette") or {}
-        if pal:
-            lines.append("- palette: %s"
-                         % ", ".join("%s=%s" % (k, pal[k])
-                                     for k in ("background", "text",
-                                               "accent")
-                                     if pal.get(k)))
-        fonts = guide.get("fonts") or {}
-        if fonts:
-            lines.append("- fonts: heading=%s body=%s"
-                         % (fonts.get("heading"),
-                            fonts.get("body")))
-        if guide.get("image_tone"):
-            lines.append("- image tone: %s"
-                         % guide["image_tone"])
-        for r in (guide.get("rules") or [])[:6]:
-            lines.append("- rule: %s" % r)
+    if not guide:
+        return []
+    lines = ["Style guide (Penn):"]
+    pal = guide.get("palette") or {}
+    if pal:
+        lines.append("- palette: %s"
+                     % ", ".join("%s=%s" % (k, pal[k])
+                                 for k in ("background", "text",
+                                           "accent")
+                                 if pal.get(k)))
+    fonts = guide.get("fonts") or {}
+    if fonts:
+        lines.append("- fonts: heading=%s body=%s"
+                     % (fonts.get("heading"),
+                        fonts.get("body")))
+    if guide.get("image_tone"):
+        lines.append("- image tone: %s"
+                     % guide["image_tone"])
+    for r in (guide.get("rules") or [])[:6]:
+        lines.append("- rule: %s" % r)
+    return lines
+
+
+def _boundary_lines(plan, part_no):
+    for p in ((plan or {}).get("parts") or []):
+        if isinstance(p, dict) and p.get("no") == part_no:
+            bound = (p.get("boundary") or {})
+            break
+    else:
+        return []
+    prev, nxt = bound.get("prev"), bound.get("next")
+    if not prev and not nxt:
+        return []
+    lines = ["Boundary lines (read-only, for transitions only):"]
+    if prev:
+        lines.append("- Previous part ends with (cut %s): %s"
+                     % (prev.get("cut_id"), prev.get("line")))
+    if nxt:
+        lines.append("- Next part opens with (cut %s): %s"
+                     % (nxt.get("cut_id"), nxt.get("line")))
+    return lines
+
+
+def shared_block(plan, part_no, agent_id=None):
+    """Shared context markdown for a clone's INPUTS: the parts
+    list with this part marked, Penn's guide, and per role
+    Marty's concept (Gene, Vera) and the boundary lines
+    (Pia, Gene, Max, Vera). Remy gets the part marker and the
+    guide only. agent_id None keeps the legacy full block."""
+    base = (agent_id or "").split("@")[0]
+    shared = (plan or {}).get("shared") or {}
+    if base == "slide_remy":
+        lines = ["## Shared context (every part sees this)", "",
+                 "You are Part %d." % part_no, ""]
+        lines += _guide_lines(shared)
+        lines += ["",
+                  "Nothing else from other parts is visible here."]
+        return "\n".join(lines)
+    lines = ["## Shared context (every part sees this)", "",
+             "You are Part %d." % part_no, ""]
+    lines += _parts_list_lines(shared, part_no)
+    if base in CONCEPT_ROLES or not base:
+        concept = _concept_lines(shared)
+        if concept:
+            lines += [""] + concept
+    lines += [""] + _guide_lines(shared)
+    if base in BOUNDARY_ROLES:
+        bound = _boundary_lines(plan, part_no)
+        if bound:
+            lines += [""] + bound
     lines += ["", "Nothing else from other parts is visible here."]
     return "\n".join(lines)
 

@@ -678,6 +678,61 @@ try:
        and "(ref: %s)" % pcp in text6
        and "MAP NOTES" not in text6,
        "full+parts row gets the listed part text")
+    ok("### Source:" in text4
+       and text4.index("### Source:")
+       < text4.index("Body tools here."),
+       "marty sees the map before the full text")
+    pc.set_recipients("source", r3["doc_id"], "ord-20261030-009",
+                      ["plan_ash"], "sales_sam", kind="full",
+                      root=tmp2)
+    texta, metaa = pc.prompt_chunks_for(
+        "plan_ash", "ord-20261030-009", [r3["ref"]],
+        os.path.join(tmp2, "runs"))
+    ok(metaa["included"] == [r3["ref"]]
+       and "### Source:" in texta
+       and "Body tools here." not in texta,
+       "ash full row still gets the map, not the text")
+    ash = {"agent_dir": cleo["agent_dir"], "producer": "plan_ash",
+           "order_id": "ord-20261030-009"}
+    ok("Body tools here." in tmod.pc_read_source(
+        ash, {"ref": r3["ref"] + "#s1.1"}).get("text", ""),
+       "ash tool still reads full sections")
+    ep = os.path.join(pc.entry_dir("source", r3["doc_id"]),
+                      "entry.json")
+    with open(ep, encoding="utf-8") as f:
+        ent = json.load(f)
+    ent["figures"] = [{"addr": "fig1.1", "file": "fig1.png",
+                       "page": 3, "caption": "Tools at work",
+                       "printed_no": "Figure 1.1"}]
+    ent["tables"] = [{"addr": "tab1.1", "page": 4,
+                      "caption": "Census", "printed_no": "",
+                      "rows": []}]
+    ent["equations"] = [{"addr": "eq1.1", "sec": "1.1",
+                         "page": 5, "latex": "a+b=c"}]
+    with open(ep, "w", encoding="utf-8") as f:
+        json.dump(ent, f)
+    pc.set_recipients("source", r3["doc_id"], "ord-20261030-009",
+                      ["board_penn"], "plan_ash", kind="map",
+                      root=tmp2)
+    textm, _m = pc.prompt_chunks_for(
+        "board_penn", "ord-20261030-009", [r3["ref"]],
+        os.path.join(tmp2, "runs"))
+    ok("#fig1.1" in textm
+       and "Figure 1.1 Tools at work" in textm
+       and "#tab1.1" in textm and "a+b=c" in textm
+       and "fig1.png" not in textm,
+       "penn media list is addr+title, no files")
+    textam, _m = pc.prompt_chunks_for(
+        "plan_ash", "ord-20261030-009", [r3["ref"]],
+        os.path.join(tmp2, "runs"))
+    ok("#fig1.1" in textam, "ash gets the media list too")
+    text4b, _m = pc.prompt_chunks_for(
+        "pd_marty", "ord-20261030-009", [r3["ref"]],
+        os.path.join(tmp2, "runs"))
+    ok("Figures/tables/formulas" not in text4b
+       and "Body tools here." in text4b
+       and "Figures/tables/formulas" not in text,
+       "marty and cleo get no media list")
 finally:
     pc.ROOT_OVERRIDE = None
     shutil.rmtree(tmp2, ignore_errors=True)

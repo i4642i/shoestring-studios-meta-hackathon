@@ -676,14 +676,13 @@ def _draft_scene_map(draft):
 
 def validate_storyboard(obj, narration):
     """Penn's cut descriptions v2: exact cut match vs Wren's
-    narration, text ≤3 lines. Returns [errors]."""
+    narration, text ≤3 lines. Penn writes no timing: scene_n,
+    start_s and end_s in his cuts are refused and the writer
+    copies them from the narration instead. Returns [errors]."""
     errors = []
     if not isinstance(obj, dict):
         return ["storyboard must be an object"]
-    want = {}
-    for cid, c in _cut_id_map(
-            (narration or {}).get("cuts")).items():
-        want[cid] = (c.get("start_s"), c.get("end_s"))
+    want = set(_cut_id_map((narration or {}).get("cuts")))
     cuts = obj.get("cuts")
     if not isinstance(cuts, list):
         return errors + ["cuts must be a list"]
@@ -693,12 +692,19 @@ def validate_storyboard(obj, narration):
         if not isinstance(cut, dict):
             errors.append("%s must be an object" % where)
             continue
-        for k in ("cut_id", "scene_n", "start_s", "end_s",
-                  "show_what", "show_why", "on_screen_text"):
+        for k in ("cut_id", "show_what", "show_why",
+                  "on_screen_text"):
             if k not in cut:
                 errors.append("%s missing: %s" % (where, k))
+        for k in ("scene_n", "start_s", "end_s"):
+            if k in cut:
+                errors.append("%s: %s is copied by the writer; "
+                              "write only cut_id/show_what/show_why/"
+                              "on_screen_text" % (where, k))
         got.append(cut.get("cut_id"))
-        _check_cut_times(errors, where, cut, want)
+        if cut.get("cut_id") not in want:
+            errors.append("%s.cut_id %r is not received"
+                          % (where, cut.get("cut_id")))
         _nonempty(errors, cut, "show_what", where)
         _nonempty(errors, cut, "show_why", where)
         ost = cut.get("on_screen_text")

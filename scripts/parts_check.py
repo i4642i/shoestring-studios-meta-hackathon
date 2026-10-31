@@ -278,6 +278,15 @@ ok([p["quota"] for p in plan["parts"]] == [2, 2, 2]
    and plan["shared"]["style_guide"]["palette"]["accent"]
    == "#e0a458",
    "quotas plus shared context in the plan")
+ok(plan["parts"][1]["boundary"]
+   == {"prev": {"cut_id": "s1c2",
+                "line": "Part one continues."},
+       "next": {"cut_id": "s3c1",
+                "line": "Part three opens."}}
+   and plan["parts"][0]["boundary"]["prev"] is None
+   and plan["parts"][0]["boundary"]["next"]["cut_id"]
+   == "s2c1",
+   "boundary holds neighbor cuts' lines")
 try:
     parts.build_plan(STRUCT, {"scenes": [], "unused_picks": []},
                      NARR, CONCEPT, GUIDE)
@@ -291,6 +300,12 @@ one = parts.build_plan(
     {"scenes": [], "unused_picks": []}, NARR, CONCEPT, GUIDE)
 ok(len(one["parts"]) == 1 and len(one["parts"][0]["cuts"]) == 6,
    "one part takes every cut")
+ok(one["parts"][0]["boundary"]
+   == {"prev": None, "next": None},
+   "one part has no boundary")
+ok("Concept (Marty)" in parts.shared_block(plan, 1)
+   and "Boundary lines" not in parts.shared_block(plan, 1),
+   "legacy block keeps concept, no boundary")
 
 # ---- live-ish: split + clones + merge ----
 _pc.ROOT_OVERRIDE = tmp
@@ -481,18 +496,76 @@ try:
     pia_in = open(os.path.join(run_dir, "photo_pia", "p1",
                                "INPUTS.md"),
                   encoding="utf-8").read()
-    ok("s1c1" in pia_in and "s1c2" in pia_in
-       and "s2c1" not in pia_in and "s3c2" not in pia_in
+    ok("Part one opens." in pia_in
+       and "Part one continues." in pia_in
+       and "Part three opens." not in pia_in
        and "You are Part 1" in pia_in
-       and "Thrift" in pia_in and "#e0a458" in pia_in
-       and "1.2 Middles" in pia_in,
-       "clone inputs hold own cuts + shared context")
+       and "Thrift" not in pia_in and "#e0a458" in pia_in
+       and "1.2 Middles" in pia_in
+       and "Boundary lines (read-only" in pia_in
+       and "Part two opens." in pia_in,
+       "pia: own cuts + boundary, no concept")
+    gene_in = open(os.path.join(run_dir, "image_gene", "p2",
+                                "INPUTS.md"),
+                   encoding="utf-8").read()
+    ok("Part two opens." in gene_in
+       and "Part one opens." not in gene_in
+       and "Part three closes." not in gene_in
+       and "Thrift" in gene_in
+       and "Boundary lines (read-only" in gene_in
+       and "Part one continues." in gene_in
+       and "Part three opens." in gene_in,
+       "gene: own cuts + concept + both boundaries")
+    max_in = open(os.path.join(run_dir, "anim_max", "p3",
+                               "INPUTS.md"),
+                  encoding="utf-8").read()
+    ok("Thrift" not in max_in
+       and "Boundary lines (read-only" in max_in
+       and "Part two continues." in max_in,
+       "max: boundary, no concept")
     vera_in = open(os.path.join(run_dir, "board_vera", "p2",
                                 "INPUTS.md"),
                    encoding="utf-8").read()
-    ok("s2c1" in vera_in and "s1c1" not in vera_in
-       and "You are Part 2" in vera_in,
-       "vera@p2 inputs hold only part 2")
+    ok("Part two opens." in vera_in
+       and "Part one opens." not in vera_in
+       and "You are Part 2" in vera_in
+       and "Thrift" in vera_in
+       and "Boundary lines (read-only" in vera_in,
+       "vera@p2: own cuts + concept + boundary")
+    remy_in = open(os.path.join(run_dir, "slide_remy", "p2",
+                                "INPUTS.md"),
+                   encoding="utf-8").read()
+    ok("Part two opens." not in remy_in
+       and "Card three" not in remy_in
+       and "Thrift" not in remy_in
+       and "Boundary lines" not in remy_in
+       and "Parts in this video" not in remy_in
+       and "Style guide (Penn)" in remy_in
+       and "You are Part 2" in remy_in
+       and '"start_s": 30' in remy_in,
+       "remy: cut times + guide + slide draft only")
+    pia_files = sorted(
+        fn for fn in os.listdir(os.path.join(run_dir, "photo_pia",
+                                             "p1"))
+        if fn.startswith("received."))
+    remy_files = sorted(
+        fn for fn in os.listdir(os.path.join(run_dir, "slide_remy",
+                                             "p2"))
+        if fn.startswith("received."))
+    ok([fn.rsplit(".", 2)[-2] for fn in pia_files]
+       == ["narration", "split_plan", "storyboard"]
+       and [fn.rsplit(".", 2)[-2] for fn in remy_files]
+       == ["slide_draft"],
+       "received ids per clone: pia 3, remy 1")
+    remy_manifest = json.load(open(os.path.join(
+        run_dir, "slide_remy", "p2", "INPUTS.json"),
+        encoding="utf-8"))
+    ok(set(remy_manifest["kept_cuts"]) == {"slide_draft"}
+       and set(json.load(open(os.path.join(
+           run_dir, "photo_pia", "p1", "INPUTS.json"),
+           encoding="utf-8"))["kept_cuts"])
+       == {"narration", "storyboard"},
+       "kept keys per clone match the filter")
     merged = results.load_result(
         os.path.join(run_dir, "photo_pia", "result.json"))
     ok([c["cut_id"] for c in

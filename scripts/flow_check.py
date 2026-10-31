@@ -1,4 +1,4 @@
-""" checks for agents/_frame/flow.py (v8). Stdlib only.
+"""Flow checks for agents/_frame/flow.py (v8). Stdlib only.
 
 Run: python scripts/flow_check.py. Writes only to gitignored scratch
 (directories are patched to temp locations; nothing lands in runs/).
@@ -863,6 +863,46 @@ try:
 finally:
     _pc.ROOT_OVERRIDE = None
     flow.ORDERS_DIR = _real_orders
+
+
+# ---- STEP 1: penn sees no cut seconds ----
+pndir = os.path.join(tmp, "runs", "ridpen", "board_penn")
+os.makedirs(pndir)
+with open(os.path.join(pndir,
+                       "received.voice_wren.narration.json"),
+          "w", encoding="utf-8") as f:
+    json.dump({"sender": "voice_wren", "category": "narration",
+               "version": 2,
+               "data": {"cuts": [{
+                   "cut_id": "s1c1", "scene_n": 1,
+                   "start_s": 0, "end_s": 20,
+                   "lines": [{"text": "Hello world",
+                              "citations": []}],
+                   "words": 2,
+                   "audio": {"voice_pc_ref": "pc://voice/x",
+                             "seconds": 20},
+                   "attempts": 1}]}}, f)
+rcvn = [{"sender": "voice_wren", "category": "narration",
+         "version": 2,
+         "file": "received.voice_wren.narration.json"}]
+mdpen = flow._render_inputs_md(
+    {"order_id": "o9", "answers": {"audience": "a"}}, rcvn,
+    os.path.join(tmp, "runs", "ridpen"), "board_penn")
+ok('"start_s"' not in mdpen and '"end_s"' not in mdpen
+   and '"audio"' not in mdpen and '"seconds"' not in mdpen
+   and "Hello world" in mdpen and '"cut_id"' in mdpen,
+   "penn prompt carries no cut seconds")
+rawpen = json.load(open(os.path.join(
+    pndir, "received.voice_wren.narration.json"),
+    encoding="utf-8"))["data"]
+ok(rawpen["cuts"][0]["start_s"] == 0
+   and rawpen["cuts"][0]["audio"]["seconds"] == 20,
+   "received file keeps seconds for the writer")
+mdwren = flow._render_inputs_md(
+    {"order_id": "o9", "answers": {"audience": "a"}}, rcvn,
+    os.path.join(tmp, "runs", "ridpen"), "board_penn",
+    agent_id="voice_wren")
+ok('"start_s"' in mdwren, "slim applies to penn only")
 
 
 def boom(agent_dir, run_dir, brief, input_md):

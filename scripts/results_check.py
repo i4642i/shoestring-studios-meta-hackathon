@@ -699,8 +699,7 @@ try:
     pctx = {"run_dir": pdir,
             "agent_dir": os.path.join(ROOT, "agents", "board_penn"),
             "producer": "board_penn", "order_id": "o7", "run_id": "r7"}
-    SB = {"cuts": [{"cut_id": c["cut_id"], "scene_n": c["scene_n"],
-                    "start_s": c["start_s"], "end_s": c["end_s"],
+    SB = {"cuts": [{"cut_id": c["cut_id"],
                     "show_what": "Card", "show_why": "Intro",
                     "on_screen_text": ["Hello"]}
                    for c in WN["cuts"]]}
@@ -716,6 +715,15 @@ try:
        and "## storyboard (v2)" in results.render_report(savedp)
        and "## style_guide (v1)" in results.render_report(savedp),
        "storyboard envelope + report")
+    got = savedp["categories"]["storyboard"]["data"]["cuts"]
+    ok([(c["cut_id"], c["scene_n"], c["start_s"], c["end_s"])
+        for c in got]
+       == [(c["cut_id"], c["scene_n"], c["start_s"],
+            c["end_s"]) for c in WN["cuts"]]
+       and all(set(c) == {"cut_id", "scene_n", "start_s",
+                          "end_s", "show_what", "show_why",
+                          "on_screen_text"} for c in got),
+       "writer copies cut timing from the narration")
     bad = {"cuts": SB["cuts"][:-1]}
     ok("cut set must equal" in " ".join(write_storyboard(
         pctx, {"storyboard": bad,
@@ -727,6 +735,12 @@ try:
         pctx, {"storyboard": bad,
                "style_guide": GUIDE}).get("errors", [])),
        "storyboard fourth text line refuses")
+    bad = json.loads(json.dumps(SB))
+    bad["cuts"][0]["start_s"] = 0
+    ok("copied by the writer" in " ".join(write_storyboard(
+        pctx, {"storyboard": bad,
+               "style_guide": GUIDE}).get("errors", [])),
+       "penn timing refuses")
     badg = dict(GUIDE)
     del badg["palette"]
     ok(write_storyboard(pctx, {"storyboard": SB,

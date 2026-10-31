@@ -539,6 +539,24 @@ def _pc_chunks(order_brief, received, run_dir, dest_id,
     return text
 
 
+def _slim_narration_for_penn(data):
+    """Penn's narration view: cut ids, scenes and lines only. Cut
+    seconds stay out of his prompt; the writer copies them from
+    the received file into his result."""
+    if not isinstance(data, dict):
+        return data
+    cuts = []
+    for c in (data.get("cuts") or []):
+        if not isinstance(c, dict):
+            continue
+        cuts.append({k: c[k] for k in ("cut_id", "scene_n",
+                                      "lines", "words")
+                     if k in c})
+    slim = dict(data)
+    slim["cuts"] = cuts
+    return slim
+
+
 def _render_inputs_md(order_brief, received, run_dir, dest_id,
                         agent_id=None):
     who = agent_id or dest_id
@@ -553,6 +571,9 @@ def _render_inputs_md(order_brief, received, run_dir, dest_id,
                 data = json.load(f)["data"]
         except (OSError, ValueError):
             continue
+        if who == "board_penn" and item.get("category") \
+                == "narration":
+            data = _slim_narration_for_penn(data)
         chunks.append("## From %s / %s" % (item["sender"], item["category"]))
         chunks.append(json.dumps(data, ensure_ascii=False, indent=1))
         chunks.append("")
@@ -740,11 +761,11 @@ def _run_one_clone(run_dir, agent_id, order_id, order_brief,
               "bytes": nbytes})
         if errors:
             return {"ok": False, "error": errors[0]}
-    kept = parts.filter_clone_received(cdir, p)
+    kept = parts.filter_clone_received(cdir, p, agent_id)
     manifest = {"agent": cid, "part": no,
                 "received": received, "kept_cuts": kept}
     _write_json(os.path.join(cdir, "INPUTS.json"), manifest)
-    input_text = parts.shared_block(plan, no) + "\n" + \
+    input_text = parts.shared_block(plan, no, agent_id) + "\n" + \
         _render_inputs_md(order_brief, received, run_dir, dest,
                           cid)
     if note:

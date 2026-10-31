@@ -519,7 +519,9 @@ def write_storyboard_draft(ctx, args):
 
 def write_storyboard(ctx, args):
     """Penn's cut descriptions v2 + style guide: exact cut match
-    vs Wren's received narration, on-screen text ≤3 lines."""
+    vs Wren's received narration, on-screen text ≤3 lines. Penn
+    writes no timing; the writer copies scene_n/start_s/end_s per
+    cut_id from the narration into the saved result."""
     obj = (args or {}).get("storyboard")
     guide = (args or {}).get("style_guide")
     if not isinstance(obj, dict) or not isinstance(guide, dict):
@@ -534,7 +536,24 @@ def write_storyboard(ctx, args):
                for e in validate_style_guide(guide)]
     if errors:
         return {"ok": False, "errors": errors}
-    return _save_categories(ctx, {"storyboard": obj,
+    own = {c.get("cut_id"): c for c in obj.get("cuts", [])
+           if isinstance(c, dict)}
+    filled = []
+    for nc in (narr.get("cuts") or []):
+        if not isinstance(nc, dict) or nc.get("cut_id") not in own:
+            continue
+        mine = own[nc["cut_id"]]
+        filled.append({"cut_id": nc["cut_id"],
+                       "scene_n": nc.get("scene_n"),
+                       "start_s": nc.get("start_s"),
+                       "end_s": nc.get("end_s"),
+                       "show_what": mine.get("show_what"),
+                       "show_why": mine.get("show_why"),
+                       "on_screen_text": mine.get(
+                           "on_screen_text")})
+    saved = dict(obj)
+    saved["cuts"] = filled
+    return _save_categories(ctx, {"storyboard": saved,
                                   "style_guide": guide})
 
 

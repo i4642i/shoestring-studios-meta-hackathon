@@ -2011,6 +2011,53 @@ def _entry_chunk(entry, mp, reason=None):
 
 FULL_CHUNK_CAP = 100000  # full-text chunk cap (chars)
 
+# Agents whose Source prompt chunk ends with the figure/table/formula
+# list (addr + title; files stay on the PC). Penn names screens from
+# it; Ash plans scenes from it. Nobody else gets the list.
+MEDIA_LIST_AGENTS = ("plan_ash", "board_penn")
+
+
+def _media_title(item, latex_ok=False):
+    bits = [str(item.get("printed_no") or ""),
+            str(item.get("caption") or "")]
+    title = " ".join(b for b in bits if b).strip()
+    if latex_ok and not title:
+        title = str(item.get("latex") or "")
+    return title
+
+
+def media_list_block(entry, parts=None):
+    """Figures/tables/formulas of a Source entry as addr + title
+    lines (no files, no pixels). parts (refs, []) narrows the list
+    to listed items. "" when the entry holds none."""
+    ref = entry.get("ref", "")
+    allow = set(parts or [])
+    lines = []
+    for kind, items, latex in (
+            ("FIGURE", entry.get("figures", []), False),
+            ("TABLE", entry.get("tables", []), False),
+            ("FORMULA", entry.get("equations", []), True)):
+        for it in items or []:
+            if not isinstance(it, dict) or not it.get("addr"):
+                continue
+            full = "%s#%s" % (ref, it["addr"])
+            if allow and full not in allow:
+                continue
+            title = _media_title(it, latex)
+            if latex and len(title) > 80:
+                title = title[:77] + "..."
+            lines.append("- %s %s — %s" % (kind, full, title or
+                                           "(no title)"))
+    if not lines:
+        return ""
+    return "Figures/tables/formulas in this entry (open a listed one " \
+        "with pc_read_source({ref}) or open_ref; files stay on the " \
+        "PC):\n" + "\n".join(lines)
+
+
+def _agent_base(agent_id):
+    return (agent_id or "").split("@")[0]
+
 
 def _section_of(entry, frag):
     """Section dict enclosing a fragment (section/para/range/group)."""
@@ -2124,9 +2171,11 @@ def prompt_chunks_for(agent_id, order_id, source_refs, runs_root,
                       root=None):
     """The ONE recipients-gated PC input for a crew member's prompt:
     every listed source entry plus this order's listed Theory/Article
-    picks. kind map -> map chunk; kind full -> full text (capped);
-    listed parts narrow either. Returns (text, {"included", "denied",
-    "picks"})."""
+    picks. kind map -> map chunk; kind full -> full text (capped),
+    except Ash (map only, tools stay) and Marty (map first, then
+    full text); Ash and Penn also get the Source figure/table/formula
+    list. Listed parts narrow either. Returns (text, {"included",
+    "denied", "picks"})."""
     refs = []
     for r in source_refs or []:
         try:
@@ -2162,14 +2211,24 @@ def prompt_chunks_for(agent_id, order_id, source_refs, runs_root,
             mp = load_map_by_ref(eref, root=root)
         except (OSError, ValueError, KeyError):
             mp = {}
-        if row_kind(row) == "full":
-            blocks.append(_full_chunk(entry, parts, root=root))
+        base = _agent_base(agent_id)
+        if row_kind(row) == "full" and base != "plan_ash":
+            chunk = _full_chunk(entry, parts, root=root)
+            if base == "pd_marty" and not parts:
+                chunk = _entry_chunk(entry, mp or {},
+                                     reasons.get(eref)) + "\n" + chunk
         elif parts:
-            blocks.append(_parts_chunk(entry, mp or {}, parts,
-                                       reasons.get(eref)))
+            chunk = _parts_chunk(entry, mp or {}, parts,
+                                 reasons.get(eref))
         else:
-            blocks.append(_entry_chunk(entry, mp or {},
-                                       reasons.get(eref)))
+            chunk = _entry_chunk(entry, mp or {},
+                                 reasons.get(eref))
+        if base in MEDIA_LIST_AGENTS \
+                and entry.get("pc", "source") == "source":
+            media = media_list_block(entry, parts or None)
+            if media:
+                chunk = chunk.rstrip("\n") + "\n" + media + "\n"
+        blocks.append(chunk)
         included.append(eref)
     lines = ["## PC input (order %s)" % (order_id or "?"),
              "You may read ONLY the %d item(s) below. Open passages "

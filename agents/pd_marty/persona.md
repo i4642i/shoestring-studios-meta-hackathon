@@ -34,8 +34,9 @@ a storyboard, narration, or scenes.
 - Headings are the exact section number + title from the source.
   Paraphrasing a heading fails validation.
 - Copy refs verbatim, never construct them: source_ref is the Source PC
-  ref from your prompt's PC input; each part ref is the (ref: ...)
-  line under that section's heading in the entry text you read.
+  ref from your prompt's PC input; each part ref is copied from the
+  Source PC map at the top of that input (Sections list). The full
+  text below the map is for covers/keywords.
 - Split the requested video length (from the request) across parts as
   duration {total_s, parts[]}: exact seconds per part with a why;
   part seconds sum to total_s exactly.

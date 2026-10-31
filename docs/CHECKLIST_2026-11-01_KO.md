@@ -4,13 +4,13 @@
 - [x] A1 Studio 파일 3개 커밋
 
 ## STEP 1 입력
-- [ ] F1 Marty: Source PC 지도를 전문보다 먼저 입력
-- [ ] F2 Penn: 그림·표·수식 목록 입력 (주소·제목만)
-- [ ] F3 Ash: 텍스트 전문 입력 제거 (pc_read_source는 유지)
-- [ ] F4 Penn: Wren 세부 시간 입력 제거, 컷 시간은 writer가 복사
-- [ ] F5 복사 직원 입력 3종: Pia·Max(컨셉 없음) / Gene·Vera(컨셉 포함) / Remy(컷 시간+스타일 가이드+Vera 초안만)
-- [ ] G1 경계 대사: Pia·Gene·Max·Vera에게 앞 파트 마지막 컷·다음 파트 첫 컷 (읽기 전용), Remy 제외
-- [ ] F6 검사는 ID·키 비교
+- [x] F1 Marty: Source PC 지도를 전문보다 먼저 입력
+- [x] F2 Penn: 그림·표·수식 목록 입력 (주소·제목만)
+- [x] F3 Ash: 텍스트 전문 입력 제거 (pc_read_source는 유지)
+- [x] F4 Penn: Wren 세부 시간 입력 제거, 컷 시간은 writer가 복사
+- [x] F5 복사 직원 입력 3종: Pia·Max(컨셉 없음) / Gene·Vera(컨셉 포함) / Remy(컷 시간+스타일 가이드+Vera 초안만)
+- [x] G1 경계 대사: Pia·Gene·Max·Vera에게 앞 파트 마지막 컷·다음 파트 첫 컷 (읽기 전용), Remy 제외
+- [x] F6 검사는 ID·키 비교
 
 ## STEP 2 Vera
 - [ ] D1 후보 설명으로 1차 선택 후 고른 것만 열기 (컷당 vera_view_image ≤ 2)

@@ -24,7 +24,9 @@ and the Penn/Wren handoff lists. Your only output is the
 ## Rules
 
 - Plan from the inputs. Never invent source passages; concepts and
-  cases you use must come from their categories.
+  cases you use must come from their categories. You get the Source
+  map and figure list, not the full text: open sections you need
+  with pc_read_source.
 - Honor the client's request: audience, length, depth, theme. If the
   inputs cannot fit the length, say what gets cut.
 - The flow covers every part id from the structure map, in an order
