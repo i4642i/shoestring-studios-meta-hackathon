@@ -1634,6 +1634,7 @@ class Handler(BaseHTTPRequestHandler):
                                for p in e.get("paragraphs", [])]
         entry["figures"] = e.get("figures", [])
         entry["tables"] = e.get("tables", [])
+        entry["equations"] = e.get("equations", [])
         entry["recipients"] = e.get("recipients")
         job = _PC_JOBS.get(doc_id)
         entry["building"] = job is not None and job.poll() is None

@@ -1,0 +1,43 @@
+24 FINANCIAL DATA STRUCTURES
+TABLE 2.1 The Four Essential Types of Financial Data
+Fundamental Data Market Data Analytics Alternative Data
+(cid:2) (cid:2) (cid:2) (cid:2)
+(cid:2) Assets Price/yield/implied Analyst Satellite/CCTV
+(cid:2) Liabilities (cid:2) volatility (cid:2) recommendations (cid:2) images
+(cid:2) Sales (cid:2) Volume (cid:2) Credit ratings (cid:2) Google searches
+(cid:2) Costs/earnings (cid:2) Dividend/coupons Earnings (cid:2) Twitter/chats
+(cid:2) Macro variables (cid:2) Open interest (cid:2) expectations (cid:2) Metadata
+. . . (cid:2) Quotes/cancellations (cid:2) News sentiment . . .
+(cid:2) Aggressor side . . .
+. . .
+fundamental data, especially in the factor-investing literature. Once you align the data
+correctly, a substantial number of findings in those papers cannot be reproduced.
+A second aspect of fundamental data is that it is often backfilled or reinstated.
+“Backfilling” means that missing data is assigned a value, even if those values were
+unknown at that time. A “reinstated value” is a corrected value that amends an incor-
+rect initial release. A company may issue multiple corrections for a past quarter’s
+results long after the first publication, and data vendors may overwrite the initial val-
+ues with their corrections. The problem is, the corrected values were not known on
+that first release date. Some data vendors circumvent this problem by storing multiple
+release dates and values for each variable. For example, we typically have three val-
+ues for a single quarterly GDP release: the original released value and two monthly
+revisions. Still, it is very common to find studies that use the final released value and
+assign it to the time of the first release, or even to the last day in the reporting period.
+We will revisit this mistake, and its implications, when we discuss backtesting errors
+in Chapter 11.
+Fundamental data is extremely regularized and low frequency. Being so accessible
+to the marketplace, it is rather unlikely that there is much value left to be exploited.
+Still, it may be useful in combination with other data types.
+2.2.2 Market Data
+Market data includes all trading activity that takes place in an exchange (like CME)
+or trading venue (like MarketAxess). Ideally, your data provider has given you a raw
+feed, with all sorts of unstructured information, like FIX messages that allow you
+to fully reconstruct the trading book, or the full collection of BWIC (bids wanted
+in competition) responses. Every market participant leaves a characteristic footprint
+in the trading records, and with enough patience, you will find a way to anticipate
+a competitor’s next move. For example, TWAP algorithms leave a very particular
+footprint that is used by predatory algorithms to front-run their end-of-day trading
+(usually hedging) activity (Easley, Lo´pez de Prado, and O’Hara [2011]). Human
+GUI traders often trade in round lots, and you can use this fact to estimate what
+percentage of the volume is coming from them at a given point in time, then associate
+it with a particular market behavior.

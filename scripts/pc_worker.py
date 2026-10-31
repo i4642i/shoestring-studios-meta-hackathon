@@ -25,6 +25,24 @@ POLL = 5
 META_VISION_MODEL = "muse-spark-1.3"  # Meta Model API flagship; second
 # vision attempt when the primary model cannot take images.
 FIG_KINDS = ("chart", "diagram", "photo", "formula", "table-image")
+VISION_PROMPT_VERSION = "eqtab-v1"  # part of the transcribe cache key
+VISION_CALL_CAP = 10  # max paid vision calls per document (cache free)
+FORMULA_PROMPT = (
+    "Copy every STANDALONE displayed math formula on this page "
+    "EXACTLY as printed (skip inline math inside sentences and "
+    "code). Reply with ONLY a JSON object, no other text:\n"
+    "{\"formulas\": [{\"latex\": \"...\", \"context\": \"...\"}]}"
+    "\nRules: latex = the formula in LaTeX, copied exactly, do not "
+    "fix or add; context = 5-12 consecutive printed words right "
+    "before or after the formula, copied exactly. If no displayed "
+    "formula: {\"formulas\": []}.")
+TABLE_PROMPT = (
+    "Copy the table printed under this caption EXACTLY: %s\nReply "
+    "with ONLY a JSON object, no other text:\n{\"caption\": \"...\", "
+    "\"columns\": [\"...\"], \"rows\": [[\"...\", ...], ...]}"
+    "\nRules: columns = the header cells left to right; rows = the "
+    "data rows top to bottom; copy every cell exactly as printed, do "
+    "not fix or add; join multi-line cells with one space.")
 
 
 def log(edir, obj):
@@ -106,6 +124,27 @@ def _section_map(model, n, heading, paras, stats):
     return [], True
 
 
+def _vision_chat(model, png, prompt, timeout=240):
+    """One vision call. Returns (obj, prompt_tokens,
+    completion_tokens); raises on transport or JSON failure."""
+    import base64
+    msg = {"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {
+            "url": "data:image/png;base64," + base64.b64encode(png)
+            .decode(), "detail": "auto"}}]}
+    resp = runner._chat(model, [msg], None, timeout=timeout)
+    text = (resp.get("choices") or [{}])[0].get("message", {}).get(
+        "content", "")
+    obj, status = runner.parse_json_answer(text or "")
+    if status != "ok" or not isinstance(obj, dict):
+        raise ValueError("no JSON in vision reply: %r"
+                         % (text or "")[:200])
+    use = resp.get("usage", {}) or {}
+    return obj, use.get("prompt_tokens", 0), \
+        use.get("completion_tokens", 0)
+
+
 def _vision_models(primary):
     """Vision attempt order: primary map model first, Meta flagship
     next. Models without keys are skipped."""
@@ -165,6 +204,10 @@ def describe_figures(entry, edir, model):
         return 0, len(figs), 0, 0, "no-key"
     backend, ok_n, fail_n, calls, toks = None, 0, 0, 0, 0
     for fig in figs:
+        if fig.get("described"):
+            ok_n += 1  # carried over by a re-ingest: no repay
+            backend = backend or fig.get("described_by") or None
+            continue
         with open(os.path.join(edir, "figures", fig["file"]),
                   "rb") as f:
             blob = f.read()
@@ -210,24 +253,140 @@ def describe_figures(entry, edir, model):
     return ok_n, fail_n, calls, toks, backend or "unavailable"
 
 
+def _order_pdf_bytes(entry):
+    base = pc._base(None)
+    try:
+        with open(os.path.join(base, "orders", entry.get("order_id", ""),
+                               "meta.json"), encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, ValueError):
+        return None
+    fname = (meta.get("files", {}) or {}).get("source", "source.pdf")
+    try:
+        with open(os.path.join(base, "orders", entry.get("order_id", ""),
+                               fname), "rb") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def _cache_io(edir, kind, page, put=None):
+    cdir = os.path.join(edir, "vision_cache")
+    name = "%s_p%d_%s.json" % (kind, page, VISION_PROMPT_VERSION)
+    if put is None:
+        try:
+            with open(os.path.join(cdir, name), encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return None
+    os.makedirs(cdir, exist_ok=True)
+    with open(os.path.join(cdir, name), "w", encoding="utf-8") as f:
+        json.dump(put, f, ensure_ascii=False)
+    return put
+
+
+def transcribe_entry(entry, edir, model):
+    """Vision re-reads: formulas on candidate pages + tables under
+    captions. Cached by (page, kind, prompt version); at most
+    VISION_CALL_CAP paid calls per document; every call logged with
+    tokens. Mutates entry (equations/tables). Returns a summary."""
+    from agents._frame import pdfingest
+    try:
+        import pdfplumber
+    except ImportError:
+        return {"status": "no-pdfplumber", "calls": 0, "cached": 0}
+    raw = _order_pdf_bytes(entry)
+    if not raw:
+        log(edir, {"ev": "transcribe_skip",
+                   "reason": "order PDF missing"})
+        return {"status": "no-pdf", "calls": 0, "cached": 0}
+    import io as _io
+    with pdfplumber.open(_io.BytesIO(raw)) as pdf:
+        texts = [pdfingest.extract_page_text(p) for p in pdf.pages]
+        jobs = []
+        for n in pc.formula_candidate_pages(texts):
+            jobs.append(("formula", n, None))
+        for fig in entry.get("figures", []):
+            if fig.get("kind") == "table-image" and fig.get("caption") \
+                    and not fig.get("table"):
+                jobs.append(("table", fig.get("page", 0), fig["addr"]))
+        jobs = [j for j in jobs if 1 <= j[1] <= len(pdf.pages)]
+        jobs.sort(key=lambda j: (j[1], 0 if j[0] == "table" else 1))
+        if not jobs:
+            return {"status": "no-candidates", "calls": 0, "cached": 0}
+        png_of = {}
+        for _k, n, _a in jobs:
+            if n not in png_of:
+                png_of[n] = pdfingest.page_png(pdf.pages[n - 1])
+        pages = texts
+    calls, cached, added_eq, added_tab, rejected = 0, 0, [], [], 0
+    for kind, page, addr in jobs:
+        now = time.strftime("%Y-%m-%dT%H:%M:%S")
+        hit = _cache_io(edir, kind, page)
+        if hit is None and calls >= VISION_CALL_CAP:
+            log(edir, {"ev": "transcribe_cap", "kind": kind,
+                       "page": page})
+            break
+        if hit is None:
+            prompt = FORMULA_PROMPT if kind == "formula" \
+                else TABLE_PROMPT % next(
+                    f.get("caption", "") for f in entry["figures"]
+                    if f.get("addr") == addr)
+            obj = None
+            for att in range(2):
+                t0 = time.time()
+                try:
+                    obj, pt, ct = _vision_chat(model, png_of[page],
+                                               prompt)
+                    calls += 1
+                    log(edir, {"ev": "transcribe_call", "kind": kind,
+                               "page": page, "attempt": att + 1,
+                               "model": model, "prompt_tokens": pt,
+                               "completion_tokens": ct,
+                               "seconds": round(time.time() - t0, 1),
+                               "error": ""})
+                    break
+                except Exception as exc:  # noqa: BLE001 - 1 retry
+                    calls += 1
+                    log(edir, {"ev": "transcribe_call", "kind": kind,
+                               "page": page, "attempt": att + 1,
+                               "model": model,
+                               "seconds": round(time.time() - t0, 1),
+                               "error": str(exc)[:300]})
+            if obj is None:
+                continue
+            hit = _cache_io(edir, kind, page,
+                            {"model": model, "prompt_tokens": pt,
+                             "completion_tokens": ct, "seconds": secs,
+                             "response": obj})
+        else:
+            cached += 1
+        obj = hit["response"]
+        if kind == "formula":
+            new, bad, _dup = pc.apply_equations(
+                entry, page, obj.get("formulas"), pages[page - 1],
+                hit.get("model", model), now)
+            added_eq += new
+            rejected += len(bad)
+            if bad:
+                log(edir, {"ev": "transcribe_rejected", "kind": kind,
+                           "page": page, "count": len(bad)})
+        else:
+            taddr, checked, missing = pc.apply_table_vision(
+                entry, addr, obj.get("columns"), obj.get("rows"),
+                pages[page - 1], hit.get("model", model), now)
+            if taddr and checked != "already":
+                added_tab.append(taddr)
+            log(edir, {"ev": "transcribe_table", "page": page,
+                       "addr": taddr, "checked": checked,
+                       "missing": missing})
+    return {"status": "done", "calls": calls, "cached": cached,
+            "equations": added_eq, "tables": added_tab,
+            "rejected": rejected}
+
+
 def _sec_no(addr):
-    return addr[3:].rsplit(".", 1)[0]
-
-
-def _fig_desc(fig):
-    if fig.get("description"):
-        first = fig["description"].split(".")[0].strip()
-        return first + "." if first else fig.get("caption", "")
-    return fig.get("caption", "")
-
-
-def _tab_desc(tab):
-    rows = tab.get("rows") or []
-    cols = max([len(r) for r in rows] or [0])
-    head = "Table %dx%d" % (len(rows), cols)
-    if tab.get("caption"):
-        head += ": " + tab["caption"]
-    return head
+    return pc.sec_of_addr(addr)
 
 
 def build_map(entry, model):
@@ -245,23 +404,12 @@ def build_map(entry, model):
         items, miss = _section_map(model, s["n"], s["heading"], paras,
                                    stats)
         missing += 1 if miss else 0
-        has, terms = [], pc.rank_key_terms(sec)[:pc.TERMS_PER_SECTION]
-        for fig in entry.get("figures", []):
-            if _sec_no(fig["addr"]) != s["n"]:
-                continue
-            has.append({"ref": entry["ref"] + "#" + fig["addr"],
-                        "caption": fig.get("caption", ""),
-                        "desc": _fig_desc(fig)})
-            for t in pc.caption_terms(fig.get("caption", "")):
-                if t not in terms and len(terms) < pc.TERMS_PER_SECTION:
-                    terms.append(t)
-        for tab in entry.get("tables", []):
-            if _sec_no(tab["addr"]) != s["n"]:
-                continue
-            has.append({"ref": entry["ref"] + "#" + tab["addr"],
-                        "caption": tab.get("caption", ""),
-                        "desc": _tab_desc(tab)})
-            for t in pc.caption_terms(tab.get("caption", "")):
+        terms = pc.rank_key_terms(sec)[:pc.TERMS_PER_SECTION]
+        has = pc.section_has(entry, s["n"])
+        for h in has:
+            if h.get("kind") == "equation":
+                continue  # latex makes poor key terms
+            for t in pc.caption_terms(h.get("caption", "")):
                 if t not in terms and len(terms) < pc.TERMS_PER_SECTION:
                     terms.append(t)
         base = entry["ref"] + "#" + pre + s["n"] \
@@ -328,10 +476,25 @@ def index_docs(entry):
             fig.get("numbers", [])))
     for tab in entry.get("tables", []):
         ids.append(entry["ref"] + "#" + tab["addr"])
+        md = tab.get("markdown", "") if tab.get("checked", True) else ""
         docs.append(pc.chunk_text(
             ids[-1], "Table", heads.get(_sec_no(tab["addr"]), ""),
             tab.get("caption", ""), "", "", [],
-            extra=tab.get("markdown", "")))
+            extra=md))
+    for eq in entry.get("equations", []):
+        ids.append(entry["ref"] + "#" + eq["addr"])
+        if eq.get("checked"):
+            docs.append(pc.chunk_text(
+                ids[-1], "Formula", heads.get(eq.get("sec", ""), ""),
+                eq.get("latex", ""),
+                "transcribed by model, checked against page text",
+                eq.get("context", ""), []))
+        else:
+            docs.append(pc.chunk_text(
+                ids[-1], "Formula (unchecked)",
+                heads.get(eq.get("sec", ""), ""),
+                "", "transcription unchecked: navigation only",
+                eq.get("context", ""), []))
     return docs, ids
 
 
@@ -352,6 +515,16 @@ def main(doc_id, mode="all", pcname="source"):
         log(edir, {"ev": "map_failed", "error": msg})
         raise SystemExit(msg)
     if mode in ("all", "noindex"):
+        t0 = time.time()
+        tsum = transcribe_entry(entry, edir, model)
+        with open(os.path.join(edir, "entry.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(entry, f, ensure_ascii=False, indent=2)
+        log(edir, dict({"ev": "transcribe_done",
+                        "seconds": round(time.time() - t0, 1)}, **tsum))
+        print("transcribe %s: %s (%d calls, %d cached)"
+              % (doc_id, tsum["status"], tsum["calls"],
+                 tsum["cached"]), flush=True)
         t0 = time.time()
         ok_n, fail_n, dcalls, dtoks, backend = describe_figures(
             entry, edir, model)

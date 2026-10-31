@@ -9,7 +9,7 @@ import os
 import re
 import time
 
-MAP_VERSION = 1
+MAP_VERSION = 2  # has items carry kind (+file for figures) and equations
 PCS = ("source", "theory", "article")
 MIN_FIG_PT = 50  # images smaller than this (both sides, PDF points) are decor
 
@@ -184,6 +184,47 @@ def _join_hyphens(lines):
     return out
 
 
+def _is_formula_line(ln):
+    """A line holding '=' plus a digit or math symbol."""
+    return "=" in ln and bool(re.search(
+        r"[0-9\u03b1-\u03c9\u0391-\u03a9"
+        r"\u2211\u222b\u221a\u221e\xb1\u2192"
+        r"\u2190\u2194\u2264\u2265\u2260"
+        r"\u2248\xd7\xf7\u03c0]", ln))
+
+
+_VISION_MATH_RE = re.compile(r"[\u0370-\u03ff\u2200-\u22ff"
+                             r"\u2190-\u21ff\u23a7-\u23ad{}]"
+                             r"|\(cid:\d+\)")
+_ISOLATED_RE = re.compile(r"\b[a-zA-Z]\b")
+
+
+def _needs_vision_formula(line):
+    """True when a formula line is garbled enough to need a vision
+    re-read: math unicode / braces / cid gaps, or a short line of
+    isolated single letters with no real word (broken
+    sub/superscripts). Clean prose ("v is the volume ... at bar
+    t") and code extract verbatim already."""
+    if _VISION_MATH_RE.search(line or ""):
+        return True
+    if re.search(r"[a-zA-Z]{5,}", line or ""):
+        return False
+    return len(line or "") < 70 and \
+        len(_ISOLATED_RE.findall(line or "")) >= 3
+
+
+def formula_candidate_pages(pages):
+    """Sorted 1-based pages holding at least one formula line that
+    needs vision. Pure; the worker feeds it re-extracted page texts."""
+    out = []
+    for n, p in enumerate(pages or [], 1):
+        for ln in (p or "").splitlines():
+            if _is_formula_line(ln) and _needs_vision_formula(ln):
+                out.append(n)
+                break
+    return out
+
+
 def _tag_objects(lines):
     """Tag formula lines: {line_index: [eq addr]}. Formulas hold '='
     plus a digit or math symbol. Tables come from pdfplumber, never
@@ -191,10 +232,7 @@ def _tag_objects(lines):
     tags = {}
     eq_n = {}
     for k, (ln, pg) in enumerate(lines):
-        if "=" in ln and re.search(r"[0-9\u03b1-\u03c9\u0391-\u03a9"
-                                   r"\u2211\u222b\u221a\u221e\xb1\u2192"
-                                   r"\u2190\u2194\u2264\u2265\u2260"
-                                   r"\u2248\xd7\xf7\u03c0]", ln):
+        if _is_formula_line(ln):
             eq_n[pg[0]] = eq_n.get(pg[0], 0) + 1
             tags.setdefault(k, []).append("eq%d.%d" % (pg[0],
                                                       eq_n[pg[0]]))
@@ -371,11 +409,169 @@ def assign_objects(sections, figures, tables):
     return figs, tabs
 
 
+def strip_ws(s):
+    """Remove ALL whitespace (space-insensitive match)."""
+    return "".join(str(s or "").split())
+
+
+_TRANS_BULLET_RE = re.compile(r"\u2022|\(cid:\d+\)")
+_LATEXY_RE = re.compile(r"[\\{}_^$]")
+
+
+def _norm_trans(s):
+    """Transcription-match normalization: bullets dropped (vision
+    reads the rendered bullet that pdfplumber reports as (cid:N)),
+    then whitespace dropped. Case kept."""
+    return "".join(_TRANS_BULLET_RE.sub("", str(s or "")).split())
+
+
+def _clean_runs(context):
+    runs, cur = [], []
+    for w in str(context or "").split():
+        if _LATEXY_RE.search(w):
+            if cur:
+                runs.append(cur)
+                cur = []
+        else:
+            cur.append(w)
+    if cur:
+        runs.append(cur)
+    return runs
+
+
+def anchor_words(context, page_text):
+    """Word list anchoring a transcription context: the full context
+    words when found, else the longest clean-prose run (5+ words)
+    with its words in page order. [] when unanchored."""
+    flat = _norm_trans(page_text)
+    c = _norm_trans(context)
+    if c and c in flat:
+        return str(context or "").split()
+    for run in sorted(_clean_runs(context), key=len, reverse=True):
+        if len(run) >= 5 and _ordered_tokens(" ".join(run), flat):
+            return run
+    return []
+
+
+def context_anchor(context, page_text):
+    """Verbatim anchor for a transcription context: the full context
+    when found, else the longest clean-prose run (5+ words) with its
+    words in page order. Models latex-ify math spans inside contexts
+    ("sequence {b_t}_{t=1,...} where"), and extraction interleaves
+    stray subscript fragments inside prose runs, so order (not
+    contiguity) anchors the formula. None when unanchored."""
+    words = anchor_words(context, page_text)
+    return _norm_trans(" ".join(words)) if words else None
+
+
+def context_found(context, page_text):
+    """A transcription's context counts only when anchored in the
+    page text (space-insensitive, case kept)."""
+    return context_anchor(context, page_text) is not None
+
+
+def _ordered_tokens(cell, flat):
+    """A cell's whitespace-separated tokens in page order: each token
+    must occur at or after the previous one's position. A cell
+    spanning print lines shares those lines with other columns, so
+    its tokens are ordered but not contiguous."""
+    pos = 0
+    for tok in str(cell or "").split():
+        t = _norm_trans(tok)
+        if not t:
+            continue
+        at = flat.find(t, pos)
+        if at < 0:
+            return False
+        pos = at + len(t)
+    return True
+
+
+def cells_found(columns, rows, page_text):
+    """Headers + cells missing from the page text (space-insensitive;
+    a cell may span lines, sharing them with other columns: its
+    tokens must then appear in order). Blank cells are trivially
+    found. Returns the missing cell texts (empty = all checked)."""
+    flat = _norm_trans(page_text)
+    bad = []
+    cells = list(columns or []) + [c for r in (rows or []) for c in r]
+    for c in cells:
+        if _norm_trans(c) and not _ordered_tokens(c, flat):
+            bad.append(c)
+    return bad
+
+
+def rows_to_md(rows):
+    """Header-first rows to a markdown table (shared with the PDF
+    parser so vision tables render identically)."""
+    cells = [[(c or "").strip().replace("|", "\\|") for c in r]
+             for r in rows]
+    width = max(len(r) for r in cells)
+    cells = [r + [""] * (width - len(r)) for r in cells]
+    out = ["| " + " | ".join(cells[0]) + " |",
+           "| " + " | ".join("---" for _ in cells[0]) + " |"]
+    out += ["| " + " | ".join(r) + " |" for r in cells[1:]]
+    return "\n".join(out)
+
+
 def _round_bbox(bbox):
     try:
         return [round(float(v), 1) for v in bbox]
     except (TypeError, ValueError):
         return [0.0, 0.0, 0.0, 0.0]
+
+
+def sec_of_addr(addr):
+    return addr[3:].rsplit(".", 1)[0]
+
+
+def fig_desc(fig):
+    if fig.get("description"):
+        first = fig["description"].split(".")[0].strip()
+        return first + "." if first else fig.get("caption", "")
+    return fig.get("caption", "")
+
+
+def tab_desc(tab):
+    rows = tab.get("rows") or []
+    cols = max([len(r) for r in rows] or [0])
+    head = "Table %dx%d" % (len(rows), cols)
+    if tab.get("caption"):
+        head += ": " + tab["caption"]
+    return head
+
+
+def eq_desc(eq):
+    ctx = (eq.get("context") or "")[:120]
+    return "Formula" + (" (" + ctx + ")" if ctx else "")
+
+
+def section_has(entry, sec_n):
+    """Map "has" items for one section: figures, tables, equations.
+    Navigation only, as before."""
+    has = []
+    for fig in entry.get("figures", []):
+        if sec_of_addr(fig["addr"]) != sec_n:
+            continue
+        has.append({"ref": entry["ref"] + "#" + fig["addr"],
+                    "kind": "figure", "file": fig["file"],
+                    "caption": fig.get("caption", ""),
+                    "desc": fig_desc(fig)})
+    for tab in entry.get("tables", []):
+        if sec_of_addr(tab["addr"]) != sec_n:
+            continue
+        has.append({"ref": entry["ref"] + "#" + tab["addr"],
+                    "kind": "table",
+                    "caption": tab.get("caption", ""),
+                    "desc": tab_desc(tab)})
+    for eq in entry.get("equations", []):
+        if eq.get("sec", sec_of_addr(eq["addr"])) != sec_n:
+            continue
+        has.append({"ref": entry["ref"] + "#" + eq["addr"],
+                    "kind": "equation",
+                    "caption": eq.get("latex", ""),
+                    "desc": eq_desc(eq)})
+    return has
 
 
 def chunk_text(ref, kind_label, heading, caption, description, text,
@@ -467,7 +663,111 @@ def build_entry(doc_id, title, origin_file, order_id, parsed_at,
             "added_by": added_by, "recipients": [],
             "sections": out_secs,
             "paragraphs": flat, "figures": figrec, "tables": tabrec,
+            "equations": [],
             "chars": sum(len(p["text"]) for p in flat)}
+
+
+def section_for_page(entry, page):
+    """Newest content section (doc order) with a paragraph at or
+    before page. Same rule as _section_for_page, on a stored entry."""
+    secs = entry.get("sections", [])
+    flat = entry.get("paragraphs", [])
+    best = secs[0]["n"] if secs else "1"
+    for s in secs:
+        if s.get("non_content"):
+            continue
+        for p in flat[s["start"]:s["start"] + s["count"]]:
+            if min(p.get("pages", [0])) <= page:
+                best = s["n"]
+                break
+    return best
+
+
+def apply_equations(entry, page, formulas, page_text, model, at):
+    """Store vision-transcribed formulas as equation objects
+    (eq<section>.<n>), linked from the paragraphs that print their
+    context. Context must be found in the page text
+    (space-insensitive) or the formula is REJECTED (not stored).
+    Paragraph text is never touched. Returns (added, rejected,
+    dupes) with addresses / raw items."""
+    added, rejected, dupes = [], [], []
+    for f in formulas or []:
+        if not isinstance(f, dict):
+            rejected.append(f)
+            continue
+        latex = str(f.get("latex", "")).strip()
+        ctx = str(f.get("context", "")).strip()
+        if not latex or not context_found(ctx, page_text):
+            rejected.append(f)
+            continue
+        old = [e for e in entry.get("equations", [])
+               if e.get("latex") == latex and e.get("page") == page]
+        if old:
+            dupes.append(old[0]["addr"])
+            continue
+        sec = section_for_page(entry, page)
+        n = sum(1 for e in entry.get("equations", [])
+                if e.get("sec") == sec) + 1
+        addr = "eq%s.%d" % (sec, n)
+        words = anchor_words(ctx, page_text)
+        in_addrs = [p["addr"] for p in entry.get("paragraphs", [])
+                    if words and _ordered_tokens(" ".join(words),
+                                                 _norm_trans(p["text"]))]
+        entry.setdefault("equations", []).append(
+            {"addr": addr, "sec": sec, "page": page, "latex": latex,
+             "context": ctx, "in": in_addrs, "transcribed_by": model,
+             "checked": True, "generated_at": at})
+        for p in entry.get("paragraphs", []):
+            if p["addr"] in in_addrs and addr not in p.get("has", []):
+                p["has"] = sorted(p.get("has", []) + [addr])
+        added.append(addr)
+    return added, rejected, dupes
+
+
+def apply_table_vision(entry, fig_addr, columns, rows, page_text,
+                       model, at):
+    """Store a vision-transcribed table (tab<section>.<n>) beside its
+    table-image figure. Every header + cell must be found in the page
+    text (space-insensitive) or the table is stored UNCHECKED
+    (navigation only, image fallback kept). Returns (addr, checked,
+    missing). "already" when the figure links a table."""
+    fig = next((f for f in entry.get("figures", [])
+                if f.get("addr") == fig_addr), None)
+    if fig is None or fig.get("kind") != "table-image":
+        return None, False, ["no such table-image figure"]
+    if fig.get("table"):
+        return fig["table"], "already", []
+    if not isinstance(columns, list) or not columns or \
+            not isinstance(rows, list):
+        return None, False, ["bad transcription shape"]
+    width = len(columns)
+    data = []
+    for r in rows:
+        if not isinstance(r, list):
+            return None, False, ["bad transcription shape"]
+        data.append([str(c or "") for c in r] +
+                    [""] * max(0, width - len(r)))
+    missing = cells_found([str(c or "") for c in columns], data,
+                          page_text)
+    checked = not missing
+    sec = section_for_page(entry, fig.get("page", 0))
+    n = sum(1 for t in entry.get("tables", [])
+            if t.get("sec", sec_of_addr(t["addr"])) == sec) + 1
+    addr = "tab%s.%d" % (sec, n)
+    rec = {"addr": addr, "sec": sec, "page": fig.get("page", 0),
+           "bbox": fig.get("bbox"),
+           "caption": fig.get("caption", ""),
+           "printed_no": fig.get("printed_no", ""),
+           "rows": [[str(c or "") for c in columns]] + data,
+           "markdown": rows_to_md([[str(c or "") for c in columns]]
+                                  + data),
+           "figure": fig_addr, "transcribed_by": model,
+           "checked": checked, "generated_at": at}
+    if missing:
+        rec["unchecked_cells"] = missing
+    entry.setdefault("tables", []).append(rec)
+    fig["table"] = addr
+    return addr, checked, missing
 
 
 # ---- omitted candidates + key terms (§10.2) ----
@@ -747,6 +1047,7 @@ def open_ref(entry, ref, grant=None):
                              for s in entry.get("sections", [])],
                 "figures": len(entry.get("figures", [])),
                 "tables": len(entry.get("tables", [])),
+                "equations": len(entry.get("equations", [])),
                 "provenance": _provenance(entry)}
     m = re.match(r"^s(.+)/p(\d+)-p?(\d+)$", frag)
     if m:
@@ -841,13 +1142,50 @@ def open_ref(entry, ref, grant=None):
                     "provenance": _provenance(entry, [fig.get("page", 0)])}
     for tab in entry.get("tables", []):
         if tab["addr"] == frag:
-            return {"kind": "table", "ref": ref,
-                    "caption": tab.get("caption", ""),
-                    "printed_no": tab.get("printed_no", ""),
-                    "rows": tab.get("rows", []),
-                    "markdown": tab.get("markdown", ""),
-                    "page": tab.get("page", 0),
-                    "provenance": _provenance(entry, [tab.get("page", 0)])}
+            verbatim = tab.get("transcribed_by", "pdfplumber") == \
+                "pdfplumber" or tab.get("checked")
+            out = {"kind": "table", "ref": ref,
+                   "caption": tab.get("caption", ""),
+                   "printed_no": tab.get("printed_no", ""),
+                   "page": tab.get("page", 0),
+                   "transcribed_by": tab.get("transcribed_by",
+                                             "pdfplumber"),
+                   "checked": bool(verbatim),
+                   "provenance": _provenance(entry,
+                                             [tab.get("page", 0)])}
+            if verbatim:
+                out["rows"] = tab.get("rows", [])
+                out["markdown"] = tab.get("markdown", "")
+                if tab.get("transcribed_by") not in (
+                        None, "", "pdfplumber"):
+                    out["evidence_note"] = ("transcribed by model, "
+                                            "checked against page text")
+            else:
+                out["rows"] = []
+                out["markdown"] = ""
+                out["note"] = ("model-transcribed, UNCHECKED against "
+                               "page text: navigation only, read the "
+                               "figure image instead")
+            return out
+    for eq in entry.get("equations", []):
+        if eq["addr"] == frag:
+            out = {"kind": "equation", "ref": ref,
+                   "page": eq.get("page", 0),
+                   "in": list(eq.get("in", [])),
+                   "transcribed_by": eq.get("transcribed_by", ""),
+                   "checked": bool(eq.get("checked")),
+                   "provenance": _provenance(entry, [eq.get("page", 0)])}
+            if eq.get("checked"):
+                out["latex"] = eq.get("latex", "")
+                out["context"] = eq.get("context", "")
+                out["evidence_note"] = ("transcribed by model, "
+                                        "checked against page text")
+            else:
+                out["latex"] = ""
+                out["context"] = ""
+                out["note"] = ("model-transcribed, UNCHECKED against "
+                               "page text: navigation only")
+            return out
     if frag.startswith("eq"):
         for p in entry.get("paragraphs", []):
             if frag in p.get("has", []):
@@ -883,60 +1221,98 @@ def _attach_bold(paras, marks):
 
 
 def ingest_source(order_id, base, parsed_at, added_by, pages, images,
-                  tables=None, skipped=0, root=None, marks=None):
+                  tables=None, skipped=0, root=None, marks=None,
+                  doc_id=None):
     """Full Source ingest: clean pages, split sections, hash the cleaned
     text to an id, dedup, and write entries/<id>/{entry.json, map.json,
     figures/} plus the first log line. images: [{page, top, caption,
     number, bbox, w, h, blob}]; tables: [{page, top, caption, number,
     bbox, rows, markdown, blob|None}]; skipped: tiny decor count;
     marks: per-page {"bold": [...]} typography (optional).
+    doc_id forces the id (re-ingest after a parser fix): the entry
+    is rebuilt in place, recipients are kept, figure descriptions
+    carry over onto byte-identical blobs, the vision cache is left
+    alone, and the log gains a "reingested" line.
     Map/index/descriptions are built by the worker. Returns {"ref",
     "doc_id", "duplicate", "title", "sections", "chars", "figures",
     "tables"}."""
     paras = clean_pages(pages)
     sections = split_sections(paras)
     fulltext = "\n\n".join(p["text"] for p in paras)
-    doc_id = content_id(fulltext)
-    edir = entry_dir("source", doc_id, root)
+    forced = doc_id or content_id(fulltext)
+    edir = entry_dir("source", forced, root)
     ep = os.path.join(edir, "entry.json")
-    if os.path.isfile(ep):
+    if os.path.isfile(ep) and not doc_id:
         with open(ep, encoding="utf-8") as f:
             old = json.load(f)
-        return {"ref": old.get("ref", entry_ref("source", doc_id)),
-                "doc_id": doc_id, "duplicate": True,
+        return {"ref": old.get("ref", entry_ref("source", forced)),
+                "doc_id": forced, "duplicate": True,
                 "title": old.get("title", ""),
                 "sections": len(old.get("sections", [])),
                 "chars": old.get("chars", 0),
                 "paras": len(old.get("paragraphs", [])),
                 "figures": len(old.get("figures", [])),
                 "tables": len(old.get("tables", []))}
+    old = None
+    oldblobs = {}
+    if os.path.isfile(ep):
+        with open(ep, encoding="utf-8") as f:
+            old = json.load(f)
+        for f in old.get("figures", []):
+            try:
+                with open(os.path.join(edir, "figures", f["file"]),
+                          "rb") as fh:
+                    oldblobs[f["file"]] = fh.read()
+            except (OSError, KeyError):
+                pass
     title = os.path.splitext(base or "document")[0]
-    entry = build_entry(doc_id, title, base or "", order_id, parsed_at,
+    entry = build_entry(forced, title, base or "", order_id, parsed_at,
                         added_by, sections, images, tables)
     _attach_bold(entry["paragraphs"], marks)
     for s in entry["sections"]:
         ps = entry["paragraphs"][s["start"]:s["start"] + s["count"]]
         s["terms_all"] = rank_key_terms({"paras": ps})
+    aff, _tabs = assign_objects(sections, images, tables)
+    carried = 0
+    if old:
+        entry["recipients"] = old.get("recipients", [])
+        newblobs = dict((f["file"], f["blob"]) for f in aff)
+        ofigs = dict((f.get("file"), f)
+                     for f in old.get("figures", []))
+        for f in entry["figures"]:
+            of = ofigs.get(f["file"])
+            if not of or not of.get("described"):
+                continue
+            if oldblobs.get(f["file"]) != newblobs.get(f["file"]):
+                continue
+            for k in ("description", "numbers", "described",
+                      "described_by", "generated_at"):
+                f[k] = of.get(k, f.get(k))
+            if of.get("kind") and f.get("kind") != "table-image":
+                f["kind"] = of["kind"]
+            if not f.get("text_in_image"):
+                f["text_in_image"] = of.get("text_in_image", "")
+            carried += 1
     os.makedirs(os.path.join(edir, "figures"), exist_ok=True)
     with open(ep, "w", encoding="utf-8") as f:
         json.dump(entry, f, ensure_ascii=False, indent=2)
     with open(os.path.join(edir, "map.json"), "w",
               encoding="utf-8") as f:
         json.dump(blank_map(entry, ""), f, ensure_ascii=False, indent=2)
-    aff, _tabs = assign_objects(sections, images, tables)
     for f in aff:
         with open(os.path.join(edir, "figures", f["file"]), "wb") as fh:
             fh.write(f["blob"])
-    with open(os.path.join(edir, "log.jsonl"), "w",
+    with open(os.path.join(edir, "log.jsonl"), "w" if not old else "a",
               encoding="utf-8") as f:
-        f.write(json.dumps({"ev": "ingested",
+        f.write(json.dumps({"ev": "reingested" if old else "ingested",
                             "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                             "order_id": order_id, "pages": len(pages),
                             "paras": len(entry["paragraphs"]),
                             "figures": len(entry["figures"]),
                             "tables": len(entry["tables"]),
+                            "carried_descriptions": carried,
                             "skipped_decor": skipped}) + "\n")
-    return {"ref": entry["ref"], "doc_id": doc_id, "duplicate": False,
+    return {"ref": entry["ref"], "doc_id": forced, "duplicate": False,
             "title": entry["title"], "sections": len(entry["sections"]),
             "chars": entry["chars"],
             "paras": len(entry["paragraphs"]),

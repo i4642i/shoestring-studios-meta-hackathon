@@ -902,6 +902,33 @@ Entry format:
   `pc://source/<doc_id>#s<section>/p<paragraph>` (§9).
 - Provenance on every entry: origin file, order, parse time, adder.
 
+Vision re-reads (worker transcribe stage, map version 2): formulas on
+candidate pages and tables under captions are copied from 200 dpi
+page renders by the map model (Spark Open), then checked against the
+extracted page text before anything is stored.
+
+- `equations`: `[{addr ("eq<section>.<n>"), page, latex, context,
+  in (paragraph addrs), transcribed_by, checked, generated_at}]`.
+  Accept rule: the context anchors in the page text (full match, or
+  a 5+ word clean-prose run in page order; space-insensitive).
+  Rejected formulas are not stored; the paragraph keeps its
+  candidate tag and its original text is never touched.
+- Transcribed tables sit beside their table-image figure as
+  `tab<section>.<n>` with `rows`, `markdown`, `transcribed_by`,
+  `checked`. Accept rule: every header + cell in page order
+  (space-insensitive; bullets `(cid:N)`/`•` ignored; a cell may
+  span print lines). Unchecked tables stay stored but are
+  navigation only; the image fallback stays.
+- Citation rule: crew may cite a formula or table by its address.
+  Transcribed LaTeX/cells count as evidence ONLY when `checked`
+  is true; `open_ref` blanks unchecked transcriptions and every
+  checked read carries "transcribed by model, checked against
+  page text".
+- Cost guard: candidate pages + captioned table-images only, at
+  most 10 vision calls per document, cached by (page, kind,
+  prompt version) so rebuilds do not pay again; tokens per call
+  in the entry `log.jsonl`.
+
 ### 8.2 Theory PC
 
 Concept explanations, lectures, papers, technical articles. Search +

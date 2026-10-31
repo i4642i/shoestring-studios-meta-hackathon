@@ -194,6 +194,11 @@ def _verbatim_haystack(passage):
     if kind == "table":
         bits = [passage.get("caption", ""), passage.get("markdown", "")]
         return "\n".join(b for b in bits if b)
+    if kind == "equation":
+        # open_ref blanks latex/context for unchecked transcriptions,
+        # so only checked formulas are quotable, like checked tables.
+        bits = [passage.get("latex", ""), passage.get("context", "")]
+        return "\n".join(b for b in bits if b)
     return passage.get("text", "")
 
 

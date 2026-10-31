@@ -1,0 +1,58 @@
+{
+ "model": "meta-models/muse-spark-open-1026",
+ "prompt_tokens": 3038,
+ "completion_tokens": 11089,
+ "response": {
+  "caption": "TABLE 2.1 The Four Essential Types of Financial Data",
+  "columns": [
+   "Fundamental Data",
+   "Market Data",
+   "Analytics",
+   "Alternative Data"
+  ],
+  "rows": [
+   [
+    "• Assets",
+    "• Price/yield/implied volatility",
+    "• Analyst recommendations",
+    "• Satellite/CCTV images"
+   ],
+   [
+    "• Liabilities",
+    "• Volume",
+    "• Credit ratings",
+    "• Google searches"
+   ],
+   [
+    "• Sales",
+    "• Dividend/coupons",
+    "• Earnings expectations",
+    "• Twitter/chats"
+   ],
+   [
+    "• Costs/earnings",
+    "• Open interest",
+    "• News sentiment",
+    "• Metadata"
+   ],
+   [
+    "• Macro variables",
+    "• Quotes/cancellations",
+    "• . . .",
+    "• . . ."
+   ],
+   [
+    "• . . .",
+    "• Aggressor side",
+    "",
+    ""
+   ],
+   [
+    "",
+    "• . . .",
+    "",
+    ""
+   ]
+  ]
+ }
+}

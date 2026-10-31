@@ -1,0 +1,21 @@
+{
+ "model": "meta-models/muse-spark-open-1026",
+ "prompt_tokens": 3043,
+ "completion_tokens": 2824,
+ "response": {
+  "formulas": [
+   {
+    "latex": "b_t = \\begin{cases} b_{t-1} & \\text{if } \\Delta p_t = 0 \\\\ \\frac{|\\Delta p_t|}{\\Delta p_t} & \\text{if } \\Delta p_t \\neq 0 \\end{cases}",
+    "context": "The so-called tick rule defines a sequence {b_t}_{t=1,\\ldots,T} where"
+   },
+   {
+    "latex": "\\theta_T = \\sum_{t=1}^{T} b_t",
+    "context": "First, we define the tick imbalance at time T as"
+   },
+   {
+    "latex": "T^* = \\arg\\min_T \\left\\{ |\\theta_T| \\geq \\text{E}_0[T] \\left| 2\\text{P}[b_t = 1] - 1 \\right| \\right\\}",
+    "context": "such that the following condition is met:"
+   }
+  ]
+ }
+}

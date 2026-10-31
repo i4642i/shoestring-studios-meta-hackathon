@@ -2940,8 +2940,13 @@
       box.textContent = "Opening " + ref + "…";
       const p = await api.get("api/ref?ref=" + encodeURIComponent(ref));
       const prov = p.provenance || {};
-      const head = (p.kind === "figure" ? "Figure file: " + p.file : p.text) || "";
-      box.textContent = head + "\n\n— " + (p.ref || ref) +
+      let head = p.kind === "figure" ? "Figure file: " + p.file : p.text;
+      if (p.kind === "equation") head = p.latex || "";
+      if (p.kind === "table") head = p.markdown || p.caption || "";
+      head = head || "";
+      const note = p.evidence_note || p.note || "";
+      box.textContent = head + (note ? "\n\n" + note : "") +
+        "\n\n— " + (p.ref || ref) +
         " · " + (prov.title || "") + " · order " + (prov.order_id || "") +
         (prov.pages ? " · p. " + prov.pages.join(",") : "");
     }
@@ -2994,13 +2999,44 @@
       const pre = document.createElement("pre");
       pre.textContent = t.markdown || "(no rows)";
       box.appendChild(pre);
+      const bp = document.createElement("p");
+      bp.className = "hint";
+      const src = t.transcribed_by || "pdfplumber";
+      bp.textContent = src === "pdfplumber"
+        ? "Source: pdfplumber text (verbatim, quotable)"
+        : "Model-transcribed by " + src + (t.checked
+          ? " · CHECKED against page text — quotable"
+          : " · UNCHECKED — navigation only, see the figure image");
+      box.appendChild(bp);
+      return box;
+    }
+    function eqBlock(q) {
+      const box = document.createElement("div");
+      const h = document.createElement("h5");
+      h.textContent = q.addr + " · p. " + q.page +
+        ((q.in && q.in.length) ? " · in " + q.in.join(", ") : "");
+      box.appendChild(h);
+      const pre = document.createElement("pre");
+      pre.textContent = q.latex || "(no transcription)";
+      box.appendChild(pre);
+      const cp = document.createElement("p");
+      cp.className = "hint";
+      cp.textContent = "Context: " + (q.context || "—");
+      box.appendChild(cp);
+      const bp = document.createElement("p");
+      bp.className = "hint";
+      bp.textContent = "Model-transcribed by " +
+        (q.transcribed_by || "?") + (q.checked
+          ? " · CHECKED against page text — quotable"
+          : " · UNCHECKED — navigation only");
+      box.appendChild(bp);
       return box;
     }
     function renderOrig(d, pc, id) {
       const box = document.getElementById("pc-dorig");
       box.innerHTML = "";
       const paras = d.entry.paragraphs || [];
-      const placedFig = {}, placedTab = {};
+      const placedFig = {}, placedTab = {}, placedEq = {};
       (d.entry.sections || []).forEach((s) => {
         const h = document.createElement("h4");
         h.id = anchorOf("s" + s.n);
@@ -3037,15 +3073,23 @@
             box.appendChild(tabBlock(t));
           }
         });
+        (d.entry.equations || []).forEach((q, i) => {
+          if (!placedEq[i] && pages[q.page]) {
+            placedEq[i] = 1;
+            box.appendChild(eqBlock(q));
+          }
+        });
       });
       const restF = (d.entry.figures || []).filter((f, i) => !placedFig[i]);
       const restT = (d.entry.tables || []).filter((t, i) => !placedTab[i]);
-      if (restF.length || restT.length) {
+      const restE = (d.entry.equations || []).filter((q, i) => !placedEq[i]);
+      if (restF.length || restT.length || restE.length) {
         const h = document.createElement("h4");
-        h.textContent = "Unplaced figures/tables";
+        h.textContent = "Unplaced figures/tables/equations";
         box.appendChild(h);
         restF.forEach((f) => box.appendChild(figBlock(d, pc, id, f)));
         restT.forEach((t) => box.appendChild(tabBlock(t)));
+        restE.forEach((q) => box.appendChild(eqBlock(q)));
       }
       if ((d.entry.figures || []).length) {
         const nh = document.createElement("p");

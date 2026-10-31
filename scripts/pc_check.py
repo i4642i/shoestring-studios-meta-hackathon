@@ -682,5 +682,169 @@ finally:
     pc.ROOT_OVERRIDE = None
     shutil.rmtree(tmp2, ignore_errors=True)
 
+# ---- vision transcription fixtures (recorded 2026-10-31, no live calls) ----
+from agents._frame import pdfingest  # noqa: E402
+FIX = os.path.join(ROOT, "scripts", "fixtures", "eqtab")
+
+
+def _fix(name):
+    with open(os.path.join(FIX, name), encoding="utf-8") as f:
+        return f.read()
+
+
+def _fixj(name):
+    return json.loads(_fix(name))
+
+
+ok(pdfingest.XTOL == 1, "word-gap tolerance pinned at 1")
+
+
+class _StubPage:
+    def __init__(self, chars):
+        self.chars = chars
+
+
+row = _fixj("row_spacing.json")
+stub = _StubPage([{"top": 79.0, "x0": x0, "x1": x1, "text": t,
+                   "bottom": 88.0} for x0, x1, t in row])
+built = pdfingest._text_rows(stub)
+ok(len(built) == 1 and built[0][1] ==
+   "Macro variables Open interest expectations Metadata",
+   "recorded 2.2pt gaps join into spaced words")
+
+P2 = _fix("page_2.txt")
+ok("Macro variables" in P2 and "Credit ratings" in P2
+   and "Open interest" in P2, "page 2 spacing words present")
+
+CAP = "TABLE 2.1 The Four Essential Types of Financial Data"
+scan_rows = [(-4.0, CAP, 130.0, 460.0, 5.0),
+             (16.0, "Fundamental Data Market Data", 130.0, 460.0, 25.0),
+             (26.0, "(cid:2) (cid:2) (cid:2)", 130.0, 460.0, 38.0),
+             (35.0, "Assets Price/yield/implied Volatility", 130.0, 460.0,
+              44.0),
+             (46.0, "(cid:2)", 130.0, 200.0, 59.0),
+             (57.0, ". . .", 130.0, 200.0, 65.0),
+             (141.0, "fundamental data, especially in the factor-investing "
+              "literature. Once you align the data", 60.0, 550.0, 151.0)]
+scan_gaps = {16.0: 3, 26.0: 0, 35.0: 3, 46.0: 0, 57.0: 0,
+             141.0: 0}
+body = pdfingest._scan_table_body(scan_rows, scan_gaps, 0, -4.0)
+ok([b[1] for b in body] == [r[1] for r in scan_rows[1:6]],
+   "table scan keeps alternating rows, stops at prose")
+
+ok(pc.formula_candidate_pages(
+    ["o is the raw open price of instrument i = 1, .., I at bar t.",
+     "def pcaWeights(cov, riskDist=None, riskTarget=1.):",
+     "T\u03b8 = arg min |T| \u2265 E",
+     "t t t=1,...,T t"]) == [3, 4],
+   "vision gate: garble yes, prose/code no")
+
+P7 = _fix("page_7.txt")
+P8 = _fix("page_8.txt")
+F7 = _fixj("formulas_p7.json")
+F8 = _fixj("formulas_p8.json")
+
+
+def _syn_entry(text, page, sec):
+    return {"ref": "pc://source/testtesttest",
+            "sections": [{"n": sec, "heading": "h", "start": 0,
+                          "count": 1, "subsections": []}],
+            "paragraphs": [{"addr": "s%s/p1" % sec, "text": text,
+                            "pages": [page], "has": []}],
+            "figures": [], "tables": [], "equations": []}
+
+
+e7 = _syn_entry(P7, 7, "2.3")
+new, bad, dup = pc.apply_equations(
+    e7, 7, F7["response"]["formulas"], P7, F7["model"], "t")
+ok(len(new) == 3 and not bad and not dup
+   and any("\\arg" in q["latex"] and "\\min" in q["latex"]
+           for q in e7["equations"])
+   and all(q["in"] == ["s2.3/p1"] for q in e7["equations"])
+   and all(a in e7["paragraphs"][0]["has"] for a in new),
+   "page 7 fixture: 3 formulas incl argmin, linked")
+
+e8 = _syn_entry(P8, 8, "2.3")
+new8, bad8, _d8 = pc.apply_equations(
+    e8, 8, F8["response"]["formulas"], P8, F8["model"], "t")
+ok(len(new8) == 4 and not bad8, "page 8 fixture: 4 formulas")
+
+newf, badf, _d = pc.apply_equations(
+    e7, 7, [{"latex": "x=1",
+             "context": "quantum zebra basketball parliament oracle"}],
+    P7, "m", "t")
+ok(newf == [] and len(badf) == 1, "fake context rejected")
+
+ok(pc.context_found(
+    "The rule defines a sequence {b_t}_{t} where",
+    "The rule defines a xx sequence yy where"),
+   "latex-ified context anchors on prose")
+ok(not pc.context_found("alpha beta {x} gamma", "nothing alike here"),
+   "short unanchored context rejected")
+
+T2 = _fixj("table_p2.json")
+ok(len(T2["response"]["columns"]) == 4, "TABLE 2.1 has 4 columns")
+ok(pc.cells_found(T2["response"]["columns"], T2["response"]["rows"],
+                  P2) == [], "TABLE 2.1 all cells checked")
+eT = _syn_entry(P2, 2, "2.2")
+eT["figures"] = [{"addr": "fig2.2.1", "page": 2, "caption": CAP,
+                  "printed_no": "2.1", "kind": "table-image",
+                  "bbox": [0, 0, 1, 1]}]
+addr, checked, missing = pc.apply_table_vision(
+    eT, "fig2.2.1", T2["response"]["columns"], T2["response"]["rows"],
+    P2, T2["model"], "t")
+ok(addr == "tab2.2.1" and checked and not missing
+   and eT["figures"][0]["table"] == "tab2.2.1",
+   "TABLE 2.1 applies checked with figure link")
+
+ok(pc.cells_found(["Analyst"], [["implied volatility"]],
+                  "Price/yield/implied Analyst X Liabilities "
+                  "volatility Y") == [],
+   "spanning cell tokens in order pass")
+ok(pc.cells_found(["Analyst"], [["volatility implied"]],
+                  "Price/yield/implied Analyst X Liabilities "
+                  "volatility Y") != [],
+   "reordered tokens fail")
+ok(pc.cells_found(["Analyst"], [["unicorn strides"]],
+                  "Price/yield/implied Analyst volatility") != [],
+   "invented cell fails")
+
+eH = {"ref": "pc://source/x",
+      "figures": [{"addr": "fig2.3.1", "file": "fig2.png",
+                   "caption": "c"}],
+      "tables": [{"addr": "tab2.2.1", "caption": "c", "rows": [[1]]}],
+      "equations": [{"addr": "eq2.3.1", "sec": "2.3", "latex": "x",
+                     "context": "y"}]}
+h3 = pc.section_has(eH, "2.3")
+ok(any(h["ref"].endswith("#fig2.3.1") and h["kind"] == "figure"
+       and h["file"] == "fig2.png" for h in h3)
+   and any(h["kind"] == "equation" and h["caption"] == "x"
+           for h in h3),
+   "map has lists fig2.3.1 + equations")
+h2 = pc.section_has(eH, "2.2")
+ok(any(h["ref"].endswith("#tab2.2.1") and h["kind"] == "table"
+       for h in h2),
+   "map has lists the TABLE 2.1 address")
+
+eG = {"pc": "source", "doc_id": "d" * 12,
+      "ref": "pc://source/" + "d" * 12, "title": "t", "order_id": "o",
+      "added_by": "a", "sections": [], "paragraphs": [],
+      "figures": [],
+      "tables": [{"addr": "tab1.1.1", "caption": "c", "printed_no": "",
+                  "page": 1, "rows": [["h"]], "markdown": "m",
+                  "transcribed_by": "m", "checked": False}],
+      "equations": [{"addr": "eq1.1.1", "sec": "1.1", "page": 1,
+                     "latex": "L", "context": "C", "in": [],
+                     "transcribed_by": "m", "checked": True}]}
+pt = pc.open_ref(eG, eG["ref"] + "#tab1.1.1")
+ok(pt["markdown"] == "" and "UNCHECKED" in pt["note"],
+   "unchecked table gated")
+pe = pc.open_ref(eG, eG["ref"] + "#eq1.1.1")
+ok(pe["latex"] == "L"
+   and pe["evidence_note"].startswith("transcribed by model")
+   and "L" in tmod._verbatim_haystack(pe),
+   "checked equation citable")
+
+
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
 sys.exit(1 if FAILS else 0)

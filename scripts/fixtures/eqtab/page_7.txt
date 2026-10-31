@@ -1,0 +1,55 @@
+BARS 29
+2.3.2 Information-Driven Bars
+The purpose of information-driven bars is to sample more frequently when new infor-
+mation arrives to the market. In this context, the word “information” is used in a mar-
+ket microstructural sense. As we will see in Chapter 19, market microstructure the-
+ories confer special importance to the persistence of imbalanced signed volumes, as
+that phenomenon is associated with the presence of informed traders. By synchroniz-
+ing sampling with the arrival of informed traders, we may be able to make decisions
+before prices reach a new equilibrium level. In this section we will explore how to
+use various indices of information arrival to sample bars.
+2.3.2.1 Tick Imbalance Bars
+Consider a sequence of ticks {(p , v )} , where p is the price associated with
+t t t=1,…,T t
+tick t and v is the volume associated with tick t. The so-called tick rule defines a
+t
+sequence {b } where
+t t=1,…,T
+⎧
+b if Δp = 0
+⎪ t−1 t
+| |
+b t = ⎨ ⎪ |Δp t | if Δp ≠ 0
+⎩ Δp t
+t
+with b ∈ {−1, 1}, and the boundary condition b is set to match the terminal value b
+t 0 T
+from the immediately preceding bar. The idea behind tick imbalance bars (TIBs) is to
+sample bars whenever tick imbalances exceed our expectations. We wish to determine
+the tick index, T, such that the accumulation of signed ticks (signed according to the
+tick rule) exceeds a given threshold. Next, let us discuss the procedure to determine T.
+First, we define the tick imbalance at time T as
+∑T
+𝜃 = b
+T t
+t=1
+Second, we compute the expected value of 𝜃 at the beginning of the bar, E [𝜃 ] =
+T 0 T
+E [T](P[b = 1] − P[b = −1]), where E [T] is the expected size of the tick bar,
+0 t t 0
+P[b = 1] is the unconditional probability that a tick is classified as a buy, and
+t
+P[b = −1] is the unconditional probability that a tick is classified as a sell. Since
+t
+P[b = 1] + P[b = −1] = 1, then E [𝜃 ] = E [T](2P[b = 1] − 1). In practice, we
+t t 0 T 0 t
+can estimate E [T] as an exponentially weighted moving average of T values from
+0
+prior bars, and (2P[b = 1] − 1) as an exponentially weighted moving average of b
+t t
+values from prior bars.
+Third, we define a tick imbalance bar (TIB) as a T∗-contiguous subset of ticks
+such that the following condition is met:
+{ }
+T∗ = arg min | |𝜃 T | | ≥ E 0 [T] | | | 2P [ b t = 1 ] − 1 | | |
+T
