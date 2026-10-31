@@ -56,7 +56,7 @@
 - [x] 2 J4 PDF button inside Sam's bubble (a39b108)
 - [x] 3 J5 Order tab adaptive (0180077)
 - [x] 4 Flow box (B1/B3/B5 re-test) (c11651b)
-- [ ] 5 J1/J2 Crew portraits
+- [x] 5 J1/J2 Crew portraits (dda766c)
 - [ ] 6 J12 Menu order
 - [ ] 7 J6/J7 Run controls
 - [ ] 8 J10/J11 Studio office live states + click to chat
