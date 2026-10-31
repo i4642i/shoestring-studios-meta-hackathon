@@ -2294,6 +2294,8 @@ button.linklike { background: none; border: none; padding: 0;
     if (!box || !form) return;
     let roster = [];
     const history = [];
+    const histories = {};
+    let curWho = "";
     function addMsg(cls, text) {
       const d = document.createElement("div");
       d.className = "cmsg " + cls;
@@ -2324,13 +2326,39 @@ button.linklike { background: none; border: none; padding: 0;
         });
         if (roster.length) addMsg("them", "Hey! I'm " + roster[0].name + ". Ask me anything about my work.");
         else addMsg("sys", "No crew yet.");
+        curWho = who.value;
       } catch (e) {
         addMsg("sys", "Crew list unavailable — is the server running?");
       }
     }
     who.addEventListener("change", () => {
+      if (curWho) {
+        histories[curWho] = {
+          api: history.slice(),
+          view: Array.from(box.children).slice(-30).map((d) =>
+            [d.className.replace(/^cmsg /, ""), d.textContent]),
+        };
+      }
       history.length = 0;
-      addMsg("sys", "Now talking to " + memberName(who.value) + ".");
+      box.innerHTML = "";
+      const h = histories[who.value];
+      if (h && h.view.length) {
+        h.api.forEach((m) => history.push(m));
+        h.view.forEach((v) => addMsg(v[0], v[1]));
+      } else if (curWho) {
+        addMsg("sys", "Now talking to " + memberName(who.value) + ".");
+      } else {
+        addMsg("them", "Hey! I'm " + memberName(who.value) +
+          ". Ask me anything about my work.");
+      }
+      curWho = who.value;
+    });
+    addEventListener("message", (e) => {
+      if (e.origin !== location.origin) return;
+      if (!e.data || e.data.kind !== "office-select") return;
+      if (!roster.some((c) => c.id === e.data.id)) return;
+      who.value = e.data.id;
+      who.dispatchEvent(new Event("change"));
     });
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -2461,6 +2489,7 @@ button.linklike { background: none; border: none; padding: 0;
           " \u2014 " + esc(x.state) + "</option>").join("");
         if (runs.some((x) => x.run_id === keep)) runSel.value = keep;
         else if (runs.length) runSel.value = runs[0].run_id;
+        tellOfficeRun();
         await refresh();
       } catch (e) { errEl.textContent = "Error: " + e.message; }
     }
@@ -2479,7 +2508,25 @@ button.linklike { background: none; border: none; padding: 0;
     btns.pause.onclick = () => act("pause");
     btns.step.onclick = () => act("step");
     btns.stop.onclick = () => act("stop");
-    runSel.onchange = () => { errEl.textContent = ""; refresh(); };
+    runSel.onchange = () => {
+      errEl.textContent = "";
+      tellOfficeRun();
+      refresh();
+    };
+    function tellOfficeRun() {
+      const f = document.querySelector("#p-studio iframe.office");
+      if (f && f.contentWindow) {
+        try {
+          f.contentWindow.postMessage(
+            { kind: "office-run", run_id: runSel.value || "" },
+            location.origin);
+        } catch (e) { /* office not ready */ }
+      }
+    }
+    addEventListener("message", (e) => {
+      if (e.origin !== location.origin) return;
+      if (e.data && e.data.kind === "office-need-run") tellOfficeRun();
+    });
     eachBox.onchange = async () => {
       errEl.textContent = "";
       if (!runSel.value) return;

@@ -41,6 +41,7 @@
     max-width: 200px; font: 12px/1.35 system-ui, sans-serif; color: #fff;
     background: #101418f2; padding: 6px 9px 12px; border-radius: 10px;
     white-space: normal; overflow-wrap: break-word;
+    pointer-events: auto; cursor: pointer;
   }
   .bubble::after {
     content: ""; position: absolute; left: 50%; bottom: -1px;
@@ -51,6 +52,7 @@
   .bubble b { display: block; font-size: 11px; margin-bottom: 2px; }
   .bubble.t-story b { color: #0064e0; }
   .bubble.t-video b { color: #c2571b; }
+  .bubble.err { background: #7f1d1df2; }
 </style>
 </head>
 <body>
@@ -696,7 +698,7 @@ async function spawnCrew() {
       standHead, sitHead: sitHead || standHead * 0.72,
       target: null, route: null, state: "walk", idleUntil: 0, emoteUntil: 0,
       seat: seats.length ? seats[seatIdx[emp.team]++ % seats.length] : null,
-      seatTrip: false, chatAt: 0,
+      seatTrip: false, chatAt: 0, liveSeat: false, live: null, liveKey: "",
       lines: linesFor(emp), li: Math.floor(rand(0, 99)), bubbleAt: performance.now() + i * 1300,
       current: null,
     };
@@ -708,6 +710,10 @@ async function spawnCrew() {
     div.className = "bubble t-" + emp.team;
     bubbleLayer.appendChild(div);
     mug.bubble = div;
+    div.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      selectMember(mug);
+    });
     mug.head = new THREE.Vector3();
     crew.push(mug);
     $("loadpct").textContent = Math.round(60 + ((i + 1) / roster.length) * 40) + "%";
@@ -746,7 +752,7 @@ function updateCrew(dt, now) {
           m.state = "sit";
           m.chatAt = now;
           fadeTo(m, SEAT_CLIP);
-          setBubble(m, "CHATTING");
+          if (!m.livePin) setBubble(m, "CHATTING");
           // Check the full seat pose after the walk->sit fade lands (0.25s).
           const tok = (m.sitToken = (m.sitToken || 0) + 1);
           setTimeout(() => {
@@ -807,7 +813,7 @@ function updateCrew(dt, now) {
         }
       }
     } else if (m.state === "sit") {
-      if (now - m.chatAt > 25000) { // chat idle: stand up, resume roaming
+      if (!m.liveSeat && now - m.chatAt > 25000) { // chat idle: stand up, resume roaming
         g.position.y = 0;
         m.state = "idle";
         m.idleUntil = now + 800;
@@ -821,7 +827,7 @@ function updateCrew(dt, now) {
       m.state = "walk";
     }
     // Speech bubble follows the head and cycles chatter.
-    if (now > m.bubbleAt && m.state !== "sit" && !m.seatTrip) {
+    if (now > m.bubbleAt && m.state !== "sit" && !m.seatTrip && !m.livePin) {
       m.li = (m.li + 1) % m.lines.length;
       m.bubbleAt = now + BUBBLE_MS;
       setBubble(m, m.lines[m.li]);
@@ -834,9 +840,12 @@ function updateCrew(dt, now) {
       m.bubble.style.left = ((m.head.x * 0.5 + 0.5) * container.clientWidth) + "px";
       m.bubble.style.top = ((-m.head.y * 0.5 + 0.5) * container.clientHeight - 12) + "px";
     }
+    if (m.livePin) m.bubble.style.opacity = "1";
+    else {
     const age = now - (m.bubbleSetAt || 0);
     m.bubble.style.opacity = age < 3000 ? "1"
       : String(Math.max(0.25, 1 - (age - 3000) / 2000 * 0.75));
+    }
   }
   // Stack only bubbles that truly overlap in 2D, so the rest stay above heads.
   const vis = [];
@@ -903,13 +912,14 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   if (hits.length) {
     let o = hits[0].object;
     while (o && o.userData.memberIndex === undefined) o = o.parent;
-    if (o) followed = crew[o.userData.memberIndex];
-  } else followed = null;
+    if (o) selectMember(crew[o.userData.memberIndex]);
+  } else { followed = null; clearSelection(); }
 });
 // Studio chat speaks through the member's bubble (postMessage from index.html).
 addEventListener("message", (e) => {
   if (e.origin !== location.origin) return;
   const d = e.data;
+  if (d && d.kind === "office-run") { setLiveRun(d.run_id || ""); return; }
   if (!d || (d.kind !== "crew-say" && d.kind !== "crew-chat")) return;
   const m = crew.find((x) => x.emp.id === d.id) || crew[0];
   if (!m) return;
@@ -952,6 +962,134 @@ if (typeof ResizeObserver !== "undefined")
 addEventListener("resize", refit);
 refit();
 
+/* ================= live run states (J10) + click to chat (J11) =================
+   The parent page tells the office which run is selected; the office polls
+   that run's real per-employee states and seats/bubbles everyone from them.
+   With no run selected the office roams idle, as before. */
+let liveRunId = "";
+let liveTimer = 0;
+let liveInit = false;
+let selected = null;
+let ring = null;
+function ensureRing() {
+  if (ring || typeof scene === "undefined") return;
+  ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.42, 0.54, 40),
+    new THREE.MeshBasicMaterial({ color: 0x0064e0, transparent: true,
+      opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.visible = false;
+  scene.add(ring);
+}
+function selectMember(m) {
+  ensureRing();
+  followed = m;
+  selected = m;
+  if (ring) ring.visible = true;
+  try {
+    parent.postMessage({ kind: "office-select", id: m.emp.id }, "*");
+  } catch (e) { /* parent gone */ }
+}
+function clearSelection() {
+  selected = null;
+  if (ring) ring.visible = false;
+}
+function goToSeat(m) {
+  if (!m.seat || m.state === "sit") return;
+  const p = m.group.position;
+  m.target = { x: m.seat.x, z: m.seat.z };
+  m.route = findPath(p.x, p.z, m.seat.x, m.seat.z) || [m.target];
+  m.seatTrip = true;
+  m.replanned = false;
+  m.stuckAt = performance.now();
+  m.stuckPos = { x: p.x, z: p.z };
+  m.state = "walk";
+  fadeTo(m, "walk");
+}
+function standUp(m) {
+  m.liveSeat = false;
+  if (m.state === "sit") {
+    m.group.position.y = 0;
+    m.state = "idle";
+    m.idleUntil = performance.now() + 800;
+    fadeTo(m, "idle");
+  }
+}
+function clearLive() {
+  for (const m of crew) {
+    m.live = null;
+    m.livePin = false;
+    m.liveKey = "";
+    if (m.liveSeat) standUp(m);
+  }
+}
+function applyLive(data) {
+  const byId = {};
+  for (const e of (data && data.employees) || []) byId[e.id] = e;
+  for (const m of crew) {
+    const card = byId[m.emp.id] || null;
+    m.live = card;
+    if (card && card.seated) {
+      m.liveSeat = true;
+      if (m.state !== "sit" && m.state !== "seatTrip") goToSeat(m);
+    } else if (m.liveSeat) {
+      standUp(m);
+    }
+    const text = card && card.bubble ? String(card.bubble) : "";
+    const red = !!(card && card.red);
+    const key = text + "\n" + (red ? "1" : "0");
+    if (text) {
+      if (m.liveKey !== key) {
+        setBubble(m, text);
+        m.liveKey = key;
+      }
+      m.bubble.classList.toggle("err", red);
+      m.livePin = true;
+    } else {
+      m.livePin = false;
+      m.liveKey = "";
+      m.bubble.classList.remove("err");
+    }
+  }
+}
+async function fetchLive() {
+  if (!liveRunId) return;
+  try {
+    const r = await fetch("api/flows/runs/" +
+      encodeURIComponent(liveRunId) + "/office");
+    if (!r.ok) return;
+    applyLive(await r.json());
+  } catch (e) { /* keep last states, retry next tick */ }
+}
+function setLiveRun(id) {
+  liveInit = true;
+  if (id === liveRunId) return;
+  liveRunId = id;
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = 0; }
+  if (!liveRunId) { clearLive(); return; }
+  fetchLive();
+  liveTimer = setInterval(fetchLive, 3000);
+}
+function askForRun() {
+  try {
+    parent.postMessage({ kind: "office-need-run" }, "*");
+  } catch (e) { /* no parent */ }
+  if (!liveInit) setTimeout(askForRun, 5000);
+}
+setTimeout(askForRun, 1500);
+window.__officeLive = () => {
+  const members = {};
+  for (const m of crew) {
+    members[m.emp.id] = {
+      stage: (m.live && m.live.stage) || "waiting",
+      bubble: (m.live && m.live.bubble) || "",
+      seated: m.state === "sit" || m.state === "seatTrip",
+      still: !!(m.live && m.live.still),
+      selected: selected === m,
+    };
+  }
+  return { run_id: liveRunId, members };
+};
 /* ================= main loop + boot ================= */
 const timer = new THREE.Timer();
 timer.connect(document);
@@ -978,6 +1116,10 @@ function animate() {
   controls.target.y = clamp(controls.target.y, 0, 2.5);
   controls.target.z = clamp(controls.target.z, ALL.z0, ALL.z1);
   controls.update();
+  if (ring && selected) {
+    ring.position.set(selected.group.position.x, 0.03,
+      selected.group.position.z);
+  }
   renderer.render(scene, camera);
 }
 (async function boot() {

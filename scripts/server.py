@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 from agents._frame import board  # noqa: E402
 from agents._frame import flow as flows  # noqa: E402
+from agents._frame import office as liveoffice  # noqa: E402
 from agents._frame import graph  # noqa: E402
 from agents._frame import pdfingest  # noqa: E402
 from agents._frame import runner  # noqa: E402
@@ -232,6 +233,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 5 \
                 and parts[2] == "runs" and parts[4] == "state":
             return self._api_flow_run_state(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "office":
+            return self._api_flow_office(parts[3])
         return self._static(parts)
 
     def do_PUT(self):
@@ -1234,6 +1238,14 @@ class Handler(BaseHTTPRequestHandler):
     def _run_live(self, run_id):
         job = _FLOW_JOBS.get(run_id)
         return bool(job) and job.get("state") == "running"
+
+    def _api_flow_office(self, run_id):
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        out = liveoffice.build_office(run_id)
+        if not out.get("ok"):
+            return self._json(404, out)
+        return self._json(200, out)
 
     def _api_flow_run_state(self, run_id):
         if not self._run_id_ok(run_id):
