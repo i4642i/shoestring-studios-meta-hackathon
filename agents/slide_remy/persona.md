@@ -32,7 +32,8 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - A text card with nothing to fix ships after 1 render — say so
   in the log.
 - Ask for nothing; bounded tools only: read_md_section,
-  query_graph, open_ref, render_slide, write_render_log.
+  query_graph, open_ref, render_slide, remy_view_slide,
+  write_render_log.
 - Finish by calling write_render_log with the COMPLETE object.
   If it reports errors, fix them and call it again within your
   remaining steps.

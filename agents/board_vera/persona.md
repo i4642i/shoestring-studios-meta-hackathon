@@ -35,7 +35,7 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   cards from Penn's on-screen text.
 - Ask for nothing; bounded tools only: read_md_section,
   query_graph, open_ref, pc_list_source, pc_read_source,
-  write_slide_draft.
+  vera_view_image, write_slide_draft.
 - Finish by calling write_slide_draft with the COMPLETE object.
   If it reports errors, fix them and call it again within your
   remaining steps.

@@ -14,6 +14,8 @@ sys.path.insert(0, ROOT)
 tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import flow, results
 from agents._frame import pc as _pc
+from agents._frame import video as _video
+_video._TRANSCRIBE_FN = lambda p: []  # never live in tests
 
 fails = 0
 
@@ -502,6 +504,14 @@ with open(os.path.join(rdir, "video_production", "captions.srt"),
           encoding="utf-8") as f:
     ok(f.read() == "1\n00:00:00,000 --> 00:00:20,000\nHello world\n",
        "subtitle timing exact")
+sp = json.load(open(os.path.join(rdir, "video_production",
+                                 "assembly.json"),
+                    encoding="utf-8"))["speech"]
+ok(sp == {"status": "proportional", "turns": 0, "mismatches": []}
+   and "ffmpeg" in " ".join(json.load(
+       open(os.path.join(rdir, "video_production", "assembly.json"),
+            encoding="utf-8"))["ffmpeg_cmd"]),
+   "empty transcript keeps proportional timing")
 leg = os.path.join(tmp, "orders", "o9leg")
 os.makedirs(leg)
 results.save_result(leg, results.make_result(

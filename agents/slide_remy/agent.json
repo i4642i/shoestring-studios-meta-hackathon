@@ -25,6 +25,7 @@
   "read_md_section",
   "open_ref",
   "render_slide",
+  "remy_view_slide",
   "write_render_log"
  ],
  "flow": {

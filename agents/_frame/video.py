@@ -219,3 +219,132 @@ def run_ffmpeg(cmd, timeout_s=120):
                 % (done.returncode,
                    (done.stderr or "")[-400:])}
     return {"ok": True}
+
+
+_TRANSCRIBE_FN = None  # fn(path) -> turns (tests inject fixtures)
+
+
+def _norm_words(text):
+    import string
+    drop = str.maketrans("", "", string.punctuation)
+    return (text or "").lower().translate(drop).split()
+
+
+def transcribe_file(path, fn=None):
+    """Turn-level transcript [{start_s, end_s, text}] for one audio
+    file. Live path posts multipart to the OpenAI-compatible audio
+    API with muse-voice-transcribe-1.0 (turn timestamps only, per
+    Meta's speech docs); tests inject fn. First live call verifies
+    the shape."""
+    call = fn or _TRANSCRIBE_FN
+    if call is not None:
+        return call(path)
+    from . import runner
+    model = "muse-voice-transcribe-1.0"
+    _, url, _ = runner.provider_of("meta-models/muse-spark-open-1026")
+    import json as _json
+    import urllib.error
+    import urllib.request
+    bound = "----shoestring%d" % os.getpid()
+    with open(path, "rb") as f:
+        blob = f.read()
+    body = (
+        "--%s\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n"
+        "%s\r\n--%s\r\nContent-Disposition: form-data; "
+        "name=\"file\"; filename=\"cut.wav\"\r\n"
+        "Content-Type: audio/wav\r\n\r\n" % (bound, model, bound)
+    ).encode() + blob + ("--%s--\r\n" % bound).encode()
+    req = urllib.request.Request(
+        url + "/audio/transcriptions", data=body,
+        headers={"Authorization": "Bearer " + runner._key(
+            "meta-models/muse-spark-open-1026"),
+            "Content-Type": "multipart/form-data; boundary=" + bound},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            data = _json.load(r)
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError("transcribe %s: %s" % (exc.code, exc.reason))
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        raise RuntimeError("transcribe unreachable: %s" % exc)
+    turns = []
+    for seg in (data.get("segments") or data.get("turns") or []):
+        try:
+            turns.append({"start_s": float(seg.get("start", 0)),
+                          "end_s": float(seg.get("end", 0)),
+                          "text": str(seg.get("text", ""))})
+        except (TypeError, ValueError):
+            continue
+    return turns
+
+
+def _cut_span(cut, turns):
+    """Audible span of a cut: the turns overlapping it, clipped to
+    the cut; the whole cut when no turn overlaps."""
+    start = float(cut.get("start_s", 0))
+    end = float(cut.get("end_s", start))
+    lo, hi = end, start
+    for t in turns or []:
+        if not isinstance(t, dict):
+            continue
+        ts, te = float(t.get("start_s", 0)), float(t.get("end_s", 0))
+        if te > start and ts < end:
+            lo = min(lo, max(ts, start))
+            hi = max(hi, min(te, end))
+    if hi <= lo:
+        return start, end
+    return lo, hi
+
+
+def align_subs(narration, turns):
+    """Subtitles refined by turn times: each cut's lines split
+    proportionally by word count across the cut's audible span
+    (turns clipped to the cut). Text stays Wren's exact lines."""
+    blocks = []
+    n = 0
+    for cut in ((narration or {}).get("cuts") or []):
+        if not isinstance(cut, dict):
+            continue
+        start, end = _cut_span(cut, turns)
+        lines = [ln for ln in (cut.get("lines") or [])
+                 if isinstance(ln, dict) and str(ln.get("text",
+                                                       "")).strip()]
+        weights = [max(1, len(str(ln["text"]).split()))
+                   for ln in lines]
+        total = sum(weights) or 1
+        cursor = start
+        for ln, w in zip(lines, weights):
+            span = (end - start) * w / total
+            n += 1
+            blocks.append("%d\n%s --> %s\n%s\n"
+                          % (n, srt_timestamp(cursor),
+                             srt_timestamp(cursor + span),
+                             str(ln["text"]).strip()))
+            cursor += span
+    return "\n".join(blocks)
+
+
+def compare_transcript(narration, turns):
+    """TTS check: Wren's script vs what transcription heard, per
+    cut (normalized words). A mismatch means the TTS misread or
+    the mic caught something else."""
+    out = []
+    for cut in ((narration or {}).get("cuts") or []):
+        if not isinstance(cut, dict):
+            continue
+        start = float(cut.get("start_s", 0))
+        end = float(cut.get("end_s", start))
+        script = " ".join(str(ln.get("text", ""))
+                          for ln in (cut.get("lines") or [])
+                          if isinstance(ln, dict))
+        heard = " ".join(
+            str(t.get("text", "")) for t in (turns or [])
+            if isinstance(t, dict)
+            and float(t.get("end_s", 0)) > start
+            and float(t.get("start_s", 0)) < end)
+        sw, hw = _norm_words(script), _norm_words(heard)
+        out.append({"cut_id": cut.get("cut_id"),
+                    "match": bool(sw) and sw == hw,
+                    "script_words": len(sw),
+                    "heard_words": len(hw)})
+    return out

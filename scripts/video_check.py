@@ -291,6 +291,218 @@ try:
 finally:
     _pc.ROOT_OVERRIDE = None
 
+# ---- Phase B: search/pick/generate (fixtures, no network) ----
+from agents._frame import media as _media
+from agents._frame import runner as _runner
+
+seen_urls = []
+
+
+def _fake_search(url):
+    seen_urls.append(url)
+    return {"results": [
+        {"title": "Harbor", "url": "https://img.test/h1.jpg",
+         "foreign_landing_url": "https://page.test/h1",
+         "license": "by", "license_version": "4.0"},
+        {"title": "Mill", "url": "https://img.test/m1.jpg",
+         "foreign_landing_url": "https://page.test/m1",
+         "license": "by-nc", "license_version": "4.0"}]}
+
+
+def _fake_bytes(url, cap):
+    assert url.startswith("https://img.test/")
+    return b"\x89PNG\r\n\x1a\n" + b"0" * 16
+
+
+_gen_calls = []
+
+
+def _fake_image(prompt):
+    _gen_calls.append(prompt)
+    return b"\x89PNG\r\n\x1a\nGEN", "muse-image-1.0", 0.01
+
+
+_media._HTTP_JSON = _fake_search
+_media._HTTP_BYTES = _fake_bytes
+_media._IMAGE_FN = _fake_image
+_pc.ROOT_OVERRIDE = tmp
+try:
+    pia = ctx_for(wdir("photo_pia2"), "photo_pia")
+    s1 = _media.pc_search_images(pia, {"cut_id": "s1c1",
+                                      "query": "harbor cranes"})
+    ok(len(s1["hits"]) == 2 and s1["queries_used"] == 1
+       and "license_type=commercial" in seen_urls[0]
+       and "license=" in seen_urls[0].replace("license_type", ""),
+       "openverse query filters commercial reuse set")
+    _media.pc_search_images(pia, {"cut_id": "s1c1", "query": "again"})
+    s3 = _media.pc_search_images(pia, {"cut_id": "s1c1",
+                                      "query": "third"})
+    ok("error" in s3 and "2 image queries" in s3["error"],
+       "third image query refused")
+    ok("error" in _media.pc_search_images(
+        ctx_for(wdir("x"), "image_gene"), {"cut_id": "c", "query": "q"}),
+       "image search is Pia-only")
+    pk = _media.pc_pick_image(pia, {"image_url": "https://img.test/h1.jpg",
+                                   "page_url": "https://page.test/h1",
+                                   "license": "by-4.0",
+                                   "reason": "Harbor fits the cut."})
+    ok(pk.get("ok") and pk["file"] == "pick.png"
+       and pk["ref"].startswith("pc://image/"),
+       "licensed pick stored with file + url + license")
+    stored = _pc.load_entry_by_ref(pk["ref"])
+    ok(stored["license"] == "by-4.0"
+       and stored["source_url"] == "https://page.test/h1",
+       "pick keeps provenance")
+    nc = _media.pc_pick_image(pia, {"image_url": "https://img.test/m1.jpg",
+                                   "page_url": "https://page.test/m1",
+                                   "license": "by-nc",
+                                   "reason": "r"})
+    ok("error" in nc and "reuse-permitted" in nc["error"],
+       "nc license refused")
+    gene = ctx_for(wdir("image_gene2"), "image_gene")
+    for i in range(6):
+        g = _media.pc_generate_image(gene, {"prompt": "concept %d" % i})
+        assert g.get("ok"), g
+    ok(len(_gen_calls) == 6, "six images generated")
+    g7 = _media.pc_generate_image(gene, {"prompt": "one more"})
+    ok("error" in g7 and "6 generated images" in g7["error"],
+       "seventh image refused")
+    gr = _media.pc_generate_image(gene, {"prompt": "concept 0"})
+    ok(gr.get("ok") and gr["reused_entry"] is True
+       and gr["cost_usd"] == 0.0 and len(_gen_calls) == 6,
+       "same prompt reuses the stored image")
+    ok("error" in _media.pc_generate_image(
+        ctx_for(wdir("x"), "photo_pia"), {"prompt": "p"}),
+       "generation is Gene-only")
+
+    # ---- vision staging + runner attach ----
+    tpng = os.path.join(ROOT, "scripts", "_tmpclip", "t", "view.png")
+    os.makedirs(os.path.dirname(tpng), exist_ok=True)
+    with open(tpng, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n" + b"1" * 64)
+    vera = ctx_for(wdir("board_vera2"), "board_vera")
+    for _ in range(4):
+        v = _media.vera_view_image(vera, {"cut_id": "s1c1",
+                                          "path": "index.html"})
+        assert v.get("ok"), v
+    v5 = _media.vera_view_image(vera, {"cut_id": "s1c1",
+                                       "path": "index.html"})
+    ok("error" in v5 and "viewed 4 files" in v5["error"],
+       "fifth view refused")
+    ok("error" in _media.vera_view_image(
+        vera, {"cut_id": "s1c1", "path": "../outside.png"}),
+       "view escapes the repo refused")
+    remy = ctx_for(wdir("slide_remy3"), "slide_remy")
+    rv = _media.remy_view_slide(remy, {"cut_id": "s1c1",
+                                       "path": "index.html"})
+    ok(rv.get("ok") and rv["staged"].endswith("index.html"),
+       "remy stages a slide view")
+    msg = _runner._vision_message(
+        [{"path": tpng},
+         {"path": os.path.join(ROOT, "index.html")},
+         {"path": "/nonexistent/x.png"}])
+    kinds = [p.get("type") for p in msg["content"]]
+    ok(msg["role"] == "user" and kinds == ["text", "image_url"]
+       and msg["content"][1]["image_url"]["url"].startswith(
+           "data:image/png;base64,")
+       and "Skipped" in msg["content"][0]["text"],
+       "vision message attaches raster, names the rest")
+    vd = wdir("vdrain")
+    with open(os.path.join(vd, "vision_staged.jsonl"), "w",
+              encoding="utf-8") as f:
+        f.write(json.dumps({"path": tpng}) + "\n")
+        f.write(json.dumps({"path": tpng}) + "\n")
+    e1, seen = _runner._vision_drain(vd, 0)
+    e2, seen2 = _runner._vision_drain(vd, seen)
+    ok(len(e1) == 2 and e2 == [] and seen2 == 2,
+       "vision drain is incremental")
+
+    # full loop: vera stages a view, the next chat sees it
+    vrun = wdir("board_vera")
+    received(vrun, "voice_wren", "narration", 2, NARR)
+    received(vrun, "board_penn", "storyboard", 2, BOARD)
+    received(vrun, "board_penn", "style_guide", 1, GUIDE)
+    received(vrun, "photo_pia", "photo_picks", 1, PH)
+    received(vrun, "image_gene", "gen_picks", 1, GE)
+    received(vrun, "anim_max", "anim_picks", 1, AN)
+    vmd = os.path.join(vrun, "INPUTS.md")
+    with open(vmd, "w", encoding="utf-8") as f:
+        f.write("# inputs\n")
+    calls = []
+    real_chat = _runner._chat
+
+    def _canned(model, messages, tools, max_tokens=None,
+                timeout=300):
+        calls.append(json.loads(json.dumps(messages)))
+        if len(calls) == 1:
+            tc = {"id": "c1", "type": "function",
+                  "function": {"name": "vera_view_image",
+                               "arguments": json.dumps(
+                                   {"cut_id": "s1c1",
+                                    "path": "scripts/_tmpclip/t/"
+                                            "view.png"})}}
+        else:
+            tc = {"id": "c2", "type": "function",
+                  "function": {"name": "write_slide_draft",
+                               "arguments": json.dumps(
+                                   {"slide_draft": SLIDE})}}
+        return {"choices": [{"message": {"role": "assistant",
+                                         "content": "",
+                                         "tool_calls": [tc]}}],
+                "usage": {"prompt_tokens": 1,
+                          "completion_tokens": 1}}
+
+    _runner._chat = _canned
+    try:
+        rout = _runner.run(os.path.join(ROOT, "agents", "board_vera"),
+                           vrun, {"order_id": "ov"}, vmd)
+    finally:
+        _runner._chat = real_chat
+    saw_img = any(
+        isinstance(m.get("content"), list)
+        and any(p.get("type") == "image_url" for p in m["content"])
+        for m in calls[-1])
+    ok(rout.get("ok") is True and len(calls) == 2 and saw_img,
+       "staged view reaches the next model call")
+
+    # ---- speech: align + compare + transcribe hook ----
+    TURNS = [{"start_s": 2, "end_s": 8, "text": "Hello world"},
+             {"start_s": 8, "end_s": 18, "text": "Second line here!"},
+             {"start_s": 21, "end_s": 39, "text": "Plains only"}]
+    ok(video.align_subs(NARR, TURNS) == (
+        "1\n00:00:02,000 --> 00:00:08,400\nHello world\n\n"
+        "2\n00:00:08,400 --> 00:00:18,000\nSecond line here\n\n"
+        "3\n00:00:21,000 --> 00:00:39,000\nPlains only\n"),
+       "turn times narrow the subtitle spans")
+    cmp_ = video.compare_transcript(NARR, TURNS)
+    ok([c["match"] for c in cmp_] == [True, True],
+       "matching transcript verifies")
+    badt = [{"start_s": 0, "end_s": 20, "text": "Something else"},
+            {"start_s": 21, "end_s": 39, "text": "Plains only"}]
+    cmp2 = video.compare_transcript(NARR, badt)
+    ok([c["match"] for c in cmp2] == [False, True],
+       "misread cut flagged")
+    video._TRANSCRIBE_FN = lambda p: TURNS
+    try:
+        ok(video.transcribe_file("whatever.wav") == TURNS,
+           "transcribe hook serves fixtures")
+    finally:
+        video._TRANSCRIBE_FN = None
+    if not _runner.key_present("meta-models/muse-spark-open-1026"):
+        try:
+            video.transcribe_file(tpng)
+            ok(False, "live transcribe without key raises")
+        except RuntimeError as exc:
+            ok("missing" in str(exc).lower(),
+               "live transcribe without key raises")
+    else:
+        ok(True, "key present here (no-key check skipped)")
+finally:
+    _media._HTTP_JSON = None
+    _media._HTTP_BYTES = None
+    _media._IMAGE_FN = None
+    _pc.ROOT_OVERRIDE = None
+
 import shutil
 shutil.rmtree(tmp, ignore_errors=True)
 

@@ -942,13 +942,31 @@ def _run_code_node(run_dir, node_id, order_id, order_brief, incoming,
                 "error": "video_production missing: "
                          + ", ".join(sorted(missing))}
     asm = video.build_assembly(narration, slides, audio)
+    srt_text, speech = asm["srt"], {"status": "proportional",
+                                    "turns": 0, "mismatches": []}
+    try:
+        heard = []
+        for cut in cuts:
+            heard += video.transcribe_file(
+                audio[cut["cut_id"]]) or []
+        if heard:
+            srt_text = video.align_subs(narration, heard)
+            bad = [c["cut_id"] for c in
+                   video.compare_transcript(narration, heard)
+                   if not c["match"]]
+            speech = {"status": "transcribed",
+                      "turns": len(heard), "mismatches": bad}
+    except Exception as exc:  # noqa: BLE001 - speech is optional
+        speech = {"status": "unavailable",
+                  "reason": str(exc)[:200]}
     _write_json(os.path.join(ndir, "assembly.json"),
                 {"segments": asm["segments"],
                  "total_s": asm["total_s"],
-                 "ffmpeg_cmd": asm["ffmpeg_cmd"]})
+                 "ffmpeg_cmd": asm["ffmpeg_cmd"],
+                 "speech": speech})
     with open(os.path.join(ndir, "captions.srt"), "w",
               encoding="utf-8") as f:
-        f.write(asm["srt"])
+        f.write(srt_text)
     scene_part = {}
     for sc in ((data.get("storyboard_draft") or {}).get("scenes")
                or []):

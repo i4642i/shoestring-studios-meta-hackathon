@@ -1678,3 +1678,16 @@ INPUTS, and cost (LLM calls, tokens, tools). Buttons:
 Approve and run next / Re-run this stage (optional owner
 note added to its prompt) / Stop. Nothing runs past a stage
 until approved. Re-running a stage invalidates later stages.
+
+Phase B tools (built, live shapes verify on the first owner run):
+`pc_search_images` (Openverse commercial set, \u22642 queries/cut,
+hits in the run log only), `pc_pick_image` (license allowlist +
+download into the Image PC), `pc_generate_image` (muse-image,
+\u22646/run, prompt-hash reuse), `vera_view_image` (\u22644
+files/cut) and `remy_view_slide`, whose staged files the runner
+attaches to the next chat call as vision parts (raster only;
+SVG is named, not attached). Speech: turn-level transcription
+per cut refines subtitle spans (`align_subs`) and checks the TTS
+against Wren's script (`compare_transcript`); without turns the
+code node keeps proportional timing and says so in
+`assembly.json`.

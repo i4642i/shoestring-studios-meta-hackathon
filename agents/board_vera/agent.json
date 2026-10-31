@@ -26,6 +26,7 @@
   "open_ref",
   "pc_list_source",
   "pc_read_source",
+  "vera_view_image",
   "write_slide_draft"
  ],
  "flow": {

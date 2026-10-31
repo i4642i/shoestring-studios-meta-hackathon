@@ -25,6 +25,7 @@
   "read_md_section",
   "open_ref",
   "pc_read_source",
+  "pc_generate_image",
   "write_gen_picks"
  ],
  "flow": {

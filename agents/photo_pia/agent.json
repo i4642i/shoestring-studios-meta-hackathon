@@ -26,6 +26,8 @@
   "open_ref",
   "pc_list_source",
   "pc_read_source",
+  "pc_search_images",
+  "pc_pick_image",
   "write_photo_picks"
  ],
  "flow": {

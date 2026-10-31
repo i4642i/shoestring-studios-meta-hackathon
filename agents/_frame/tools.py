@@ -16,6 +16,7 @@ from . import graph
 from . import pc
 from . import pdfingest
 from . import results
+from .media import MEDIA_TOOLS
 from .schemas import (VOICE_MAX_ATTEMPTS, list_headings,
                       validate_anim_picks, validate_cases,
                       validate_concept, validate_concepts,
@@ -1867,6 +1868,9 @@ TOOLS = {
          "required": ["ref"], "additionalProperties": False},
     ),
 }
+
+
+TOOLS.update(MEDIA_TOOLS)
 
 
 def get_tools(agent_dir):
