@@ -24,7 +24,7 @@ IMAGE_QUERY_CAP = 2  # Openverse queries per cut per run
 OPENVERSE_PER_MIN = 20  # shared Openverse queue default
 GEN_IMAGE_CAP = 6  # generated images per run
 GEN_IMAGE_COST = 0.01  # USD per muse-image, flat
-VERA_VIEW_CAP = 4  # candidate files viewed per cut per run
+VERA_VIEW_CAP = 2  # candidate files viewed per cut per run
 IMAGE_FETCH_CAP = 20 * 1024 * 1024  # 20 MB per download
 LICENSE_OK = ("cc0", "pdm", "by", "by-sa")
 
@@ -404,8 +404,9 @@ def _stage_view(ctx, tool, cut_id, full):
 
 
 def vera_view_image(ctx, args):
-    """Vera opens one candidate file and looks at it (vision).
-    At most 4 files per cut per run."""
+    """Vera opens one chosen candidate file and looks at it
+    (vision). She picks from descriptions first; at most 2 files
+    per cut per run."""
     if not _owns(ctx, "board_vera"):
         return {"error": "vera_view_image is Vera's tool"}
     cut_id = ((args or {}).get("cut_id") or "").strip()

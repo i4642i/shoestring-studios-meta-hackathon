@@ -13,8 +13,8 @@
 - [x] F6 검사는 ID·키 비교
 
 ## STEP 2 Vera
-- [ ] D1 후보 설명으로 1차 선택 후 고른 것만 열기 (컷당 vera_view_image ≤ 2)
-- [ ] D2 검사: 후보 4개인 컷에서 열기 ≤ 2
+- [x] D1 후보 설명으로 1차 선택 후 고른 것만 열기 (컷당 vera_view_image ≤ 2)
+- [x] D2 검사: 후보 4개인 컷에서 열기 ≤ 2
 
 ## STEP 3 Ash
 - [ ] E1 handoff에 slide_remy 허용, part_split이 slide_remy@pN 행 생성

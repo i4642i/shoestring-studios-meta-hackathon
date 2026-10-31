@@ -502,6 +502,40 @@ try:
         ctx_for(vdir, "board_vera"),
         {"slide_draft": badf}).get("errors", [])),
        "figure block on a table refuses")
+    from agents._frame import media as _mediav
+    ok(_mediav.VERA_VIEW_CAP == 2, "view budget is 2 per cut")
+    vvdir = wdir("board_vera_views")
+    vvc = ctx_for(vvdir, "board_vera")
+    vvc["producer"] = "board_vera@p1"
+    vvc["order_id"] = "oview"
+    refs4 = []
+    for i in range(4):
+        pk = _pc.image_store_pick(
+            "oview", "https://example.com/v%d" % i,
+            b"\xff\xd8V%d" % i + b"\x00" * 40, "CC0",
+            "candidate %d" % i, set_by="photo_pia@p1")
+        refs4.append(pk["ref"])
+    outs = [_mediav.vera_view_image(
+        vvc, {"cut_id": "s1c1", "ref": r}) for r in refs4]
+    ok([o.get("ok") is True for o in outs]
+       == [True, True, False, False]
+       and "already viewed 2 files" in outs[2].get("error", "")
+       and outs[1]["views_used"] == 2,
+       "4 candidates end with at most 2 views")
+    counts = json.load(open(os.path.join(vvdir, "vera_views.json"),
+                            encoding="utf-8"))
+    ok(counts == {"s1c1": 2}, "view counter stops at 2")
+    received(vvdir, "voice_wren", "narration", 2, NARR)
+    received(vvdir, "photo_pia", "photo_picks", 1, PH)
+    received(vvdir, "image_gene", "gen_picks", 1, GE)
+    received(vvdir, "anim_max", "anim_picks", 2, AN2)
+    with open(os.path.join(vvdir, "vera_views.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"s1c1": 3, "s1c2": 1}, f)
+    vok = ctx_for(vvdir, "board_vera")
+    ok("budget is 2" in " ".join(write_slide_draft(
+        vok, {"slide_draft": SLIDE}).get("errors", [])),
+       "writer refuses views over budget")
     ldir = wdir("slide_remy2")
     received(ldir, "board_vera", "slide_draft", 2, SLIDE)
     lout = write_render_log(ctx_for(ldir, "slide_remy"),
@@ -604,14 +638,14 @@ try:
     with open(tpng, "wb") as f:
         f.write(b"\x89PNG\r\n\x1a\n" + b"1" * 64)
     vera = ctx_for(wdir("board_vera2"), "board_vera")
-    for _ in range(4):
+    for _ in range(2):
         v = _media.vera_view_image(vera, {"cut_id": "s1c1",
                                           "path": "index.html"})
         assert v.get("ok"), v
-    v5 = _media.vera_view_image(vera, {"cut_id": "s1c1",
+    v3 = _media.vera_view_image(vera, {"cut_id": "s1c1",
                                        "path": "index.html"})
-    ok("error" in v5 and "viewed 4 files" in v5["error"],
-       "fifth view refused")
+    ok("error" in v3 and "viewed 2 files" in v3["error"],
+       "third view refused")
     ok("error" in _media.vera_view_image(
         vera, {"cut_id": "s1c1", "path": "../outside.png"}),
        "view escapes the repo refused")

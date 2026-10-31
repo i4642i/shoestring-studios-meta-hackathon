@@ -1627,9 +1627,10 @@ def _values_trace(errors, template, values, quotes, where):
 
 def write_slide_draft(ctx, args):
     """Vera's slide plan v2: cut+time match vs Wren's narration,
-    layout-checked blocks, photo/generated backed by helper picks
-    and readable, data blocks copying Max's values exactly, source
-    figures readable, image boxes matching material aspect."""
+    view budget (2 files per cut), layout-checked blocks,
+    photo/generated backed by helper picks and readable, data
+    blocks copying Max's values exactly, source figures readable,
+    image boxes matching material aspect."""
     obj = (args or {}).get("slide_draft")
     if not isinstance(obj, dict):
         return {"ok": False, "errors": [
@@ -1639,6 +1640,32 @@ def write_slide_draft(ctx, args):
         return {"ok": False, "errors": [
             "no narration received in this run"]}
     errors = validate_slide_draft(obj, narr)
+    if errors:
+        return {"ok": False, "errors": errors}
+    from . import media as _media
+    views = {}
+    try:
+        with open(os.path.join((ctx or {}).get("run_dir", ""),
+                               "vera_views.json"),
+                  encoding="utf-8") as f:
+            views = json.load(f)
+    except (OSError, ValueError):
+        views = {}
+    if not isinstance(views, dict):
+        views = {}
+    for i, cut in enumerate(obj["cuts"]):
+        cid = cut.get("cut_id")
+        n = views.get(cid, 0)
+        if isinstance(n, dict):
+            n = n.get("views", 0)
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            n = 0
+        if n > _media.VERA_VIEW_CAP:
+            errors.append("cuts[%d]: viewed %d files, budget is %d "
+                          "per cut" % (i, n,
+                                       _media.VERA_VIEW_CAP))
     if errors:
         return {"ok": False, "errors": errors}
     producer = (ctx or {}).get("producer", "")
