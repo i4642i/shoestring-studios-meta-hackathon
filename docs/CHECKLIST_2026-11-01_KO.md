@@ -49,7 +49,7 @@
   left wall, second line HACKATHON 2026, visible in default view
 
 ## 대기열 (2026-11-01 오후)
-- [ ] 1 J3 sign + default camera
+- [x] 1 J3 sign + default camera (10ac785)
 - [ ] 2 J5 Order adaptive
 - [ ] 3 Flow box (B1/B3/B5 re-test)
 - [ ] 4 J1/J2 Crew portraits
