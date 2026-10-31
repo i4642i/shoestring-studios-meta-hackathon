@@ -64,16 +64,19 @@ def main():
 <body>
 <div class="page" id="p-flow">
 <div id="fl-main"><div id="fl-crew"><div id="fl-crewlist"></div></div>
-<div id="fl-scroll"><div id="fl-canvas">
+<div id="fl-scroll"><div id="fl-zoom"><div id="fl-canvas">
 <svg id="fl-svg" width="1690" height="710"></svg>
 <div id="fl-nodes"></div><div id="fl-linepop"></div>
-</div></div></div>
+</div></div></div></div>
 <p id="fl-err"></p><ul id="fl-problems"></ul>
 <p id="fl-status"></p><pre id="fl-log"></pre>
 <select id="fl-list"></select>
 <input id="fl-id"><input id="fl-name"><input id="fl-order">
 <button id="fl-save"></button><button id="fl-new"></button>
 <button id="fl-run"></button>
+<button id="fl-crew-toggle"></button><button id="fl-zfit"></button>
+<button id="fl-z100"></button><button id="fl-zminus"></button>
+<button id="fl-zplus"></button><span id="fl-zoomlab"></span>
 <p id="fl-runstate"></p><div id="fl-runs"></div>
 </div>
 <div id="probe">PENDING</div>
@@ -145,11 +148,17 @@ const api = {
       out.dottedShown =
         svg.querySelectorAll("text.fl-pclabel.on").length;
       const cr = cv.getBoundingClientRect();
+      const tm = getComputedStyle(document.getElementById("fl-zoom"))
+        .transform;
+      const z = tm && tm !== "none" ?
+        +(tm.split("(")[1].split(",")[0]) : 1;
+      out.zoom = Math.round(z * 1000) / 1000;
       const boxes = [];
       document.querySelectorAll("#fl-nodes .fl-node").forEach(el => {
         const r = el.getBoundingClientRect();
-        boxes.push({id: el.dataset.n, x: r.left - cr.left,
-                    y: r.top - cr.top, w: r.width, h: r.height});
+        boxes.push({id: el.dataset.n, x: (r.left - cr.left) / z,
+                    y: (r.top - cr.top) / z, w: r.width / z,
+                    h: r.height / z});
       });
       out.nodes = boxes.length;
       out.maxH = Math.round(Math.max.apply(
@@ -302,6 +311,8 @@ const api = {
     ok(sw > 0 and sh > 0 and sw >= 1690 and sh >= 710
        and abs(cw - sw) <= 2 and abs(ch - sh) <= 2,
        "svg is live and matches the canvas (%dx%d)" % (sw, sh))
+    ok(0.4 <= out.get("zoom", 0) <= 2,
+       "zoom settled in range (%s)" % out.get("zoom"))
     ok(sw > 0 and sh > 0 and out.get("inside", -1) == 39,
        "all 39 paths sit inside the live svg box (%s)" %
        out.get("inside"))

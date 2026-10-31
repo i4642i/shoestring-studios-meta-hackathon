@@ -469,10 +469,13 @@
 </div>
 
 <style>
-#p-flow { max-width: 1240px; }
+#p-flow { max-width: none; margin: 0 12px; }
 #fl-canvas { position: relative; width: 1690px; height: 710px; overflow: hidden;
   border: 1px solid var(--line); background: #f7f9fc; border-radius: 12px; }
-#fl-scroll { overflow: auto; }
+#fl-scroll { overflow: auto; flex: 1; min-width: 0; }
+#fl-zoom { transform-origin: 0 0; }
+#fl-zoomlab { font-size: 12px; font-weight: 700; color: #4b5563;
+  min-width: 44px; text-align: right; }
 #fl-svg { position: absolute; left: 0; top: 0; }
 .fl-node { position: absolute; width: 184px; background: #fff;
   border: 1px solid #c9d2e0; border-radius: 8px; padding: 8px 10px;
@@ -564,13 +567,21 @@
       <button id="fl-new">NEW</button>
       <span id="fl-status"></span>
     </div>
+    <div class="addform">
+      <button id="fl-crew-toggle">&laquo; Crew</button>
+      <button id="fl-zfit">Fit</button>
+      <button id="fl-z100">100%</button>
+      <button id="fl-zminus">-</button>
+      <button id="fl-zplus">+</button>
+      <span id="fl-zoomlab">100%</span>
+    </div>
     <div id="fl-main">
       <div id="fl-crew"><h4>CREW</h4><div id="fl-crewlist"></div></div>
-    <div id="fl-scroll"><div id="fl-canvas">
+    <div id="fl-scroll"><div id="fl-zoom"><div id="fl-canvas">
       <svg id="fl-svg" width="1690" height="710"></svg>
       <div id="fl-nodes"></div>
       <div id="fl-linepop"></div>
-    </div></div>
+    </div></div></div>
     </div>
     <p id="fl-err"></p>
     <ul id="fl-problems"></ul>
@@ -1724,12 +1735,19 @@
     const svg = document.getElementById("fl-svg");
     const canvas = document.getElementById("fl-canvas");
     const pop = document.getElementById("fl-linepop");
+    const scroller = document.getElementById("fl-scroll");
+    const zoomEl = document.getElementById("fl-zoom");
+    const zoomLab = document.getElementById("fl-zoomlab");
+    const crewEl = document.getElementById("fl-crew");
+    const crewBtn = document.getElementById("fl-crew-toggle");
     const errline = document.getElementById("fl-err");
     const problemsEl = document.getElementById("fl-problems");
     const S = { catalog: null, flows: [], flow: null,
       selLine: null, selNode: null, hoverLine: null, drag: null,
-      valTimer: 0, runTimer: 0,
+      valTimer: 0, runTimer: 0, zoom: null, zoomManual: false,
+      canvasW: 1690, canvasH: 710,
       badLines: {}, badNodes: {} };
+    function ZU() { return S.zoom || 1; }
     function fail(e) { errline.textContent = "Error: " + e.message; }
     function agentOf(id) {
       return (S.catalog.agents || []).find(a => a.id === id);
@@ -1867,7 +1885,8 @@
         };
       });
       fitCanvas();
-      drawLines();
+      if (!S.zoom) fitZoom();
+      else applyZoom();
       requestAnimationFrame(() => drawLines());
       renderCrew();
     }
@@ -1887,8 +1906,9 @@
     function portXY(el) {
       const r = el.getBoundingClientRect();
       const c = canvas.getBoundingClientRect();
-      return { x: r.left - c.left + r.width / 2,
-               y: r.top - c.top + r.height / 2 };
+      const z = ZU();
+      return { x: (r.left - c.left + r.width / 2) / z,
+               y: (r.top - c.top + r.height / 2) / z };
     }
     function linePath(x1, y1, x2, y2) {
       const dx = Math.max(40, Math.abs(x2 - x1) / 2);
@@ -1905,8 +1925,10 @@
       if (!el) return null;
       const r = el.getBoundingClientRect();
       const c = canvas.getBoundingClientRect();
-      return { x: r.left - c.left + r.width / 2,
-               y: r.top - c.top + r.height / 2, h: r.height };
+      const z = ZU();
+      return { x: (r.left - c.left + r.width / 2) / z,
+               y: (r.top - c.top + r.height / 2) / z,
+               h: r.height / z };
     }
     function pcLabel(pl) {
       const s = pl.label || "";
@@ -1964,6 +1986,43 @@
       canvas.style.height = h + "px";
       svg.setAttribute("width", w);
       svg.setAttribute("height", h);
+      S.canvasW = w;
+      S.canvasH = h;
+    }
+    function fitLayout() {
+      const top = scroller.getBoundingClientRect().top;
+      scroller.style.height =
+        Math.max(480, window.innerHeight - top - 24) + "px";
+      if (!S.zoomManual || !S.zoom) fitZoom();
+      else applyZoom();
+    }
+    function fitZoom() {
+      const w = S.canvasW || 1690, h = S.canvasH || 710;
+      S.zoom = Math.min(2, Math.max(0.4, Math.min(
+        scroller.clientWidth / w, scroller.clientHeight / h)));
+      S.zoomManual = false;
+      applyZoom();
+    }
+    function applyZoom() {
+      const z = S.zoom || 1;
+      zoomEl.style.transform = "scale(" + z + ")";
+      zoomEl.style.width = (S.canvasW * z) + "px";
+      zoomEl.style.height = (S.canvasH * z) + "px";
+      zoomLab.textContent = Math.round(z * 100) + "%";
+      drawLines();
+    }
+    function setZoom(z, manual) {
+      S.zoom = Math.min(2, Math.max(0.4, Math.round(z * 10) / 10));
+      S.zoomManual = manual !== false;
+      applyZoom();
+    }
+    function setCrewHidden(hidden) {
+      crewEl.style.display = hidden ? "none" : "";
+      crewBtn.innerHTML = hidden ? "Crew &raquo;" : "&laquo; Crew";
+      try {
+        localStorage.setItem("flow.crewHidden", hidden ? "1" : "0");
+      } catch (e) { /* private mode: forget it */ }
+      fitLayout();
     }
     function drawLines() {
       drawLinesSolid();
@@ -2140,9 +2199,11 @@
         "<button data-popclose>CLOSE</button>";
       pop.innerHTML = h;
       const c = canvas.getBoundingClientRect();
+      const z = ZU();
       pop.style.display = "block";
-      pop.style.left = Math.min(e.clientX - c.left + 8, 1350) + "px";
-      pop.style.top = Math.max(e.clientY - c.top - 10, 0) + "px";
+      pop.style.left = Math.min((e.clientX - c.left) / z + 8,
+        (S.canvasW || 1690) - 260) + "px";
+      pop.style.top = Math.max((e.clientY - c.top) / z - 10, 0) + "px";
       const allBox = pop.querySelector("[data-all]");
       const boxes = Array.prototype.slice.call(
         pop.querySelectorAll("[data-cat]"));
@@ -2178,9 +2239,11 @@
         "<br><button data-popdel>DELETE LINE</button> " +
         "<button data-popclose>CLOSE</button>";
       const c = canvas.getBoundingClientRect();
+      const z = ZU();
       pop.style.display = "block";
-      pop.style.left = Math.min(e.clientX - c.left + 8, 1350) + "px";
-      pop.style.top = Math.max(e.clientY - c.top - 10, 0) + "px";
+      pop.style.left = Math.min((e.clientX - c.left) / z + 8,
+        (S.canvasW || 1690) - 260) + "px";
+      pop.style.top = Math.max((e.clientY - c.top) / z - 10, 0) + "px";
       pop.querySelector("[data-popdel]").onclick = () => {
         S.flow.pc_lines = (S.flow.pc_lines || [])
           .filter(l => l.id !== pl.id);
@@ -2195,7 +2258,9 @@
 
     function canvasXY(e) {
       const c = canvas.getBoundingClientRect();
-      return { x: e.clientX - c.left, y: e.clientY - c.top };
+      const z = ZU();
+      return { x: (e.clientX - c.left) / z,
+               y: (e.clientY - c.top) / z };
     }
     canvas.addEventListener("dragover", e => { e.preventDefault(); });
     canvas.addEventListener("drop", e => {
@@ -2203,7 +2268,8 @@
       const id = e.dataTransfer.getData("text/agent-id");
       if (!id) return;
       const c = canvas.getBoundingClientRect();
-      addAgent(id, e.clientX - c.left, e.clientY - c.top);
+      addAgent(id, (e.clientX - c.left) / ZU(),
+        (e.clientY - c.top) / ZU());
     });
     nodesEl.addEventListener("pointerdown", (e) => {
       const t = e.target;
@@ -2245,9 +2311,9 @@
           const limX = Math.max(0, canvas.clientWidth - 212);
           const limY = Math.max(0, canvas.clientHeight - 140);
           const nx = Math.max(0, Math.min(limX,
-            S.drag.x0 + e.clientX - S.drag.dx));
+            S.drag.x0 + (e.clientX - S.drag.dx) / ZU()));
           const ny = Math.max(0, Math.min(limY,
-            S.drag.y0 + e.clientY - S.drag.dy));
+            S.drag.y0 + (e.clientY - S.drag.dy) / ZU()));
           S.flow.positions[S.drag.id] = [Math.round(nx), Math.round(ny)];
           const el = nodesEl.querySelector('[data-n="' + S.drag.id + '"]');
           if (el) { el.style.left = nx + "px"; el.style.top = ny + "px"; }
@@ -2471,6 +2537,14 @@
         pollRun(r.run_id);
       } catch (e) { fail(e); }
     };
+    document.getElementById("fl-zfit").onclick = () => fitZoom();
+    document.getElementById("fl-z100").onclick = () => setZoom(1);
+    document.getElementById("fl-zminus").onclick = () =>
+      setZoom((S.zoom || 1) - 0.1);
+    document.getElementById("fl-zplus").onclick = () =>
+      setZoom((S.zoom || 1) + 0.1);
+    crewBtn.onclick = () =>
+      setCrewHidden(crewEl.style.display !== "none");
     function status(t) {
       document.getElementById("fl-status").textContent = t || "";
     }
@@ -2492,6 +2566,12 @@
         delNode(S.selNode);
       }
     });
+    try {
+      if (localStorage.getItem("flow.crewHidden") === "1") {
+        crewEl.style.display = "none";
+        crewBtn.innerHTML = "Crew &raquo;";
+      }
+    } catch (e) { /* private mode: default shown */ }
     S.catalog = { agents: [], order: { outputs: [] } };
     S.flow = blankFlow();
     render();
@@ -2522,9 +2602,9 @@
     }
     loadRuns();
     window.__flowShown = () => {
-      requestAnimationFrame(() => { fitCanvas(); drawLines(); });
+      requestAnimationFrame(() => fitLayout());
     };
-    window.addEventListener("resize", () => { fitCanvas(); drawLines(); });
+    window.addEventListener("resize", () => fitLayout());
   })();
 
   /* Settings: embedding profiles. */
