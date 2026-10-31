@@ -1757,11 +1757,6 @@
       const a = agentOf(id);
       return ((a && a.flow) || {}).outputs || [];
     }
-    // Display-only hides. Sam's "source" output has no solid line
-    // (delivery runs on the order's pc_ref + recipient rows), so the
-    // Flow tab shows only "request" for Sam. STEP 2 removes the
-    // category itself.
-    const HIDDEN_PORTS = { sales_sam: ["source"] };
     function outRowFor(from, cats) {
       const rows = Array.from(nodesEl.querySelectorAll(
         '[data-out="' + from + '"]'));
@@ -1839,9 +1834,7 @@
         }
         if (!n.pc) {
           inner += '<div class="fl-port in" data-in="' + esc(n.id) + '"></div>';
-          outputsOf(n.id).filter(o =>
-            !((HIDDEN_PORTS[n.id] || []).includes(o.category)))
-            .forEach(o => {
+          outputsOf(n.id).forEach(o => {
             inner += '<div class="fl-portrow" data-out="' + esc(n.id) +
               '" data-cats="' + esc(o.category) +
               '" title="' + esc(o.description || o.category) +

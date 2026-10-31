@@ -73,9 +73,9 @@ ok([p["id"] for p in cat.get("pcs", [])]
    "catalog lists the three PCs")
 samdecl = next(a for a in cat["agents"] if a["id"] == "sales_sam")
 ok(samdecl["flow"]["inputs"] == []
-   and sorted(o["category"] for o in samdecl["flow"]["outputs"])
-   == ["request", "source"],
-   "sam starts the flow, outputs request+source")
+   and [o["category"] for o in samdecl["flow"]["outputs"]]
+   == ["request"],
+   "sam starts the flow, outputs request only")
 
 dflt = flow.load_flow("default")
 ok([n["id"] for n in dflt["nodes"]]
@@ -331,8 +331,7 @@ SAM_SOURCE = {"ref": "pc://source/abc123abc123", "title": "s",
 DRAFT = {"total_s": 60, "scenes": [], "unused_picks": []}
 BOARD = {"total_s": 60, "scenes": [], "coverage": []}
 LINES = {"total_s": 60, "scenes": [], "total_words": 0}
-PAY = {"sales_sam": ("sales_sam", {"request": REQ,
-                                   "source": SAM_SOURCE}),
+PAY = {"sales_sam": ("sales_sam", {"request": REQ}),
        "pd_marty": ("pd_marty", {"concept": CONCEPT,
                                         "structure": STRUCT}),
        "explain_cleo": ("explain_cleo", {"concepts": CONCEPTS}),
@@ -372,7 +371,7 @@ ok(st["state"] == "done" and st["flow_id"] == "default"
 sam = results.load_result(os.path.join(rdir, "sales_sam", "result.json"))
 ok(sam["status"] == "checked"
    and sam["categories"]["request"]["version"] == 1
-   and sam["categories"]["source"]["version"] == 3, "sam checked")
+   and "source" not in sam["categories"], "sam checked")
 mar = results.load_result(os.path.join(rdir, "pd_marty", "result.json"))
 ok(mar["status"] == "checked"
    and mar["categories"]["concept"]["version"] == 1
@@ -396,12 +395,20 @@ wren = results.load_result(os.path.join(rdir, "voice_wren",
                                         "result.json"))
 ok(wren["status"] == "checked"
    and wren["categories"]["narration"]["version"] == 1, "wren checked")
-ssrc = sam["categories"]["source"]
-ok(ssrc["data"]["ref"] == "pc://source/abc123abc123"
-   and ssrc["data"]["sections"] == 2
-   and ssrc["data"]["recipients"][0]["agent"] == "pd_marty"
-   and "file" not in ssrc["data"] and "head" not in ssrc["data"],
-   "sam source is v3 pointer, no sidecar")
+leg = os.path.join(tmp, "orders", "o9leg")
+os.makedirs(leg)
+results.save_result(leg, results.make_result(
+    "sales_sam", "o9leg", "rleg",
+    {"request": REQ, "source": SAM_SOURCE}))
+_real2 = flow.ORDERS_DIR
+flow.ORDERS_DIR = os.path.join(tmp, "orders")
+try:
+    gotleg = flow._sam_stored_result("o9leg")
+finally:
+    flow.ORDERS_DIR = _real2
+ok(gotleg is not None
+   and set(gotleg["categories"]) == {"request", "source"},
+   "legacy sam result with source still loads")
 fin = results.load_result(os.path.join(rdir, "final", "result.json"))
 ok(fin["producer"] == "postprocess" and fin["status"] == "checked"
    and fin["categories"] == {}, "final postprocess result")

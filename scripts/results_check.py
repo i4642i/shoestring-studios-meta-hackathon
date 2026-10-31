@@ -146,13 +146,8 @@ ok(saved["producer"] == "sales_sam" and saved["run_id"] == "r9"
    and saved["status"] == "unverified"
    and saved["categories"]["request"]["data"]["order_id"] == "o1",
    "request envelope header + data")
-src3 = saved["categories"]["source"]
-ok(src3["version"] == 3 and src3["data"]["ref"] == sent["ref"]
-   and src3["data"]["title"] == sent["title"]
-   and src3["data"]["sections"] == 1
-   and sorted(r["agent"] for r in src3["data"]["recipients"])
-   == ["pd_marty", "sales_sam"],
-   "write_request bundles source v3 from the entry")
+ok(set(saved["categories"]) == {"request"},
+   "write_request saves request only (no source category)")
 os.remove(sendp)
 no_send = write_request(ctx, {"request": dict(REQ)})
 ok(no_send.get("ok") is False

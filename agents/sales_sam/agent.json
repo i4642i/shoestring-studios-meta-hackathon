@@ -6,7 +6,7 @@
   "all 5 intake answers recorded",
   "source PDF sent to the Source PC (pc_send_source)",
   "recipients set for this order (pc_set_recipients)",
-  "request + source categories written (result.json)"
+  "request category written (result.json)"
  ],
  "flow": {
   "inputs": [],
@@ -14,10 +14,6 @@
    {
     "category": "request",
     "description": "Video production request for PD/production."
-   },
-   {
-    "category": "source",
-    "description": "Source PC entry pointer + recipient list for this order."
    }
   ]
  },

@@ -149,10 +149,10 @@ def write_structure(ctx, args):
 
 
 def write_request(ctx, args):
-    """Save Sam's two categories: the request report plus the source
-    v3 pointer, built from the entry Sam sent this run (never
-    model-written). Needs send.json (pc_send_source ran here) and a
-    non-empty recipient list for this order."""
+    """Save Sam's request report. Needs send.json (pc_send_source ran
+    here) and a non-empty recipient list for this order. The source
+    pointer is NOT a category: the crew gets the entry through the
+    order's pc_ref plus recipient rows."""
     obj = (args or {}).get("request")
     errors = validate_request(obj)
     if errors:
@@ -175,11 +175,7 @@ def write_request(ctx, args):
         return {"ok": False, "errors": [
             "no recipients for this order: call pc_set_recipients "
             "before writing"]}
-    source = {"ref": entry.get("ref", ""), "title": entry.get("title"),
-              "chars": entry.get("chars", 0),
-              "sections": len(entry.get("sections", [])),
-              "recipients": rows}
-    return _save_categories(ctx, {"request": obj, "source": source})
+    return _save_categories(ctx, {"request": obj})
 
 
 def _verbatim_haystack(passage):

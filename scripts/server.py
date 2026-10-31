@@ -1376,7 +1376,11 @@ class Handler(BaseHTTPRequestHandler):
         with open(os.path.join(d, "result.json"), encoding="utf-8") as f:
             res = json.load(f)
         cats = res.get("categories", {}) or {}
-        source = (cats.get("source", {}) or {}).get("data", {})
+        mfresh = (self._order_meta(d).get("files", {}) or {})
+        source = {"ref": mfresh.get("pc_ref", ""),
+                  "title": mfresh.get("pc_title", ""),
+                  "sections": mfresh.get("pc_sections", "?"),
+                  "chars": mfresh.get("pc_chars", "?")}
         files = dict(meta.get("files", {}))
         intake = {"order_id": oid,
                   "answers": dict(meta["answers"],

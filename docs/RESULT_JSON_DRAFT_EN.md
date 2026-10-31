@@ -237,13 +237,15 @@ exists in the input"):
 }
 ```
 
-## 4. Source pointer (Sam produces it, recipients deliver it)
+## 4. Source pointer (RETIRED as a category; recipients deliver it)
 
 The old order pseudo-producer node is RETIRED: no flow node builds
 `brief`/`source` anymore. The order brief (answers + attached PDF)
-reaches Sam through the runner's INPUTS; Sam sends the source and
-writes both categories. `brief` v1 stays in the registry only so old
-runs still validate.
+reaches Sam through the runner's INPUTS; Sam sends the PDF to the
+Source PC, sets recipients, and writes ONLY `request`. The pointer
+lives on the PC entry + `send.json` + the order's `pc_ref`.
+`source` v1/v2/v3 and `brief` v1 stay registered only so old runs
+still validate, render, and load.
 
 `source` payload schema v3 (small pointer into the Source PC entry;
 full text stays in the PC so envelopes never balloon to megabytes):
@@ -282,7 +284,7 @@ the new categories follow once the category set is approved.
 
 | Stage | Role | Receives | Produces |
 |---|---|---|---|
-| 0 | Sales (Sam) | order brief via runner (no lines) | `request`, `source` (§2) |
+| 0 | Sales (Sam) | order brief via runner (no lines) | `request` (§2) |
 | 1 | Structure writer (Marty) | `request` + Source PC `full` row | `concept`, `structure` (§3) |
 | 2 | Concept explainer (Cleo) | `concept`, `structure` + Source PC `map` rows | `concepts` (§5.1) |
 | 2 | Case researcher (Rex) | `concept`, `structure` + Source PC `map` rows | `cases` (§5.2) |

@@ -441,7 +441,8 @@ def _transfer(run_dir, sender_id, dest_id, categories, dest_inputs):
 
 
 def _received_source_refs(received, run_dir, dest_id):
-    """Entry refs from received source categories (Sam's pointers)."""
+    """Legacy read: entry refs from received source categories. No
+    line carries source anymore; delivery runs on meta pc_ref."""
     refs = []
     for item in received:
         if item.get("category") != "source" or not item.get("file"):
@@ -536,8 +537,10 @@ def _sam_stored_result(order_id):
         return None
     if results.check_result(res, where=INTAKE_AGENT):
         return None
-    if set(res.get("categories", {})) != {"request", "source"}:
-        return None
+    cats = set(res.get("categories", {}))
+    if cats != {"request"} and cats != {"request", "source"}:
+        return None  # legacy {"request","source"} results still load;
+    # the extra source category is ignored (delivery is pc_ref+gates)
     return res
 
 
