@@ -15,7 +15,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import pc as _pc
-from agents._frame import results, video
+from agents._frame import results, tools, video
 from agents._frame.schemas import (validate_anim_picks,
                                    validate_gen_picks,
                                    validate_photo_picks,
@@ -56,13 +56,31 @@ GUIDE = {"palette": {"background": "#101418", "text": "#f5f2ea",
          "image_tone": "plain", "rules": ["Keep it calm."]}
 SLIDE = {"cuts": [
     {"cut_id": "s1c1", "start_s": 0, "end_s": 20,
-     "materials": [{"kind": "text_card", "use": "Card"}],
-     "layout": "center", "on_screen_text": ["Hello"],
-     "transitions": [], "why": "stub"},
-    {"cut_id": "s1c2", "start_s": 20, "end_s": 40,
-     "materials": [{"kind": "text_card", "use": "Card"}],
-     "layout": "center", "on_screen_text": ["Plains"],
-     "transitions": [], "why": "stub"}]}
+     "preset": "main_side",
+     "blocks": [
+         {"kind": "table",
+          "box": {"x": 64, "y": 96, "w": 1088, "h": 300},
+          "order": 0, "appear_s": 0, "reason": "Shows the numbers",
+          "font_size": 24,
+          "data": {"headers": ["Year", "Sales"],
+                   "rows": [["2024", "120"], ["2025", "150"]],
+                   "reveal": "rows"}},
+         {"kind": "text",
+          "box": {"x": 64, "y": 460, "w": 1152, "h": 140},
+          "order": 1, "appear_s": 2, "reason": "Headline",
+          "font_size": 44,
+          "data": {"lines": ["Sales grew steadily"]}}],
+     "on_screen_text": ["Hello"], "transitions": [],
+     "why": "stub"},
+    {"cut_id": "s1c2", "start_s": 20, "end_s": 40, "preset": "full",
+     "blocks": [
+         {"kind": "photo",
+          "box": {"x": 300, "y": 130, "w": 680, "h": 460},
+          "order": 0, "appear_s": 0,
+          "reason": "Plains photo for the line",
+          "ref": "pc://image/0123456789ab"}],
+     "on_screen_text": ["Plains"], "transitions": [],
+     "why": "stub"}]}
 
 tmp = tempfile.mkdtemp(prefix="videocheck_")
 
@@ -98,12 +116,12 @@ table = video.build_table(NARR, BOARD, SLIDE, {1: "p1"})
 ok(table == {"rows": [
     {"part": "p1", "scene_n": 1, "cut_id": "s1c1", "start_s": 0,
      "end_s": 20, "narration": "Hello world Second line here",
-     "screen": "Card", "materials": ["text_card"]},
+     "screen": "Card", "materials": ["table", "text"]},
     {"part": "p1", "scene_n": 1, "cut_id": "s1c2", "start_s": 20,
      "end_s": 40, "narration": "Plains only",
-     "screen": "Card", "materials": ["text_card"]}]},
+     "screen": "Card", "materials": ["pc://image/0123456789ab"]}]},
    "storyboard table exact")
-asm = video.build_assembly(NARR, {"s1c1": "a.svg", "s1c2": "b.svg"},
+asm = video.build_assembly(NARR, {"s1c1": "a.png", "s1c2": "b.png"},
                            {"s1c1": "a.wav", "s1c2": "b.wav"})
 ok(asm["total_s"] == 40.0 and len(asm["segments"]) == 2
    and asm["segments"][1]["at_s"] == 20.0
@@ -112,17 +130,22 @@ ok(asm["total_s"] == 40.0 and len(asm["segments"]) == 2
    and "concat=n=2:v=1:a=0[v]" in " ".join(asm["ffmpeg_cmd"]),
    "assembly plan joins in order with one ffmpeg command")
 ok(asm["srt"] == srt, "assembly carries the same subtitles")
-card = os.path.join(tmp, "card.svg")
-video.render_text_card(SLIDE["cuts"][0], GUIDE, card)
-svg = open(card, encoding="utf-8").read()
-ok(svg.startswith("<svg") and "Hello" in svg
-   and "#101418" in svg and "s1c1" in svg,
-   "text card renders with the style guide")
-card2 = os.path.join(tmp, "card2.svg")
-video.render_text_card({"cut_id": "x",
-                        "on_screen_text": ["A&B <C>"]}, None, card2)
-svg2 = open(card2, encoding="utf-8").read()
-ok("A&amp;B &lt;C&gt;" in svg2, "card text is XML-escaped")
+props = tools._cut_slide_props(SLIDE["cuts"][0], GUIDE)
+ok(props["cutId"] == "s1c1" and props["seconds"] == 20
+   and props["preset"] == "main_side"
+   and len(props["blocks"]) == 2
+   and props["blocks"][0]["box"]["w"] == 1088
+   and props["guide"]["palette"]["accent"] == "#e0a458",
+   "cut props carry boxes + guide to Remotion")
+ok(tools._cut_slide_props(
+    SLIDE["cuts"][1], GUIDE)["blocks"][0].get("file") == "",
+   "unresolved pc:// ref renders an empty slot, never a fake path")
+rmods = os.path.join(tools.REMOTION_DIR, "node_modules")
+if os.path.isdir(rmods):
+    ok(True, "remotion installed here (skip-path untested)")
+else:
+    ok(tools._have_remotion() is False,
+       "missing remotion detected")
 ff = video.run_ffmpeg(["ffmpeg", "-version"])
 ok(ff.get("ok") is False and "ffmpeg" in ff.get("error", "").lower(),
    "missing ffmpeg fails with a hint, never silently")
@@ -185,13 +208,18 @@ try:
     ok(bad.get("ok") is False and "need received" in
        " ".join(bad.get("errors", [])),
        "render without inputs refuses")
-    received(rdir, "board_vera", "slide_draft", 1, SLIDE)
+    received(rdir, "board_vera", "slide_draft", 2, SLIDE)
     received(rdir, "board_penn", "style_guide", 1, GUIDE)
-    r1 = render_slide(rctx, {"cut_id": "s1c1"})
-    ok(r1.get("ok") and r1["slide_file"] == "slides/s1c1.svg"
-       and r1["renders_n"] == 1
-       and os.path.isfile(os.path.join(rdir, "slides", "s1c1.svg")),
-       "text card renders into the run dir")
+    real_have = tools._have_remotion
+    tools._have_remotion = lambda: False
+    try:
+        r1 = render_slide(rctx, {"cut_id": "s1c1"})
+    finally:
+        tools._have_remotion = real_have
+    ok(r1.get("ok") and r1.get("status") == "remotion_unavailable"
+       and r1["slide_file"] == "" and r1["renders_n"] == 0
+       and "setup_video" in r1.get("note", ""),
+       "missing Remotion skips honestly with an install hint")
     render_slide(rctx, {"cut_id": "s1c1"})
     render_slide(rctx, {"cut_id": "s1c1"})
     r4 = render_slide(rctx, {"cut_id": "s1c1"})
@@ -205,9 +233,12 @@ try:
        "thin guide refuses")
     PH = {"cuts": [{"cut_id": "s1c1", "decision": "none",
                     "reason": "stub"},
-                   {"cut_id": "s1c2", "decision": "none",
-                    "reason": "stub"}]}
-    ok(validate_photo_picks(PH, BOARD) == [], "photo stub accepts")
+                   {"cut_id": "s1c2", "decision": "use",
+                    "kind": "web", "ref": "pc://image/0123456789ab",
+                    "file": "pick-1.jpg",
+                    "source_url": "https://example.org/pick-1",
+                    "license": "cc0", "reason": "Plains photo"}]}
+    ok(validate_photo_picks(PH, BOARD) == [], "photo picks accept")
     ok("cut set" in " ".join(validate_photo_picks(
         {"cuts": PH["cuts"][:1]}, BOARD)),
        "photo dropped cut refuses")
@@ -230,14 +261,42 @@ try:
     ok(validate_anim_picks(AN, BOARD) == [], "max stub accepts")
     ok(validate_slide_draft(SLIDE, NARR) == [], "vera draft accepts")
     thin = json.loads(json.dumps(SLIDE))
-    thin["cuts"][0]["materials"] = []
-    ok("materials" in " ".join(validate_slide_draft(thin, NARR)),
-       "material-less cut refuses")
-    RL = {"cuts": [{"cut_id": "s1c1", "slide_file": "slides/s1c1.svg",
+    thin["cuts"][0]["blocks"] = []
+    ok("blocks" in " ".join(validate_slide_draft(thin, NARR)),
+       "block-less cut refuses")
+    over = json.loads(json.dumps(SLIDE))
+    over["cuts"][0]["blocks"][1]["box"] = {"x": 64, "y": 96,
+                                           "w": 1088, "h": 300}
+    ok("overlaps" in " ".join(validate_slide_draft(over, NARR)),
+       "overlapping boxes refuse")
+    tiny = json.loads(json.dumps(SLIDE))
+    tiny["cuts"][0]["blocks"][1]["font_size"] = 12
+    ok("font_size" in " ".join(validate_slide_draft(tiny, NARR)),
+       "tiny font refuses")
+    wide = json.loads(json.dumps(SLIDE))
+    wide["cuts"][0]["blocks"][1]["data"] = {"lines": ["x" * 100]}
+    ok("too wide" in " ".join(validate_slide_draft(wide, NARR)),
+       "overflowing text refuses")
+    edge = json.loads(json.dumps(SLIDE))
+    edge["cuts"][0]["blocks"][0]["box"]["x"] = 0
+    ok("safe area" in " ".join(validate_slide_draft(edge, NARR)),
+       "unsafe box refuses")
+    RL = {"cuts": [{"cut_id": "s1c1", "slide_file": "slides/s1c1.png",
                     "renders_n": 1, "adjustments": [], "issues": []},
-                   {"cut_id": "s1c2", "slide_file": "slides/s1c2.svg",
+                   {"cut_id": "s1c2", "slide_file": "slides/s1c2.png",
                     "renders_n": 1, "adjustments": [], "issues": []}]}
     ok(validate_render_log(RL, SLIDE) == [], "remy log accepts")
+    RU = {"cuts": [{"cut_id": "s1c1", "slide_file": "",
+                    "status": "remotion_unavailable", "renders_n": 0,
+                    "adjustments": [], "issues": ["no remotion"]},
+                   {"cut_id": "s1c2", "slide_file": "",
+                    "status": "remotion_unavailable", "renders_n": 0,
+                    "adjustments": [], "issues": ["no remotion"]}]}
+    ok(validate_render_log(RU, SLIDE) == [], "unavailable log accepts")
+    badru = json.loads(json.dumps(RU))
+    badru["cuts"][0]["renders_n"] = 1
+    ok("0 when Remotion" in " ".join(validate_render_log(badru, SLIDE)),
+       "unavailable log with renders refuses")
     badrl = json.loads(json.dumps(RL))
     badrl["cuts"][0]["adjustments"] = [{"field": "text", "was": "a",
                                         "now": "b"}]
@@ -246,11 +305,17 @@ try:
        "content adjustment refuses")
 
     # ---- v8 writers (stub payloads) ----
+    seed = _pc.image_store_pick("ov", "https://example.org/pick-1",
+                                b"\x89PNG\r\n\x1a\nSEED", "cc0",
+                                "Plains photo", suffix=".png")
+    PH["cuts"][1]["ref"] = seed["ref"]
+    PH["cuts"][1]["file"] = seed["file"]
+    SLIDE["cuts"][1]["blocks"][0]["ref"] = seed["ref"]
     pdir = wdir("photo_pia")
     received(pdir, "board_penn", "storyboard", 2, BOARD)
     pout = write_photo_picks(ctx_for(pdir, "photo_pia"),
                              {"photo_picks": PH})
-    ok(pout.get("ok") is True, "pia stub saves")
+    ok(pout.get("ok") is True, "pia use-pick saves")
     gdir = wdir("image_gene")
     received(gdir, "board_penn", "storyboard", 2, BOARD)
     gout = write_gen_picks(ctx_for(gdir, "image_gene"),
@@ -270,23 +335,26 @@ try:
     received(vdir, "anim_max", "anim_picks", 1, AN)
     vout = write_slide_draft(ctx_for(vdir, "board_vera"),
                              {"slide_draft": SLIDE})
-    ok(vout.get("ok") is True, "vera text-card draft saves")
+    ok(vout.get("ok") is True, "vera layout draft saves")
     badv = json.loads(json.dumps(SLIDE))
-    badv["cuts"][0]["materials"] = [{"kind": "photo",
-                                     "use": "No pick backs this"}]
+    badv["cuts"][0]["blocks"] = [
+        {"kind": "photo", "box": {"x": 300, "y": 130, "w": 680,
+                                 "h": 460},
+         "order": 0, "appear_s": 0, "reason": "No pick backs this",
+         "ref": "pc://image/nope"}]
     verrs = write_slide_draft(
         ctx_for(vdir, "board_vera"),
         {"slide_draft": badv}).get("errors", [])
     ok("no photo pick" in " ".join(verrs),
-       "unbacked photo material refuses")
+       "unbacked photo block refuses")
     ldir = wdir("slide_remy2")
-    received(ldir, "board_vera", "slide_draft", 1, SLIDE)
+    received(ldir, "board_vera", "slide_draft", 2, SLIDE)
     lout = write_render_log(ctx_for(ldir, "slide_remy"),
                             {"render_log": RL})
     ok(lout.get("ok") is True, "remy log saves")
     saved = results.load_result(os.path.join(vdir, "result.json"))
     ok(results.check_result(saved) == []
-       and "## slide_draft (v1)" in results.render_report(saved),
+       and "## slide_draft (v2)" in results.render_report(saved),
        "vera envelope + report")
 finally:
     _pc.ROOT_OVERRIDE = None

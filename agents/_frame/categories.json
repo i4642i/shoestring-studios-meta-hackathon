@@ -700,6 +700,9 @@
         "items": {
          "type": "string"
         }
+       },
+       "status": {
+        "type": "string"
        }
       }
      }
@@ -769,8 +772,8 @@
   "version": 1
  },
  "slide_draft": {
-  "version": 1,
-  "description": "Vera's per-cut slide plan: 1-2 materials (or text card), layout, on-screen text, cut time, transitions.",
+  "version": 2,
+  "description": "Vera's per-cut slide plan: Remotion-ready layout (preset + boxed material blocks), on-screen text, transitions.",
   "schema": {
    "type": "object",
    "required": [
@@ -785,8 +788,8 @@
        "cut_id",
        "start_s",
        "end_s",
-       "materials",
-       "layout",
+       "preset",
+       "blocks",
        "on_screen_text",
        "transitions",
        "why"
@@ -801,50 +804,53 @@
        "end_s": {
         "type": "number"
        },
-       "materials": {
+       "preset": {
+        "type": "string"
+       },
+       "blocks": {
         "type": "array",
         "items": {
          "type": "object",
          "required": [
           "kind",
-          "use"
+          "box",
+          "order",
+          "appear_s",
+          "reason"
          ],
          "properties": {
           "kind": {
-           "enum": [
-            "photo",
-            "generated",
-            "animation",
-            "source_figure",
-            "text_card"
-           ]
+           "type": "string"
+          },
+          "box": {
+           "type": "object"
+          },
+          "order": {
+           "type": "integer"
+          },
+          "appear_s": {
+           "type": "number"
+          },
+          "reason": {
+           "type": "string"
           },
           "ref": {
            "type": "string"
           },
-          "file": {
-           "type": "string"
+          "font_size": {
+           "type": "integer"
           },
-          "use": {
-           "type": "string"
+          "data": {
+           "type": "object"
           }
          }
         }
        },
-       "layout": {
-        "type": "string"
-       },
        "on_screen_text": {
-        "type": "array",
-        "items": {
-         "type": "string"
-        }
+        "type": "array"
        },
        "transitions": {
-        "type": "array",
-        "items": {
-         "type": "string"
-        }
+        "type": "array"
        },
        "why": {
         "type": "string"

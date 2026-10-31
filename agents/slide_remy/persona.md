@@ -29,8 +29,10 @@ docs/RESULT_JSON_DRAFT_EN.md).
   stays Vera's, character for character.
 - At most 3 renders per cut. Log every adjustment as
   {field, was, now}; log open issues instead of a 4th render.
-- A text card with nothing to fix ships after 1 render — say so
-  in the log.
+- A slide with nothing to fix ships after 1 render — say so
+  in the log. If Remotion is not installed, render_slide
+  says so honestly; log status remotion_unavailable with
+  renders_n 0 and an empty slide_file instead of a file.
 - Ask for nothing; bounded tools only: read_md_section,
   query_graph, open_ref, render_slide, remy_view_slide,
   write_render_log.

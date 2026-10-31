@@ -12,6 +12,12 @@ import time
 import urllib.error
 import urllib.request
 
+REMOTION_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))),
+    "video", "remotion")
+
+
 from . import graph
 from . import pc
 from . import pdfingest
@@ -1399,8 +1405,9 @@ def _use_cuts(report):
 
 
 def write_slide_draft(ctx, args):
-    """Vera's slide plan: cut+time match vs Wren's narration,
-    materials backed by helper picks, source figures readable."""
+    """Vera's slide plan v2: cut+time match vs Wren's narration,
+    layout-checked blocks, photo/generated backed by helper picks,
+    source figures readable."""
     obj = (args or {}).get("slide_draft")
     if not isinstance(obj, dict):
         return {"ok": False, "errors": [
@@ -1420,19 +1427,21 @@ def write_slide_draft(ctx, args):
             "animation": _use_cuts(_received_data(ctx,
                                                   "anim_picks"))}
     for i, cut in enumerate(obj["cuts"]):
-        for j, m in enumerate(cut.get("materials", []) or []):
-            if not isinstance(m, dict):
+        for j, b in enumerate(cut.get("blocks", []) or []):
+            if not isinstance(b, dict):
                 continue
-            where = "cuts[%d].materials[%d]" % (i, j)
-            kind = m.get("kind")
-            if kind in have and cut.get("cut_id") not in have[kind]:
-                errors.append("%s: no %s pick for cut %r"
-                              % (where, kind, cut.get("cut_id")))
+            where = "cuts[%d].blocks[%d]" % (i, j)
+            kind = b.get("kind")
+            if kind in ("photo", "generated"):
+                if cut.get("cut_id") not in have.get(kind, set()):
+                    errors.append("%s: no %s pick for cut %r"
+                                  % (where, kind, cut.get("cut_id")))
             elif kind == "source_figure":
-                _readable_ref(errors, m.get("ref"), producer,
+                _readable_ref(errors, b.get("ref"), producer,
                               order_id, where)
-            elif kind not in ("text_card",):
-                errors.append("%s: unknown material kind %r"
+            elif kind not in ("table", "formula", "chart",
+                              "steps", "text"):
+                errors.append("%s: unknown block kind %r"
                               % (where, kind))
     if errors:
         return {"ok": False, "errors": errors}
@@ -1550,9 +1559,55 @@ def make_voice(ctx, args):
             "engine": engine}
 
 
+def _have_remotion():
+    """Remotion usable: node_modules installed and npx on PATH."""
+    if not os.path.isdir(os.path.join(REMOTION_DIR, "node_modules")):
+        return False
+    for exe in ("npx.cmd", "npx"):
+        for d in os.environ.get("PATH", "").split(os.pathsep):
+            if d.strip() and os.path.isfile(
+                    os.path.join(d.strip(), exe)):
+                return True
+    return False
+
+
+def _cut_slide_props(cut, guide):
+    """Cut (slide_draft v2) + style guide -> CutSlide props."""
+    dur = 20
+    try:
+        dur = int(round(float(cut.get("end_s", 20))
+                        - float(cut.get("start_s", 0)))) or 20
+    except (TypeError, ValueError):
+        pass
+    dur = min(max(dur, 1), 30)
+    blocks = []
+    for b in (cut.get("blocks") or []):
+        if not isinstance(b, dict):
+            continue
+        box = b.get("box") or {}
+        nb = {"kind": b.get("kind"),
+              "box": {k: box.get(k) for k in ("x", "y", "w", "h")},
+              "order": b.get("order", 0),
+              "appear_s": b.get("appear_s", 0),
+              "reason": b.get("reason", ""),
+              "font_size": b.get("font_size"),
+              "data": b.get("data") or {}}
+        if b.get("kind") in ("photo", "generated", "source_figure"):
+            ref = b.get("ref") or ""
+            nb["file"] = "" if ref.startswith("pc://") else ref
+        blocks.append(nb)
+    return {"cutId": cut.get("cut_id"), "seconds": dur,
+            "preset": cut.get("preset", "full"), "blocks": blocks,
+            "onScreenText": cut.get("on_screen_text") or [],
+            "guide": guide if isinstance(guide, dict) else {}}
+
+
 def render_slide(ctx, args):
-    """Render one cut's text-card slide (SVG) from the received
-    slide draft + style guide. Max 3 renders per cut per run."""
+    """Render one cut's slide PNG via the Remotion CutSlide
+    composition (last frame of the cut). Max 3 renders per cut per
+    run. Without Remotion the render is skipped honestly: ok True
+    with status remotion_unavailable (the 3-render cap still
+    applies)."""
     from . import video
     cut_id = ((args or {}).get("cut_id") or "").strip()
     if not cut_id:
@@ -1574,16 +1629,36 @@ def render_slide(ctx, args):
         return {"ok": False, "errors": [
             "cut %s already used %d renders"
             % (cut_id, video.RENDER_MAX)]}
+    if not _have_remotion():
+        counts[cut_id] = n
+        _counter_save(countp, counts)
+        return {"ok": True, "slide_file": "",
+                "status": "remotion_unavailable",
+                "renders_n": 0,
+                "note": "Remotion is not installed; run "
+                        "tools/setup_video.ps1 to install it"}
     sdir = os.path.join(ctx["run_dir"], "slides")
     os.makedirs(sdir, exist_ok=True)
-    out = os.path.join(sdir, "%s.svg" % cut_id)
+    out = os.path.join(sdir, "%s.png" % cut_id)
+    props = _cut_slide_props(cut, guide)
+    last_frame = props["seconds"] * 30 - 1
+    exe = "npx.cmd" if os.name == "nt" else "npx"
+    cmd = [exe, "remotion", "still", "CutSlide", out,
+           "--props=%s" % json.dumps(props),
+           "--public-dir=%s" % sdir,
+           "--frame=%d" % last_frame]
     try:
-        video.render_text_card(cut, guide, out)
-    except (OSError, ValueError) as exc:
+        proc = subprocess.run(cmd, cwd=REMOTION_DIR,
+                              capture_output=True, text=True,
+                              timeout=300)
+    except (OSError, subprocess.SubprocessError) as exc:
         return {"ok": False, "errors": ["render failed: %s" % exc]}
+    if proc.returncode != 0 or not os.path.isfile(out):
+        tail = (proc.stderr or "")[-400:]
+        return {"ok": False, "errors": ["render failed: %s" % tail]}
     counts[cut_id] = n
     _counter_save(countp, counts)
-    return {"ok": True, "slide_file": "slides/%s.svg" % cut_id,
+    return {"ok": True, "slide_file": "slides/%s.png" % cut_id,
             "renders_n": n}
 
 
@@ -1738,8 +1813,9 @@ TOOLS = {
     ),
     "render_slide": (
         render_slide,
-        "Render one cut's text-card slide from the received slide "
-        "draft + style guide. Max 3 renders per cut per run.",
+        "Render one cut's slide PNG via Remotion from the "
+        "received slide draft + style guide. Max 3 renders per cut "
+        "per run.",
         {"type": "object",
          "properties": {"cut_id": {"type": "string"}},
          "required": ["cut_id"], "additionalProperties": False},

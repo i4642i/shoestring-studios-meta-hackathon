@@ -17,6 +17,7 @@ Prereqs: Python 3.10+, Git, an LLM key (see `.env` below).
    - `JETSON_EMBED_URL`, `EMBED_REMOTE_TOKEN` — only for the `jetson` profile: where the LAN embed server lives and its token.
 3. Double-click `start_server.bat` (or run `python scripts/server.py`).
 4. Open the printed URL (usually http://localhost:8000) → Crew tab → click Marty.
+5. Video toolchain (optional — real slide PNGs + local voiceover only; without it the app runs and records honest "unavailable" notes): install Node.js 16+ and ffmpeg, then run `powershell -ExecutionPolicy Bypass -File tools/setup_video.ps1` (installs the Remotion renderer in `video/remotion/`). For local TTS: install espeak-ng, then `pip install "kokoro>=0.9.4"` (see docs/PLAN_V8_VIDEO_EN.md §1b).
 
 ## Layout
 
@@ -46,6 +47,9 @@ Our code imports pdfplumber, lightrag-hku, sentence-transformers, numpy and Pill
 | scikit-learn | 1.9.1 | BSD-3-Clause | behind sentence-transformers |
 | huggingface_hub | 2.3.0 | Apache-2.0 | model download behind sentence-transformers |
 | python-dotenv | 1.2.4 (pinned, not imported) | BSD-3-Clause | unused: our code loads `.env` with its own stdlib loader |
+| Remotion | 4.0.539 (via npm, never bundled) | PROPRIETARY Free License (free for ≤3 people) | cut-slide PNG stills |
+| KaTeX | 0.19.1 (via npm, never bundled) | MIT | formula rendering in the Remotion composition |
+| React (+ react-dom) | 19.2.3 (via npm, never bundled) | MIT | UI library behind the Remotion composition |
 
 Models (licenses read from their Hugging Face model cards): all-MiniLM-L6-v2 (Apache-2.0, local profile) and BAAI/bge-m3 (MIT, Jetson profile).
 

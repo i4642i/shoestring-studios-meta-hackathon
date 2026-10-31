@@ -63,6 +63,13 @@ turn (the planned fallback becomes the design).
    ("SEE LICENSE IN LICENSE.md"), NOT open source; credits
    must say so. Decision: Remotion templates for Remy +
    ffmpeg fallback. ffmpeg is NOT on local PATH (checked).
+   Implemented (fix round): video/remotion/ holds the CutSlide
+   composition (props: cutId, seconds, preset, blocks,
+   onScreenText, guide); render_slide runs `npx remotion
+   still` per cut into slides/<cut>.png; without the install
+   it returns status remotion_unavailable (renders_n 0) and
+   the video node records an empty slide instead of failing.
+   No MP4 is rendered anywhere in tests or checks.
 3. muse-voice-transcribe-1.0. Turn-level timestamps ONLY; no
    word-level timestamps, no confidence scores (official Meta
    speech-to-text docs, verbatim). Price $0.18/audio hour is
@@ -123,12 +130,18 @@ turn (the planned fallback becomes the design).
 - `anim_picks` v1 (Max): per cut template or "none" with
   values + checked refs. Checks: values trace to checked
   source tables/formulas only.
-- `slide_draft` v1 (Vera): per cut `materials[1..2],
-  layout, on_screen_text, cut_time, transitions[], why`.
-  Checks: 1–2 materials or text card, times match Wren.
+- `slide_draft` v2 (Vera): per cut `preset` +
+  `blocks[1..4]` (kind, 1280x720 box, order, appear_s,
+  reason + kind data), `on_screen_text, transitions[],
+  why`. Checks: cut set + times match Wren; boxes inside
+  the 64px safe area, no overlap, fonts ≥20px, reveal
+  steps finish inside the cut; photo/generated backed by
+  helper picks.
 - `render_log` v1 (Remy): per cut `slide_file,
   adjustments[]` (layout values only), `renders_n ≤3`,
-  `issues[]`. Checks: content fields equal Vera's.
+  `issues[]`, `status` (rendered|remotion_unavailable).
+  Checks: content fields equal Vera's; unavailable cuts
+  log renders_n 0 with an empty slide_file.
 - Final: existing `video` + new `storyboard_table` v1
   (part, scene, cut, narration, screen, materials).
 
@@ -174,9 +187,10 @@ turn (the planned fallback becomes the design).
   categories + schemas + writer tools + checks; 3 new PCs
   (storage + recipients + read tools); make_voice
   (Kokoro adapter + stub engine + duration read);
-  Pia/Gene/Max stubs ("none"); Vera text-card drafts;
-  Remy text-card render (single render); video assembly
-  (join + .srt + table, ffmpeg-or-Remotion seam);
+  Pia/Gene/Max stubs ("none"); Vera layout drafts (v2
+  boxed blocks); Remy Remotion stills (PNG per cut,
+  honest skip without the install); video assembly
+  (join + .srt + table over Remotion PNGs);
   flow v8 file + tab; step mode; fixtures + suites green.
 - Phase B: real Pia (Openverse search+pick), Gene
   (muse-image + reuse), Max (templates + checked values),

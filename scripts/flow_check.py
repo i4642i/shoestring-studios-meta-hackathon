@@ -374,12 +374,18 @@ GEN = {"cuts": [{"cut_id": "s1c1", "decision": "none",
 ANIM = {"cuts": [{"cut_id": "s1c1", "decision": "none",
                   "template": "none", "reason": "stub"}]}
 SLIDE = {"cuts": [{"cut_id": "s1c1", "start_s": 0, "end_s": 20,
-                   "materials": [{"kind": "text_card",
-                                  "use": "Card"}],
-                   "layout": "center", "on_screen_text": ["Hello"],
+                   "preset": "full",
+                   "blocks": [{"kind": "text",
+                               "box": {"x": 64, "y": 300, "w": 1152,
+                                       "h": 120},
+                               "order": 0, "appear_s": 0,
+                               "reason": "Headline",
+                               "font_size": 44,
+                               "data": {"lines": ["Hello"]}}],
+                   "on_screen_text": ["Hello"],
                    "transitions": [], "why": "stub"}]}
 RLOG = {"cuts": [{"cut_id": "s1c1",
-                  "slide_file": "slides/s1c1.svg", "renders_n": 1,
+                  "slide_file": "slides/s1c1.png", "renders_n": 1,
                   "adjustments": [], "issues": []}]}
 PAY = {"sales_sam": ("sales_sam", {"request": REQ}),
        "pd_marty": ("pd_marty", {"concept": CONCEPT,
@@ -414,9 +420,9 @@ def stub(agent_dir, run_dir, brief, input_md):
     if who == "slide_remy":
         sdir = os.path.join(run_dir, "slides")
         os.makedirs(sdir, exist_ok=True)
-        with open(os.path.join(sdir, "s1c1.svg"), "w",
+        with open(os.path.join(sdir, "s1c1.png"), "w",
                   encoding="utf-8") as f:
-            f.write("<svg/>")
+            f.write("PNG")
     res = results.make_result(producer, brief["order_id"],
                               brief["flow_run_id"], cats)
     results.save_result(run_dir, res)
@@ -478,14 +484,14 @@ wren = results.load_result(os.path.join(rdir, "voice_wren",
                                         "result.json"))
 ok(wren["status"] == "checked"
    and wren["categories"]["narration"]["version"] == 2, "wren checked")
-for _aid, _cat in (("photo_pia", "photo_picks"),
-                   ("image_gene", "gen_picks"),
-                   ("anim_max", "anim_picks"),
-                   ("board_vera", "slide_draft"),
-                   ("slide_remy", "render_log")):
+for _aid, _cat, _ver in (("photo_pia", "photo_picks", 1),
+                         ("image_gene", "gen_picks", 1),
+                         ("anim_max", "anim_picks", 1),
+                         ("board_vera", "slide_draft", 2),
+                         ("slide_remy", "render_log", 1)):
     _res = results.load_result(os.path.join(rdir, _aid, "result.json"))
     ok(_res["status"] == "checked"
-       and _res["categories"][_cat]["version"] == 1,
+       and _res["categories"][_cat]["version"] == _ver,
        "%s checked" % _aid)
 vid = results.load_result(os.path.join(rdir, "video_production",
                                        "result.json"))

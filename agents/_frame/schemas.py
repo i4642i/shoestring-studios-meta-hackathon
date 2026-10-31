@@ -1298,8 +1298,198 @@ def validate_anim_picks(obj, storyboard):
     return errors
 
 
+# --- Cut-slide layout (Remotion CutSlide, 1280x720) ----------------------
+SLIDE_W = 1280
+SLIDE_H = 720
+SAFE_MARGIN = 64          # 5% of width on every side
+MIN_FONT = 20             # smallest readable size at 720p
+VERA_MAX_BLOCKS = 4
+REVEAL_STEP_S = {"table": 0.5, "formula": 1.0, "steps": 0.8}
+BLOCK_MAX_ITEMS = {"table": 10, "formula": 8, "steps": 8, "text": 6}
+BLOCK_KINDS = ("photo", "generated", "source_figure", "table",
+               "formula", "chart", "steps", "text")
+LAYOUT_PRESETS = ("full", "split_h", "split_v", "main_side",
+                  "grid2x2")
+BLOCK_FONT_DEFAULT = {"table": 24, "formula": 30, "steps": 26,
+                      "text": 44}
+
+
+def _is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def validate_cut_layout(cut, dur_s):
+    """One slide cut: boxes inside the safe area, no overlap, fonts
+    readable, reveal steps finish inside the cut."""
+    cid = cut.get("cut_id") if isinstance(cut, dict) else "?"
+    errors = []
+    if not isinstance(cut, dict):
+        return ["cut %s must be an object" % cid]
+    where = "cut %s" % cid
+    if cut.get("preset") not in LAYOUT_PRESETS:
+        errors.append("%s.preset one of %s" % (where, LAYOUT_PRESETS))
+    blocks = cut.get("blocks")
+    if not isinstance(blocks, list) or \
+            not (1 <= len(blocks) <= VERA_MAX_BLOCKS):
+        errors.append("%s.blocks must hold 1-%d items"
+                      % (where, VERA_MAX_BLOCKS))
+        return errors
+    boxes = []
+    for j, b in enumerate(blocks):
+        bw = "%s.blocks[%d]" % (where, j)
+        if not isinstance(b, dict):
+            errors.append("%s must be an object" % bw)
+            continue
+        kind = b.get("kind")
+        if kind not in BLOCK_KINDS:
+            errors.append("%s.kind one of %s" % (bw, BLOCK_KINDS))
+        box = b.get("box")
+        w = None
+        if isinstance(box, dict):
+            vals = [box.get(k) for k in ("x", "y", "w", "h")]
+            if all(isinstance(v, int) and not isinstance(v, bool)
+                   and v >= 0 for v in vals):
+                x, y, w, h = vals
+                min_w, min_h = (200, 40) if kind == "text" \
+                    else (120, 90)
+                if w < min_w or h < min_h:
+                    errors.append("%s.box min %dx%d"
+                                  % (bw, min_w, min_h))
+                if x < SAFE_MARGIN or y < SAFE_MARGIN or \
+                        x + w > SLIDE_W - SAFE_MARGIN or \
+                        y + h > SLIDE_H - SAFE_MARGIN:
+                    errors.append("%s.box outside the safe area" % bw)
+                boxes.append((j, x, y, w, h))
+            else:
+                errors.append("%s.box x/y/w/h ints >= 0" % bw)
+        else:
+            errors.append("%s.box must be an object" % bw)
+        font = b.get("font_size",
+                     BLOCK_FONT_DEFAULT.get(kind, MIN_FONT + 4))
+        font_ok = isinstance(font, int) and \
+            not isinstance(font, bool) and font >= MIN_FONT
+        if not font_ok:
+            errors.append("%s.font_size int >= %d" % (bw, MIN_FONT))
+        ap = b.get("appear_s", 0)
+        ap_ok = _is_num(ap) and 0 <= ap < dur_s
+        if not ap_ok:
+            errors.append("%s.appear_s in [0, %s)"
+                          % (bw, dur_s))
+        if not isinstance(b.get("order"), int) or \
+                isinstance(b.get("order"), bool) or \
+                b.get("order") < 0:
+            errors.append("%s.order int >= 0" % bw)
+        if not isinstance(b.get("reason"), str) or not b.get("reason"):
+            errors.append("%s.reason needs non-empty text" % bw)
+        data = b.get("data") if isinstance(b.get("data"), dict) \
+            else {}
+        reveal_n = 0
+        if kind == "table":
+            heads = data.get("headers")
+            rows = data.get("rows")
+            if not isinstance(heads, list) or not heads or \
+                    not all(isinstance(t, str) and t for t in heads):
+                errors.append("%s.data.headers nonempty str list"
+                              % bw)
+                heads = []
+            if not isinstance(rows, list) or not rows or \
+                    len(rows) > BLOCK_MAX_ITEMS["table"]:
+                errors.append("%s.data.rows 1-%d"
+                              % (bw, BLOCK_MAX_ITEMS["table"]))
+                rows = []
+            else:
+                for r in rows:
+                    if not isinstance(r, list) or \
+                            len(r) != len(heads) or \
+                            not all(isinstance(t, str) for t in r):
+                        errors.append("%s.data.rows match headers"
+                                      % bw)
+                        break
+            if data.get("reveal", "all") not in ("all", "rows"):
+                errors.append("%s.data.reveal all|rows" % bw)
+            elif data.get("reveal") == "rows":
+                reveal_n = len(rows)
+            if font_ok and w is not None and heads:
+                longest = max(
+                    [len(t) for t in heads if isinstance(t, str)]
+                    + [len(t) for r in rows if isinstance(r, list)
+                       for t in r if isinstance(t, str)] + [0])
+                if longest * font * 0.55 * len(heads) > w:
+                    errors.append("%s.data too wide for the box" % bw)
+        elif kind == "formula":
+            lines = data.get("lines")
+            if not isinstance(lines, list) or not lines or \
+                    len(lines) > BLOCK_MAX_ITEMS["formula"] or \
+                    not all(isinstance(t, str) and t for t in lines):
+                errors.append("%s.data.lines 1-%d nonempty"
+                              % (bw, BLOCK_MAX_ITEMS["formula"]))
+                lines = []
+            reveal_n = len(lines)
+            if font_ok and w is not None and lines:
+                longest = max(len(t) for t in lines)
+                if longest * font * 0.55 * 0.8 > w:
+                    errors.append("%s.data too wide for the box" % bw)
+        elif kind == "chart":
+            if data.get("subtype") not in ("bar", "line"):
+                errors.append("%s.data.subtype bar|line" % bw)
+            labs = data.get("labels")
+            vals = data.get("values")
+            if not isinstance(labs, list) or len(labs) < 2 or \
+                    not all(isinstance(t, str) and t for t in labs):
+                errors.append("%s.data.labels >= 2 nonempty" % bw)
+                labs = []
+            if not isinstance(vals, list) or len(vals) != len(labs) \
+                    or not all(_is_num(v) for v in vals):
+                errors.append("%s.data.values match labels" % bw)
+        elif kind == "steps":
+            items = data.get("items")
+            if not isinstance(items, list) or \
+                    not (2 <= len(items) <= BLOCK_MAX_ITEMS["steps"]) \
+                    or not all(isinstance(t, str) and t
+                               for t in items):
+                errors.append("%s.data.items 2-%d nonempty"
+                              % (bw, BLOCK_MAX_ITEMS["steps"]))
+                items = []
+            reveal_n = len(items)
+            if font_ok and w is not None and items:
+                need = sum(len(t) for t in items) * font * 0.55 \
+                    + (len(items) - 1) * font
+                if need > w:
+                    errors.append("%s.data too wide for the box" % bw)
+        elif kind == "text":
+            lines = data.get("lines")
+            if not isinstance(lines, list) or \
+                    not (1 <= len(lines) <= BLOCK_MAX_ITEMS["text"]) \
+                    or not all(isinstance(t, str) and t
+                               for t in lines):
+                errors.append("%s.data.lines 1-%d nonempty"
+                              % (bw, BLOCK_MAX_ITEMS["text"]))
+                lines = []
+            if font_ok and w is not None and lines:
+                longest = max(len(t) for t in lines)
+                if longest * font * 0.55 > w:
+                    errors.append("%s.data too wide for the box" % bw)
+        elif kind in ("photo", "generated", "source_figure"):
+            if not isinstance(b.get("ref"), str) or not b.get("ref"):
+                errors.append("%s.ref needs non-empty text" % bw)
+        step = REVEAL_STEP_S.get(kind)
+        if step and reveal_n > 1 and ap_ok and \
+                ap + (reveal_n - 1) * step > dur_s:
+            errors.append("%s reveal ends after the cut" % bw)
+    for a in range(len(boxes)):
+        for b2 in range(a + 1, len(boxes)):
+            _, x1, y1, w1, h1 = boxes[a]
+            _, x2, y2, w2, h2 = boxes[b2]
+            if x1 < x2 + w2 and x2 < x1 + w1 and \
+                    y1 < y2 + h2 and y2 < y1 + h1:
+                errors.append("%s.blocks[%d] overlaps blocks[%d]"
+                              % (where, boxes[a][0], boxes[b2][0]))
+    return errors
+
+
 def validate_slide_draft(obj, narration):
-    """Vera's slide plan: cut+time match vs Wren, 1-2 materials."""
+    """Vera's slide plan v2: cut+time match vs Wren, Remotion-ready
+    layout (preset + boxed blocks)."""
     errors = []
     if not isinstance(obj, dict):
         return ["slide_draft must be an object"]
@@ -1315,25 +1505,17 @@ def validate_slide_draft(obj, narration):
         if not isinstance(cut, dict):
             errors.append("%s must be an object" % where)
             continue
-        for k in ("cut_id", "start_s", "end_s", "materials",
-                  "layout", "on_screen_text", "transitions",
-                  "why"):
+        for k in ("cut_id", "start_s", "end_s", "preset", "blocks",
+                  "on_screen_text", "transitions", "why"):
             if k not in cut:
                 errors.append("%s missing: %s" % (where, k))
         got.append(cut.get("cut_id"))
         _check_cut_times(errors, where, cut, want)
-        mats = cut.get("materials")
-        if not isinstance(mats, list) or not (1 <= len(mats)
-                                             <= VERA_MAX_MATERIALS):
-            errors.append("%s.materials must hold 1-%d items"
-                          % (where, VERA_MAX_MATERIALS))
-        else:
-            for j, m in enumerate(mats):
-                if not isinstance(m, dict) or not m.get("kind") \
-                        or not m.get("use"):
-                    errors.append("%s.materials[%d] needs "
-                                  "{kind, use}" % (where, j))
-        _nonempty(errors, cut, "layout", where)
+        st, en = cut.get("start_s"), cut.get("end_s")
+        if _is_num(st) and _is_num(en) and en > st:
+            for e in validate_cut_layout(cut, en - st):
+                errors.append("%s.%s" % (where, e))
+        _nonempty(errors, cut, "preset", where)
         _nonempty(errors, cut, "why", where)
         for k in ("on_screen_text", "transitions"):
             if not isinstance(cut.get(k), list):
@@ -1367,12 +1549,24 @@ def validate_render_log(obj, slide_draft):
         if cut.get("cut_id") not in want:
             errors.append("%s.cut_id %r is not in the slide draft"
                           % (where, cut.get("cut_id")))
-        _nonempty(errors, cut, "slide_file", where)
-        n = cut.get("renders_n")
-        if not isinstance(n, int) or isinstance(n, bool) \
-                or not (1 <= n <= REMY_MAX_RENDERS):
-            errors.append("%s.renders_n must be 1-%d"
-                          % (where, REMY_MAX_RENDERS))
+        status = cut.get("status", "rendered")
+        if status not in ("rendered", "remotion_unavailable"):
+            errors.append("%s.status must be rendered or "
+                          "remotion_unavailable" % where)
+        if status == "remotion_unavailable":
+            if not isinstance(cut.get("slide_file"), str):
+                errors.append("%s.slide_file must be a string"
+                              % where)
+            if cut.get("renders_n") != 0:
+                errors.append("%s.renders_n must be 0 when Remotion "
+                              "is unavailable" % where)
+        else:
+            _nonempty(errors, cut, "slide_file", where)
+            n = cut.get("renders_n")
+            if not isinstance(n, int) or isinstance(n, bool) \
+                    or not (1 <= n <= REMY_MAX_RENDERS):
+                errors.append("%s.renders_n must be 1-%d"
+                              % (where, REMY_MAX_RENDERS))
         adjs = cut.get("adjustments")
         if not isinstance(adjs, list):
             errors.append("%s.adjustments must be a list" % where)
@@ -1533,24 +1727,31 @@ def render_anim_picks_md(obj):
 
 
 def render_slide_draft_md(obj):
-    """Vera's slide plan as markdown."""
+    """Vera's slide plan (v2 layout) as markdown."""
     lines = ["# Slide plan — %d cuts" % len(obj.get("cuts", [])),
              ""]
     for c in obj.get("cuts", []):
         lines += ["## Cut %s (%s–%s s)"
                   % (c.get("cut_id"), c.get("start_s"),
                      c.get("end_s")),
-                  "", "- Layout: %s" % c.get("layout"),
+                  "", "- Layout: %s" % (c.get("preset") or
+                                         c.get("layout")),
                   "- On screen: %s"
                   % (" / ".join(c.get("on_screen_text", []))
                      or "—"),
                   "- Transitions: %s"
                   % (", ".join(c.get("transitions", [])) or "—"),
                   "- Why: %s" % c.get("why")]
-        for m in c.get("materials", []):
-            lines.append("- Material [%s]: %s (%s)"
-                         % (m.get("kind"), m.get("file") or
-                            m.get("ref") or "—", m.get("use")))
+        for b in c.get("blocks", []):
+            if not isinstance(b, dict):
+                continue
+            box = b.get("box") or {}
+            lines.append("- Block [%s] %s @(%s,%s %sx%s): %s"
+                         % (b.get("kind"),
+                            b.get("ref") or "inline data",
+                            box.get("x"), box.get("y"),
+                            box.get("w"), box.get("h"),
+                            b.get("reason")))
         lines.append("")
     return "\n".join(lines)
 

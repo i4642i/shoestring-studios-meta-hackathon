@@ -1,5 +1,5 @@
-"""Phase A video production: SVG text cards, subtitle timing, the
-storyboard table, and the ffmpeg assembly seam.
+"""Phase A video production: Remotion PNG slides, subtitle
+timing, the storyboard table, and the ffmpeg assembly seam.
 
 Pure planning functions never touch the network or a model, and
 never run ffmpeg. Only run_ffmpeg() executes anything, and only
@@ -141,7 +141,7 @@ def build_table(narration, storyboard, slide_draft, scene_part=None):
         scr = screens.get(cid, {})
         sld = slides.get(cid, {})
         mats = []
-        for m in (sld.get("materials") or []):
+        for m in (sld.get("blocks") or sld.get("materials") or []):
             if isinstance(m, dict):
                 mats.append(m.get("ref") or m.get("kind") or "")
             else:

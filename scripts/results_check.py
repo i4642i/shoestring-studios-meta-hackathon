@@ -54,10 +54,11 @@ ok(set(reg) == {"brief", "cases", "concept", "concepts", "source",
 ok(reg["source"]["version"] == 3 and reg["structure"]["version"] == 3
    and reg["storyboard"]["version"] == 2
    and reg["narration"]["version"] == 2
+   and reg["slide_draft"]["version"] == 2
    and all(reg[c]["version"] == 1 for c in reg
            if c not in ("source", "structure", "storyboard",
-                        "narration")),
-   "source v3 + structure v3 + wren/penn v2, rest v1")
+                        "narration", "slide_draft")),
+   "source v3 + structure v3 + wren/penn/slide v2, rest v1")
 
 r = results.make_result("sales_sam", "o1", "r1", {"request": dict(REQ)})
 ok(r["status"] == "unverified" and r["format_version"] == 1

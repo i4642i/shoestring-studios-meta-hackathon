@@ -911,13 +911,21 @@ def _run_code_node(run_dir, node_id, order_id, order_brief, incoming,
         return {"ok": False,
                 "error": "video_production needs narration cuts"}
     slides, missing = {}, []
+    unavail = set()
+    for rc in ((data.get("render_log") or {}).get("cuts") or []):
+        if isinstance(rc, dict) and \
+                rc.get("status") == "remotion_unavailable" and \
+                rc.get("cut_id"):
+            unavail.add(rc["cut_id"])
     for cut in cuts:
         cid = cut["cut_id"]
         cand = os.path.join(run_dir, "slide_remy", "slides",
-                            "%s.svg" % cid)
+                            "%s.png" % cid)
         if os.path.isfile(cand):
             slides[cid] = os.path.join("slide_remy", "slides",
-                                       "%s.svg" % cid)
+                                       "%s.png" % cid)
+        elif cid in unavail:
+            slides[cid] = ""
         else:
             missing.append("slide for %s" % cid)
     audio = {}
