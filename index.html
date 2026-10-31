@@ -4847,6 +4847,47 @@ function mountReception(box, appearance, bub) {
   putBox(0.95, 0.05, 0.04, signFrameMat, 4.2, 1.49, 0.03);
   putBox(0.05, 0.47, 0.04, signFrameMat, 3.75, 1.7, 0.03);
   putBox(0.05, 0.47, 0.04, signFrameMat, 4.65, 1.7, 0.03);
+  // Slogan on the left wall: same canvas-texture technique, 2x canvas.
+  // rotation.y = +90deg like the wall: texture +u points to -z, which
+  // is the viewer's right when facing the wall, so no mirroring.
+  const sloganC = document.createElement("canvas");
+  sloganC.width = 2048;
+  sloganC.height = 600;
+  const sl = sloganC.getContext("2d");
+  sl.fillStyle = "#f7f3ea";
+  sl.fillRect(0, 0, 2048, 600);
+  sl.strokeStyle = "#1d2433";
+  sl.lineWidth = 8;
+  sl.strokeRect(18, 18, 2012, 564);
+  sl.textAlign = "center";
+  sl.fillStyle = "#1d2433";
+  let slSize = 176;
+  sl.letterSpacing = "20px";
+  const sloganText = "MAKE AI PROVE IT.";
+  do {
+    sl.font = "800 " + slSize + 'px -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+    if (sl.measureText(sloganText).width <= 1900 || slSize <= 60) break;
+    slSize -= 8;
+  } while (true);
+  sl.fillText(sloganText, 1024, 335);
+  sl.fillStyle = "#8a8f9c";
+  sl.letterSpacing = "14px";
+  sl.font = '700 68px -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+  sl.fillText("SHOESTRING STUDIOS", 1024, 472);
+  const sloganTex = new THREE.CanvasTexture(sloganC);
+  sloganTex.colorSpace = THREE.SRGBColorSpace;
+  sloganTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const slogan = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.7),
+    new THREE.MeshStandardMaterial({ map: sloganTex, roughness: 0.9 }));
+  slogan.rotation.y = Math.PI / 2;
+  slogan.position.set(0.03, 2.0, 2);
+  scene.add(slogan);
+  const sloganFrameMat = new THREE.MeshStandardMaterial({ color: 0x1d2433, roughness: 0.8 });
+  putBox(0.05, 0.06, 2.52, sloganFrameMat, 0.03, 2.38, 2);
+  putBox(0.05, 0.06, 2.52, sloganFrameMat, 0.03, 1.62, 2);
+  putBox(0.05, 0.82, 0.06, sloganFrameMat, 0.03, 2.0, 0.77);
+  putBox(0.05, 0.82, 0.06, sloganFrameMat, 0.03, 2.0, 3.23);
+  window.__orderSign = { text: sloganText, y: 2.0 };
   // Warm glow for the floor lamp by the armchair (soft, small radius).
   const lampGlow = new THREE.PointLight(0xffc98a, 2, 3, 2);
   lampGlow.position.set(0.6, 1.45, 3.42);
@@ -5049,6 +5090,9 @@ function mountReception(box, appearance, bub) {
   }, { passive: true });
   renderer.domElement.addEventListener("pointerdown",
     () => { camInteracted = true; camCancel(); });
+  if (new URLSearchParams(location.search).has("camdebug")) {
+    window.__recepCam = { camera, controls, homePos, homeTgt };
+  }
   box.appendChild(renderer.domElement);
   const hint = document.createElement("div");
   hint.className = "vhint-below";
