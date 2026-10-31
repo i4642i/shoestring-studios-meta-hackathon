@@ -8,6 +8,7 @@ import json
 import os
 import re
 import struct
+import threading
 import time
 
 MAP_VERSION = 2  # has items carry kind (+file for figures) and equations
@@ -18,6 +19,22 @@ MIN_FIG_PT = 50  # images smaller than this (both sides, PDF points) are decor
 _HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(_HERE))
 ROOT_OVERRIDE = None  # tests point storage+orders at a temp root
+
+_PATH_LOCKS = {}
+_PATH_LOCKS_GUARD = threading.Lock()
+
+
+def _path_lock(path):
+    """The mutex for one entry (or PC) dir: every read-modify-write
+    below holds it, so parallel clones never interleave. Nesting
+    order is always PC dir first, then entry dir."""
+    key = os.path.normcase(os.path.abspath(path))
+    with _PATH_LOCKS_GUARD:
+        lock = _PATH_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _PATH_LOCKS[key] = lock
+        return lock
 
 
 def _base(root):
@@ -1766,11 +1783,19 @@ def set_recipients(pcname, doc_id, order_id, agents, set_by, kind="map",
                    parts=None, root=None):
     """Upsert recipients for one order (merge per agent; other orders'
     rows are kept). kind is "map" or "full"; parts (refs, []) limits
-    the grant to those parts. Returns the full row list."""
+    the grant to those parts. Atomic under the entry lock. Returns
+    the full row list."""
     if kind not in ("map", "full"):
         raise ValueError("kind must be map or full")
     parts = list(parts or [])
-    p = os.path.join(entry_dir(pcname, doc_id, root), "entry.json")
+    edir = entry_dir(pcname, doc_id, root)
+    with _path_lock(edir):
+        return _set_recipients_in(edir, order_id, agents, set_by,
+                                  kind, parts)
+
+
+def _set_recipients_in(edir, order_id, agents, set_by, kind, parts):
+    p = os.path.join(edir, "entry.json")
     with open(p, encoding="utf-8") as f:
         entry = json.load(f)
     rows = recipients_of(entry) or []
@@ -2275,10 +2300,19 @@ def media_grantees(pcname, set_by):
 def voice_save(order_id, cut_id, wav_bytes, text, seconds, attempt,
                engine, root=None):
     """Store one cut's narration audio in this order's Voice entry
-    (one entry per order). Returns {ref, doc_id, file}."""
+    (one entry per order). Atomic under the entry lock. Returns
+    {ref, doc_id, file}."""
     doc_id = content_id("voice:" + order_id)
     edir = entry_dir("voice", doc_id, root)
     os.makedirs(os.path.join(edir, "audio"), exist_ok=True)
+    with _path_lock(edir):
+        return _voice_save_in(edir, order_id, cut_id, wav_bytes,
+                              text, seconds, attempt, engine)
+
+
+def _voice_save_in(edir, order_id, cut_id, wav_bytes, text, seconds,
+                   attempt, engine):
+    doc_id = os.path.basename(edir)
     ep = os.path.join(edir, "entry.json")
     if os.path.isfile(ep):
         with open(ep, encoding="utf-8") as f:
@@ -2307,16 +2341,74 @@ def voice_save(order_id, cut_id, wav_bytes, text, seconds, attempt,
             "file": fname}
 
 
+def _find_duplicate_blob(pcname, blob, license, root):
+    """Entry dir already holding these exact bytes under the same
+    license, or None. Same file, new URL: reuse, don't store twice."""
+    digest = hashlib.sha256(blob or b"").hexdigest()
+    edirs = os.path.join(pc_dir(pcname, root), "entries")
+    try:
+        names = sorted(os.listdir(edirs))
+    except OSError:
+        return None
+    for n in names:
+        ep = os.path.join(edirs, n, "entry.json")
+        try:
+            with open(ep, encoding="utf-8") as f:
+                e = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(e, dict):
+            continue
+        if e.get("sha256") == digest \
+                and e.get("license") == license \
+                and e.get("file"):
+            full = os.path.join(edirs, n, "files", e["file"])
+            if os.path.isfile(full):
+                return os.path.join(edirs, n)
+    return None
+
+
+def _merge_media_rows(entry, pcname, order_id, set_by):
+    rows = recipients_of(entry) or []
+    have = {(r.get("agent"), r.get("order_id")) for r in rows
+            if isinstance(r, dict)}
+    now = time.strftime("%Y-%m-%dT%H:%M:%S")
+    for a in media_grantees(pcname, set_by):
+        if (a, order_id) not in have:
+            rows.append({"agent": a, "order_id": order_id,
+                         "kind": "full", "parts": [],
+                         "set_by": set_by, "at": now})
+    entry["recipients"] = rows
+
+
 def image_store_pick(order_id, source_url, blob, license, reason,
                      set_by="photo_pia", suffix=".jpg", root=None):
     """Store one licensed web pick (one entry per URL: same URL is
-    the same entry, recipients gain rows per order)."""
+    the same entry, recipients gain rows per order; same bytes
+    under the same license reuse the first entry). Atomic under
+    the PC + entry locks."""
     doc_id = content_id("image:" + source_url)
-    edir = entry_dir("image", doc_id, root)
+    with _path_lock(pc_dir("image", root)):
+        edir = entry_dir("image", doc_id, root)
+        dup = None
+        if not os.path.isfile(os.path.join(edir, "entry.json")):
+            dup = _find_duplicate_blob("image", blob, license,
+                                       root)
+        if dup is not None:
+            edir = dup
+        with _path_lock(edir):
+            return _image_store_pick_in(
+                edir, order_id, source_url, blob, license,
+                reason, set_by, suffix, bool(dup))
+
+
+def _image_store_pick_in(edir, order_id, source_url, blob, license,
+                         reason, set_by, suffix, deduped):
     os.makedirs(os.path.join(edir, "files"), exist_ok=True)
     ep = os.path.join(edir, "entry.json")
     new = not os.path.isfile(ep)
     if new:
+        doc_id = os.path.basename(edir)
         entry = {"pc": "image", "doc_id": doc_id,
                  "ref": entry_ref("image", doc_id),
                  "source_url": source_url, "license": license,
@@ -2324,39 +2416,50 @@ def image_store_pick(order_id, source_url, blob, license, reason,
     else:
         with open(ep, encoding="utf-8") as f:
             entry = json.load(f)
+    if deduped:
+        _merge_media_rows(entry, "image", order_id, set_by)
+        with open(ep, "w", encoding="utf-8") as f:
+            json.dump(entry, f, ensure_ascii=False, indent=2)
+        return {"ref": entry["ref"], "doc_id": entry["doc_id"],
+                "file": entry["file"], "reused_entry": True,
+                "deduped": True}
     fname = "pick%s" % suffix
     with open(os.path.join(edir, "files", fname), "wb") as f:
         f.write(blob)
     entry["file"] = fname
+    entry["sha256"] = hashlib.sha256(blob or b"").hexdigest()
     dims = media_dims_from_bytes(blob)
     entry["width"], entry["height"] = dims if dims else (None, None)
     entry["reason"] = reason
-    rows = recipients_of(entry) or []
-    have = {(r.get("agent"), r.get("order_id")) for r in rows
-            if isinstance(r, dict)}
-    now = time.strftime("%Y-%m-%dT%H:%M:%S")
-    for a in media_grantees("image", set_by):
-        if (a, order_id) not in have:
-            rows.append({"agent": a, "order_id": order_id,
-                         "kind": "full", "parts": [],
-                         "set_by": set_by, "at": now})
-    entry["recipients"] = rows
+    _merge_media_rows(entry, "image", order_id, set_by)
     with open(ep, "w", encoding="utf-8") as f:
         json.dump(entry, f, ensure_ascii=False, indent=2)
-    return {"ref": entry["ref"], "doc_id": doc_id, "file": fname,
-            "reused_entry": not new}
+    return {"ref": entry["ref"], "doc_id": entry["doc_id"],
+            "file": fname, "reused_entry": not new,
+            "deduped": False}
 
 
 def generated_store(order_id, prompt, blob, cost_usd, model,
                     set_by="image_gene", root=None):
     """Store one generated image (one entry per prompt: the same
-    prompt reuses the stored image)."""
+    prompt reuses the stored image). Atomic under the PC + entry
+    locks."""
     doc_id = content_id("generated:" + prompt)
-    edir = entry_dir("generated", doc_id, root)
+    with _path_lock(pc_dir("generated", root)):
+        edir = entry_dir("generated", doc_id, root)
+        with _path_lock(edir):
+            return _generated_store_in(edir, order_id, prompt,
+                                       blob, cost_usd, model,
+                                       set_by)
+
+
+def _generated_store_in(edir, order_id, prompt, blob, cost_usd,
+                        model, set_by):
     os.makedirs(os.path.join(edir, "files"), exist_ok=True)
     ep = os.path.join(edir, "entry.json")
     new = not os.path.isfile(ep)
     if new:
+        doc_id = os.path.basename(edir)
         entry = {"pc": "generated", "doc_id": doc_id,
                  "ref": entry_ref("generated", doc_id),
                  "prompt": prompt, "model": model,
@@ -2372,19 +2475,10 @@ def generated_store(order_id, prompt, blob, cost_usd, model,
     else:
         with open(ep, encoding="utf-8") as f:
             entry = json.load(f)
-    rows = recipients_of(entry) or []
-    have = {(r.get("agent"), r.get("order_id")) for r in rows
-            if isinstance(r, dict)}
-    now = time.strftime("%Y-%m-%dT%H:%M:%S")
-    for a in media_grantees("generated", set_by):
-        if (a, order_id) not in have:
-            rows.append({"agent": a, "order_id": order_id,
-                         "kind": "full", "parts": [],
-                         "set_by": set_by, "at": now})
-    entry["recipients"] = rows
+    _merge_media_rows(entry, "generated", order_id, set_by)
     with open(ep, "w", encoding="utf-8") as f:
         json.dump(entry, f, ensure_ascii=False, indent=2)
-    return {"ref": entry["ref"], "doc_id": doc_id,
+    return {"ref": entry["ref"], "doc_id": entry["doc_id"],
             "file": entry["file"], "reused_entry": not new}
 
 

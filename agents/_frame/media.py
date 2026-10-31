@@ -9,16 +9,19 @@ refuses with a clear error naming the cap.
 import json
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import deque
 
 from . import pc
 
 OPENVERSE_URL = "https://api.openverse.org/v1/images/"
 OPENVERSE_LICENSES = "by,by-sa,cc0,pdm"  # minus by-nd (we crop)
 IMAGE_QUERY_CAP = 2  # Openverse queries per cut per run
+OPENVERSE_PER_MIN = 20  # shared Openverse queue default
 GEN_IMAGE_CAP = 6  # generated images per run
 GEN_IMAGE_COST = 0.01  # USD per muse-image, flat
 VERA_VIEW_CAP = 4  # candidate files viewed per cut per run
@@ -28,6 +31,83 @@ LICENSE_OK = ("cc0", "pdm", "by", "by-sa")
 _HTTP_JSON = None  # fn(url) -> parsed JSON (tests inject fixtures)
 _HTTP_BYTES = None  # fn(url, cap) -> bytes (tests inject fixtures)
 _IMAGE_FN = None  # fn(prompt) -> (blob, model, cost_usd)
+
+_RATE_LOCK = threading.Lock()
+_RATE_CALLS = deque()  # monotonic timestamps of recent searches
+_GEN_LOCK = threading.Lock()
+_GEN_INFLIGHT = {}  # prompt doc_id -> Event while one clone generates
+
+
+def _rate_cap_from_ctx(ctx):
+    cap = ((ctx or {}).get("flow_settings") or {}).get(
+        "openverse_per_min", OPENVERSE_PER_MIN)
+    if isinstance(cap, bool) or not isinstance(cap, int) \
+            or cap <= 0:
+        return OPENVERSE_PER_MIN
+    return cap
+
+
+def _acquire_openverse_slot(per_min, now_fn=time.monotonic,
+                            sleep_fn=time.sleep):
+    """One shared Openverse queue: block until a call fits inside
+    the per-minute cap. now/sleep injectable for tests."""
+    if per_min is None or per_min <= 0:
+        return
+    while True:
+        with _RATE_LOCK:
+            now = now_fn()
+            while _RATE_CALLS and _RATE_CALLS[0] <= now - 60:
+                _RATE_CALLS.popleft()
+            if len(_RATE_CALLS) < per_min:
+                _RATE_CALLS.append(now)
+                return
+            wait = 60 - (now - _RATE_CALLS[0]) + 0.01
+        sleep_fn(max(wait, 0.01))
+
+
+def _gen_claim(doc_id):
+    """True when this caller becomes the prompt's generator;
+    False when another clone already generates it (wait)."""
+    with _GEN_LOCK:
+        if doc_id in _GEN_INFLIGHT:
+            return False
+        _GEN_INFLIGHT[doc_id] = threading.Event()
+        return True
+
+
+def _gen_wait(doc_id, timeout=600):
+    with _GEN_LOCK:
+        ev = _GEN_INFLIGHT.get(doc_id)
+    if ev is not None:
+        ev.wait(timeout)
+
+
+def _gen_release(doc_id):
+    with _GEN_LOCK:
+        ev = _GEN_INFLIGHT.pop(doc_id, None)
+    if ev is not None:
+        ev.set()
+
+
+def _reuse_generated(ctx, producer, doc_id):
+    """The stored image for this prompt (+rows for the caller),
+    or None when no entry exists yet."""
+    try:
+        entry = pc.load_entry_by_ref(
+            pc.entry_ref("generated", doc_id))
+    except (OSError, ValueError, KeyError):
+        return None
+    try:
+        pc.set_recipients(
+            "generated", doc_id, (ctx or {}).get("order_id", ""),
+            pc.media_grantees("generated", producer), producer,
+            kind="full")
+    except (OSError, ValueError) as exc:
+        return {"error": "reuse grant failed: %s" % exc}
+    return {"ok": True, "ref": entry["ref"],
+            "file": entry.get("file", ""), "reused_entry": True,
+            "model": entry.get("model", ""),
+            "cost_usd": 0.0}
 
 
 def _owns(ctx, base):
@@ -95,9 +175,12 @@ def _log_research(ctx, obj):
         pass
 
 
-def openverse_search(query, limit=5):
+def openverse_search(query, limit=5, per_min=None):
     """Openverse image search (commercial reuse set, no nd). Hits
-    are never stored; only picks are."""
+    are never stored; only picks are. Calls queue through the
+    shared per-minute limiter."""
+    _acquire_openverse_slot(
+        OPENVERSE_PER_MIN if per_min is None else per_min)
     qs = urllib.parse.urlencode({
         "q": query, "license": OPENVERSE_LICENSES,
         "license_type": "commercial", "page_size": limit,
@@ -142,7 +225,8 @@ def pc_search_images(ctx, args):
         return {"error": "cut %s already used %d image queries"
                 % (cut_id, IMAGE_QUERY_CAP)}
     try:
-        hits = openverse_search(q, limit)
+        hits = openverse_search(q, limit,
+                                _rate_cap_from_ctx(ctx))
     except RuntimeError as exc:
         return {"error": str(exc)}
     counts[cut_id] = n
@@ -186,7 +270,8 @@ def pc_pick_image(ctx, args):
     _log_research(ctx, {"ev": "pick", "ref": saved["ref"],
                         "tool": "pc_pick_image"})
     return {"ok": True, "ref": saved["ref"], "file": saved["file"],
-            "reused_entry": saved["reused_entry"]}
+            "reused_entry": saved["reused_entry"],
+            "deduped": saved.get("deduped", False)}
 
 
 def _muse_image(prompt):
@@ -230,21 +315,9 @@ def pc_generate_image(ctx, args):
     quota = (ctx or {}).get("gene_quota")
     cap = GEN_IMAGE_CAP if quota is None else quota
     doc_id = pc.content_id("generated:" + prompt)
-    try:
-        entry = pc.load_entry_by_ref(pc.entry_ref("generated", doc_id))
-        try:
-            pc.set_recipients(
-                "generated", doc_id, ctx.get("order_id", ""),
-                pc.media_grantees("generated", producer), producer,
-                kind="full")
-        except (OSError, ValueError) as exc:
-            return {"error": "reuse grant failed: %s" % exc}
-        return {"ok": True, "ref": entry["ref"],
-                "file": entry.get("file", ""), "reused_entry": True,
-                "model": entry.get("model", ""),
-                "cost_usd": 0.0}
-    except (OSError, ValueError, KeyError):
-        pass
+    reused = _reuse_generated(ctx, producer, doc_id)
+    if reused is not None:
+        return reused
     countp = os.path.join(ctx["run_dir"], "gen_images.json")
     counts = _counter(countp)
     n = int(counts.get("n", 0)) + 1
@@ -254,19 +327,30 @@ def pc_generate_image(ctx, args):
                     % GEN_IMAGE_CAP}
         return {"error": "part quota allows %d new images"
                 % quota}
+    if not _gen_claim(doc_id):
+        _gen_wait(doc_id)
+        reused = _reuse_generated(ctx, producer, doc_id)
+        if reused is not None:
+            return reused
+        if not _gen_claim(doc_id):
+            return {"error": "another part is generating this "
+                             "prompt; call again"}
     try:
         if _IMAGE_FN is not None:
             blob, model, cost = _IMAGE_FN(prompt)
         else:
             blob, model, cost = _muse_image(prompt)
     except RuntimeError as exc:
+        _gen_release(doc_id)
         return {"error": str(exc)}
     try:
         saved = pc.generated_store(ctx.get("order_id", ""), prompt,
                                    blob, cost, model,
                                    set_by=producer)
     except (OSError, ValueError) as exc:
+        _gen_release(doc_id)
         return {"error": "store failed: %s" % exc}
+    _gen_release(doc_id)
     counts["n"] = n
     _counter_save(countp, counts)
     return {"ok": True, "ref": saved["ref"], "file": saved["file"],

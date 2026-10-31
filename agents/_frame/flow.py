@@ -11,11 +11,15 @@ live in results.py; this module only moves data between runs.
 """
 import json
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from . import parts
 from . import pc
 from . import results
+
+FLOW_SETTINGS = ("parallel_parts", "openverse_per_min")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AGENTS = os.path.dirname(HERE)
@@ -148,6 +152,22 @@ def validate_flow(flow, catalog=None):
     reg = results.registry()
     if not isinstance(flow, dict):
         return [err("flow must be an object")]
+    settings = flow.get("settings", {})
+    if settings is None:
+        settings = {}
+    if not isinstance(settings, dict):
+        return [err("settings must be an object")]
+    for key in settings:
+        if key not in FLOW_SETTINGS:
+            errors.append(err("unknown flow setting %r" % (key,)))
+    if "parallel_parts" in settings and not isinstance(
+            settings["parallel_parts"], bool):
+        errors.append(err("parallel_parts must be true/false"))
+    if "openverse_per_min" in settings and (
+            isinstance(settings["openverse_per_min"], bool)
+            or not isinstance(settings["openverse_per_min"], int)
+            or settings["openverse_per_min"] <= 0):
+        errors.append(err("openverse_per_min must be a positive int"))
     nodes = {n.get("id"): n for n in flow.get("nodes", [])
              if isinstance(n, dict)}
     if FINAL_NODE not in nodes:
@@ -585,7 +605,8 @@ def _sam_stored_result(order_id):
 
 def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
                     run_agent_fn, emit, note=None,
-                    want_summary=False):
+                    want_summary=False, parallel=False,
+                    flow_settings=None):
     """Run one agent: gather transfers, run, expect result.json, check it,
     promote to checked, refresh the report. Sam reuses his stored
     order result when the chat already ran him (no double spend)."""
@@ -624,7 +645,8 @@ def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
     if agent_id in parts.CLONE_NODES and parts.load_split(run_dir):
         return _run_clone_node(run_dir, agent_id, order_id,
                                order_brief, incoming, run_agent_fn,
-                               emit, agent, note, want_summary)
+                               emit, agent, note, want_summary,
+                               parallel, flow_settings)
     flowdecl = agent.get("flow", {}) if isinstance(agent, dict) else {}
     dest_inputs = flowdecl.get("inputs")
     received = []
@@ -693,12 +715,77 @@ def _finish_stage_run(adir, label, out):
     return {"ok": True, "res": res}
 
 
+def _run_one_clone(run_dir, agent_id, order_id, order_brief,
+                   incoming, run_agent_fn, emit, dest_inputs, plan,
+                   p, note, want_summary, flow_settings):
+    """Transfers, filtered inputs, one clone run, finish. Runs on a
+    worker thread under parallel_parts (clone dirs are disjoint;
+    shared state goes through locks)."""
+    no = p.get("no")
+    cid = parts.clone_id(agent_id, no)
+    cdir = os.path.join(run_dir, agent_id, "p%d" % no)
+    os.makedirs(cdir, exist_ok=True)
+    emit({"ev": "agent_start", "agent": cid})
+    received = []
+    dest = os.path.join(agent_id, "p%d" % no)
+    for ln in incoming:
+        got, nbytes, errors = _transfer(run_dir, ln["from"], dest,
+                                        ln.get("categories", "*"),
+                                        dest_inputs)
+        received.extend(got)
+        emit({"ev": "line", "line": ln.get("id"),
+              "from": ln["from"], "to": cid,
+              "categories": [r["category"] for r in got],
+              "bytes": nbytes})
+        if errors:
+            return {"ok": False, "error": errors[0]}
+    kept = parts.filter_clone_received(cdir, p)
+    manifest = {"agent": cid, "part": no,
+                "received": received, "kept_cuts": kept}
+    _write_json(os.path.join(cdir, "INPUTS.json"), manifest)
+    input_text = parts.shared_block(plan, no) + "\n" + \
+        _render_inputs_md(order_brief, received, run_dir, dest,
+                          cid)
+    if note:
+        input_text = ("## Owner note (follow it)\n\n"
+                      + str(note).strip() + "\n\n" + input_text)
+    input_md = os.path.join(cdir, "INPUTS.md")
+    with open(input_md, "w", encoding="utf-8") as f:
+        f.write(input_text)
+    brief = {"order_id": order_id,
+             "flow_run_id": os.path.basename(run_dir),
+             "answers": (order_brief or {}).get("answers", {}),
+             "want_summary_ko": bool(want_summary),
+             "clone_id": cid, "part_no": no,
+             "part_cuts": list(p.get("cuts", [])),
+             "flow_settings": dict(flow_settings or {})}
+    if agent_id == "image_gene":
+        brief["gene_quota"] = p.get("quota", 0)
+    try:
+        out = run_agent_fn(os.path.join(AGENTS, agent_id), cdir,
+                           brief, input_md)
+    except Exception as exc:  # noqa: BLE001 - agent crash aborts
+        return {"ok": False, "error": "%s crashed: %s" % (cid, exc)}
+    if not isinstance(out, dict) or not out.get("ok"):
+        reason = out.get("error", "unknown") \
+            if isinstance(out, dict) else "bad return"
+        return {"ok": False, "error": "%s failed: %s" % (cid, reason)}
+    done = _finish_stage_run(cdir, cid, out)
+    if not done["ok"]:
+        return done
+    emit({"ev": "agent_done", "agent": cid,
+          "outputs": sorted(done["res"]["categories"])})
+    return {"ok": True}
+
+
 def _run_clone_node(run_dir, agent_id, order_id, order_brief, incoming,
                     run_agent_fn, emit, agent, note=None,
-                    want_summary=False):
-    """One clone per part (STEP 1: sequential; STEP 2 parallelizes).
-    Each clone dir holds only its part's received cuts; merge joins
-    the parts back into the node's normal result."""
+                    want_summary=False, parallel=False,
+                    flow_settings=None):
+    """One clone per part: sequentially, or on a thread pool capped
+    at 3 workers (flow setting parallel_parts). Each clone dir
+    holds only its part's received cuts; merge joins the parts
+    back into the node's normal result."""
     plan = parts.load_split(run_dir)
     prog = (plan or {}).get("parts") or []
     emit({"ev": "agent_start", "agent": agent_id,
@@ -719,62 +806,30 @@ def _run_clone_node(run_dir, agent_id, order_id, order_brief, incoming,
         f.write(node_inputs)
     flowdecl = agent.get("flow", {}) if isinstance(agent, dict) else {}
     dest_inputs = flowdecl.get("inputs")
-    for p in prog:
-        no = p.get("no")
-        cid = parts.clone_id(agent_id, no)
-        cdir = os.path.join(adir, "p%d" % no)
-        os.makedirs(cdir, exist_ok=True)
-        emit({"ev": "agent_start", "agent": cid})
-        received = []
-        dest = os.path.join(agent_id, "p%d" % no)
-        for ln in incoming:
-            got, nbytes, errors = _transfer(run_dir, ln["from"], dest,
-                                            ln.get("categories", "*"),
-                                            dest_inputs)
-            received.extend(got)
-            emit({"ev": "line", "line": ln.get("id"),
-                  "from": ln["from"], "to": cid,
-                  "categories": [r["category"] for r in got],
-                  "bytes": nbytes})
-            if errors:
-                return {"ok": False, "error": errors[0]}
-        kept = parts.filter_clone_received(cdir, p)
-        manifest = {"agent": cid, "part": no,
-                    "received": received, "kept_cuts": kept}
-        _write_json(os.path.join(cdir, "INPUTS.json"), manifest)
-        input_text = parts.shared_block(plan, no) + "\n" + \
-            _render_inputs_md(order_brief, received, run_dir, dest,
-                              cid)
-        if note:
-            input_text = ("## Owner note (follow it)\n\n"
-                          + str(note).strip() + "\n\n" + input_text)
-        input_md = os.path.join(cdir, "INPUTS.md")
-        with open(input_md, "w", encoding="utf-8") as f:
-            f.write(input_text)
-        brief = {"order_id": order_id,
-                 "flow_run_id": os.path.basename(run_dir),
-                 "answers": (order_brief or {}).get("answers", {}),
-                 "want_summary_ko": bool(want_summary),
-                 "clone_id": cid, "part_no": no,
-                 "part_cuts": list(p.get("cuts", []))}
-        if agent_id == "image_gene":
-            brief["gene_quota"] = p.get("quota", 0)
-        try:
-            out = run_agent_fn(os.path.join(AGENTS, agent_id), cdir,
-                               brief, input_md)
-        except Exception as exc:  # noqa: BLE001 - agent crash aborts
-            return {"ok": False, "error": "%s crashed: %s"
-                                         % (cid, exc)}
-        if not isinstance(out, dict) or not out.get("ok"):
-            reason = out.get("error", "unknown") \
-                if isinstance(out, dict) else "bad return"
-            return {"ok": False, "error": "%s failed: %s"
-                                          % (cid, reason)}
-        done = _finish_stage_run(cdir, cid, out)
-        if not done["ok"]:
-            return done
-        emit({"ev": "agent_done", "agent": cid,
-              "outputs": sorted(done["res"]["categories"])})
+    one = lambda p: _run_one_clone(
+        run_dir, agent_id, order_id, order_brief, incoming,
+        run_agent_fn, emit, dest_inputs, plan, p, note,
+        want_summary, flow_settings)
+    if parallel and len(prog) > 1:
+        workers = min(len(prog), 3)
+        with ThreadPoolExecutor(max_workers=workers,
+                                thread_name_prefix="clone") as ex:
+            futs = [ex.submit(one, p) for p in prog]
+            outs = []
+            for f in futs:
+                try:
+                    outs.append(f.result())
+                except Exception as exc:  # noqa: BLE001 - report it
+                    outs.append({"ok": False,
+                                 "error": "clone crashed: %s" % exc})
+        for out in outs:
+            if not out["ok"]:
+                return out
+    else:
+        for p in prog:
+            out = one(p)
+            if not out["ok"]:
+                return out
     merged = parts.merge_node(agent_id, run_dir, len(prog),
                               order_id)
     if not merged["ok"]:
@@ -852,12 +907,16 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
     _write_json(os.path.join(run_dir, "flow.json"), flow)
     events_path = os.path.join(run_dir, "events.jsonl")
     events = []
+    settings = flow.get("settings") or {}
+
+    elock = threading.Lock()
 
     def emit(ev):
-        ev["at"] = time.strftime("%H:%M:%S")
-        events.append(ev)
-        with open(events_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+        with elock:
+            ev["at"] = time.strftime("%H:%M:%S")
+            events.append(ev)
+            with open(events_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(ev, ensure_ascii=False) + "\n")
 
     def fail(msg):
         _write_json(os.path.join(run_dir, "STATUS.json"),
@@ -890,10 +949,11 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
                                   order["brief"],
                                   incoming.get(nid, []), emit)
         else:
-            step = _run_agent_node(run_dir, nid, order_id,
-                                   order["brief"],
-                                   incoming.get(nid, []),
-                                   run_agent_fn, emit)
+            step = _run_agent_node(
+                run_dir, nid, order_id, order["brief"],
+                incoming.get(nid, []), run_agent_fn, emit,
+                parallel=settings.get("parallel_parts", False),
+                flow_settings=settings)
         if not step["ok"]:
             return fail(step["error"])
     final = _collect_final(run_dir, order_id,
@@ -1269,12 +1329,16 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
     _write_json(os.path.join(run_dir, "flow.json"), flow)
     events_path = os.path.join(run_dir, "events.jsonl")
     events = []
+    settings = flow.get("settings") or {}
+
+    elock = threading.Lock()
 
     def emit(ev):
-        ev["at"] = time.strftime("%H:%M:%S")
-        events.append(ev)
-        with open(events_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+        with elock:
+            ev["at"] = time.strftime("%H:%M:%S")
+            events.append(ev)
+            with open(events_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(ev, ensure_ascii=False) + "\n")
 
     def fail(msg):
         st = _read_step_status(run_dir)
@@ -1319,12 +1383,13 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
                                   order["brief"],
                                   incoming.get(nid, []), emit)
         else:
-            step = _run_agent_node(run_dir, nid, order_id,
-                                   order["brief"],
-                                   incoming.get(nid, []), run_agent_fn,
-                                   emit,
-                                   note=note if nid == target else None,
-                                   want_summary=True)
+            step = _run_agent_node(
+                run_dir, nid, order_id, order["brief"],
+                incoming.get(nid, []), run_agent_fn, emit,
+                note=note if nid == target else None,
+                want_summary=True,
+                parallel=settings.get("parallel_parts", False),
+                flow_settings=settings)
         if not step["ok"]:
             return fail(step["error"])
         ran.append(nid)

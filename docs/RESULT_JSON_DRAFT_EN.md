@@ -1671,6 +1671,15 @@ New categories (all versioned, writer-checked):
   concept, style guide). Clones see their own part in full
   and other parts as one line each.
 
+Part clones run one part after another by default. Flow
+setting `parallel_parts: true` runs the parts of each
+video-team node at the same time (thread pool, at most 3
+workers); inside every part the order stays Pia/Gene/Max \u2192
+Vera \u2192 Remy. PC entry writes are atomic under per-entry
+locks; Openverse searches share one per-minute queue
+(`openverse_per_min`, default 20); identical pick files are
+stored once and reused.
+
 New PCs (same recipients mechanism, \u00a78.9):
 
 - Image PC: licensed web picks (file, source URL, license,

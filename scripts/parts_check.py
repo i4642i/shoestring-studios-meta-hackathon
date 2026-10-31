@@ -8,6 +8,9 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -326,7 +329,7 @@ try:
         ORDER, "https://example.com/1", b"\xff\xd8" + b"\x00" * 40,
         "CC0", "shows one", set_by="photo_pia@p1", suffix=".jpg")
     pick2 = _pc.image_store_pick(
-        ORDER, "https://example.com/2", b"\xff\xd8" + b"\x00" * 40,
+        ORDER, "https://example.com/2", b"\xff\xd8" + b"\x01" * 40,
         "CC0", "shows two", set_by="photo_pia@p2", suffix=".jpg")
     for c in PHOTO["cuts"]:
         if c.get("ref") == "IMG1":
@@ -628,6 +631,246 @@ try:
         ok("board_vera@p3" in agents3
            and "slide_remy@p3" in agents3,
            "reuse grants the reusing part")
+    finally:
+        _media._IMAGE_FN = None
+finally:
+    _pc.ROOT_OVERRIDE = None
+    flow.RUNS_DIR = real_runs
+
+# ---- STEP 2: parallel parts ----
+INCOMING6 = [
+    {"id": "c81", "from": "pd_marty", "categories": ["structure"]},
+    {"id": "c82", "from": "pd_marty", "categories": ["concept"]},
+    {"id": "c83", "from": "plan_ash",
+     "categories": ["storyboard_draft"]},
+    {"id": "c84", "from": "voice_wren",
+     "categories": ["narration"]},
+    {"id": "c85", "from": "board_penn",
+     "categories": ["storyboard"]},
+    {"id": "c86", "from": "board_penn",
+     "categories": ["style_guide"]}]
+
+
+def _incoming2(node):
+    lines = [{"id": "x", "from": "part_split",
+              "categories": [c]}
+             for c in ("split_plan", "narration", "storyboard")]
+    if node == "board_vera":
+        lines += [{"id": "y%d" % i, "from": s, "categories": [c]}
+                  for i, (s, c) in enumerate([
+                      ("photo_pia", "photo_picks"),
+                      ("image_gene", "gen_picks"),
+                      ("anim_max", "anim_picks")])]
+    if node == "slide_remy":
+        lines.append({"id": "z", "from": "board_vera",
+                      "categories": ["slide_draft"]})
+    return lines
+
+
+def _setup_split_run(run_name):
+    run_dir = os.path.join(RUNS, run_name)
+    os.makedirs(run_dir, exist_ok=True)
+    wres(run_dir, "pd_marty", "pd_marty",
+         {"concept": CONCEPT, "structure": STRUCT})
+    wres(run_dir, "plan_ash", "plan_ash",
+         {"storyboard_draft": DRAFT})
+    wres(run_dir, "voice_wren", "voice_wren",
+         {"narration": NARR})
+    wres(run_dir, "board_penn", "board_penn",
+         {"storyboard": BOARD, "style_guide": GUIDE})
+    step = flow._run_code_node(run_dir, "part_split", ORDER,
+                               BRIEF, INCOMING6,
+                               lambda ev: None)
+    assert step.get("ok"), step
+    return run_dir
+
+
+def _run_all_clones(run_dir, parallel, fn):
+    for node in parts.CLONE_NODES:
+        step = flow._run_agent_node(run_dir, node, ORDER, BRIEF,
+                                    _incoming2(node), fn,
+                                    lambda ev: None,
+                                    parallel=parallel)
+        assert step.get("ok"), (node, step)
+
+
+def _merged_cats(run_dir):
+    out = {}
+    for node in parts.CLONE_NODES:
+        res = results.load_result(
+            os.path.join(run_dir, node, "result.json"))
+        out[node] = res["categories"]
+    return out
+
+
+base_flow = flow.load_flow("default")
+bad1 = json.loads(json.dumps(base_flow))
+bad1["settings"] = {"parallel_parts": "yes"}
+ok(flow.validate_flow(bad1) != [],
+   "non-bool parallel_parts rejected")
+bad2 = json.loads(json.dumps(base_flow))
+bad2["settings"] = {"openverse_per_min": 0}
+ok(flow.validate_flow(bad2) != [],
+   "non-positive per-minute rejected")
+bad3 = json.loads(json.dumps(base_flow))
+bad3["settings"] = {"nope": 1}
+ok(flow.validate_flow(bad3) != [],
+   "unknown flow setting rejected")
+ok(base_flow.get("settings")
+   == {"parallel_parts": False, "openverse_per_min": 20}
+   and flow.validate_flow(base_flow) == [],
+   "default ships parallel OFF")
+
+_pc.ROOT_OVERRIDE = tmp
+flow.RUNS_DIR = RUNS
+try:
+    rd_seq = _setup_split_run("rseq2")
+    _run_all_clones(rd_seq, False, stub)
+    data_seq = _merged_cats(rd_seq)
+    rd_par = _setup_split_run("rpar2")
+    _run_all_clones(rd_par, True, stub)
+    data_par = _merged_cats(rd_par)
+    ok(data_seq == data_par,
+       "parallel results equal sequential")
+    useq = json.load(open(os.path.join(rd_seq, "photo_pia",
+                                       "usage.json"),
+                          encoding="utf-8"))
+    upar = json.load(open(os.path.join(rd_par, "photo_pia",
+                                       "usage.json"),
+                          encoding="utf-8"))
+    ok(useq == upar and useq["prompt_tokens"] == 30,
+       "parallel usage sums equal sequential")
+    quotas = [p["quota"] for p in
+              parts.load_split(rd_par)["parts"]]
+    gpar = data_par["image_gene"]["gen_picks"]["data"]
+    fresh = [im for im in gpar["images"]
+             if not im.get("reused")]
+    ok(sum(quotas) <= 6 and len(fresh) <= 6
+       and len(fresh) <= sum(quotas),
+       "gene cap holds across parts (%s, %d fresh)"
+       % (quotas, len(fresh)))
+
+    bar = threading.Barrier(3, timeout=30)
+
+    def bstub(agent_dir, run_dir, brief, input_md):
+        bar.wait()
+        return stub(agent_dir, run_dir, brief, input_md)
+
+    rd_bar = _setup_split_run("rbar2")
+    step = flow._run_agent_node(
+        rd_bar, "photo_pia", ORDER, BRIEF,
+        _incoming2("photo_pia"), bstub, lambda ev: None,
+        parallel=True)
+    ok(step.get("ok"), "three clones truly run together: %s"
+       % step.get("error", "ok"))
+
+    probe = _pc.image_store_pick(
+        ORDER, "https://example.com/race", b"RACE" * 100, "CC0",
+        "race probe", set_by="photo_pia")
+    pdoc = probe["doc_id"]
+
+    def _grant(i):
+        _pc.set_recipients("image", pdoc, ORDER,
+                           ["race_%02d" % i], "race",
+                           kind="full")
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(_grant, range(20)))
+    rows = [r for r in
+            _pc.load_entry_by_ref(probe["ref"])["recipients"]
+            if r.get("order_id") == ORDER]
+    names = sorted(r["agent"] for r in rows)
+    ok(all("race_%02d" % i in names for i in range(20)),
+       "20 parallel grants keep every row (%d)" % len(names))
+
+    def _pick_same(i):
+        return _pc.image_store_pick(
+            ORDER, "https://example.com/conc", b"CONC" * 50,
+            "CC0", "x%d" % i, set_by="photo_pia@p%d" % (i + 1))
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        r1, r2 = list(ex.map(_pick_same, [0, 1]))
+    ok(r1["doc_id"] == r2["doc_id"],
+       "concurrent same-URL pick shares one entry")
+    ce = _pc.load_entry_by_ref(r1["ref"])
+    cnames = sorted(r["agent"] for r in ce["recipients"]
+                    if r.get("order_id") == ORDER)
+    ok("board_vera@p1" in cnames
+       and "board_vera@p2" in cnames,
+       "both parts granted on the shared entry")
+
+    BYTES = b"\xff\xd8SAME" + b"\x00" * 100
+    da = _pc.image_store_pick(
+        ORDER, "https://example.com/dedup-a", BYTES, "CC0", "a",
+        set_by="photo_pia@p1")
+    db = _pc.image_store_pick(
+        ORDER, "https://example.com/dedup-b", BYTES, "CC0", "b",
+        set_by="photo_pia@p2")
+    ok(db.get("deduped") is True and db["ref"] == da["ref"],
+       "same file reuses the first entry")
+    dc = _pc.image_store_pick(
+        ORDER, "https://example.com/dedup-c", BYTES, "by", "c",
+        set_by="photo_pia@p3")
+    ok(dc.get("deduped") is False and dc["ref"] != da["ref"],
+       "different license stores separately")
+
+    with _media._RATE_LOCK:
+        _media._RATE_CALLS.clear()
+    now = [1000.0]
+    slept = []
+
+    def _now():
+        return now[0]
+
+    def _sleep(s):
+        slept.append(s)
+        now[0] += s
+
+    _media._acquire_openverse_slot(2, _now, _sleep)
+    _media._acquire_openverse_slot(2, _now, _sleep)
+    _media._acquire_openverse_slot(2, _now, _sleep)
+    ok(len(slept) == 1 and 60 <= slept[0] <= 61,
+       "queue waits out the minute (%s)" % slept)
+    _media._acquire_openverse_slot(2, _now, _sleep)
+    ok(len(slept) == 1, "freed slot needs no wait")
+    ok(_media._rate_cap_from_ctx(
+        {"flow_settings": {"openverse_per_min": 5}}) == 5
+        and _media._rate_cap_from_ctx({}) == 20
+        and _media._rate_cap_from_ctx(
+            {"flow_settings": {"openverse_per_min": "x"}}) == 20,
+        "cap comes from flow settings with a sane default")
+    with _media._RATE_LOCK:
+        _media._RATE_CALLS.clear()
+
+    calls = []
+
+    def _img(prompt):
+        calls.append(prompt)
+        time.sleep(0.3)
+        return (b"\x89PNG\r\n\x1a\n" + b"\x00" * 40,
+                "muse-image-1.0", 0.01)
+
+    _media._IMAGE_FN = _img
+    try:
+        d1 = os.path.join(tmp, "g1")
+        d2 = os.path.join(tmp, "g2")
+        os.makedirs(d1, exist_ok=True)
+        os.makedirs(d2, exist_ok=True)
+        c1 = {"producer": "image_gene@p1", "order_id": ORDER,
+              "run_id": "r", "run_dir": d1}
+        c2 = {"producer": "image_gene@p2", "order_id": ORDER,
+              "run_id": "r", "run_dir": d2}
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            f1 = ex.submit(_media.pc_generate_image, c1,
+                           {"prompt": "Inflight hill"})
+            f2 = ex.submit(_media.pc_generate_image, c2,
+                           {"prompt": "Inflight hill"})
+            o1, o2 = f1.result(), f2.result()
+        ok(len(calls) == 1 and o1.get("ok") and o2.get("ok"),
+           "one call serves both parts (%d)" % len(calls))
+        ok((o1.get("reused_entry"), o2.get("reused_entry"))
+           in ((False, True), (True, False)),
+           "one fresh, one reused")
     finally:
         _media._IMAGE_FN = None
 finally:

@@ -275,7 +275,8 @@ def run(agent_dir, run_dir, brief, input_md):
     ctx = {"run_dir": run_dir, "agent_dir": agent_dir, "input_md": input_md,
            "producer": brief_obj.get("clone_id") or agent["id"],
            "order_id": order_id, "run_id": run_id,
-           "gene_quota": brief_obj.get("gene_quota")}
+           "gene_quota": brief_obj.get("gene_quota"),
+           "flow_settings": brief_obj.get("flow_settings", {})}
     messages = [
         {"role": "system", "content": persona},
         {"role": "user", "content":
