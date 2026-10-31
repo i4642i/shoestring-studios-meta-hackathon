@@ -6,7 +6,7 @@
 - 승인/재실행/중단은 파트 단위이며, video_production은 모든 remy@pN 승인 전까지 대기합니다.
 - Flow 탭은 비디오팀을 쌓인 카드+주황 점선 프레임+파트 상태 행으로 보여주고, Board API는 셀/단계 상태를 클론 단위로 반환합니다.
 - 8개 스위트 742개 검사 전부 통과, 모델 호출 0회, MP4 렌더 없음.
-- 남은 것: 브라우저 실측(Edge 승인이 막힘), Board 페이지 UI(별도 STEP 2/3 미착수), main 5개 커밋 push.
+- 남은 것: 브라우저 실측(Edge 승인이 막힘), Board 페이지 UI(별도 STEP 2/3 미착수), main 6개 커밋 push.
 
 ## What changed
 
@@ -139,8 +139,9 @@ stepping to final now refuses until every remy part is approved
 
 ## Needs owner
 
-- Push: `main` is 5 commits ahead of `origin/main`
-  (`5d639fc`, `ca64c58`, `1d5205f`, `aeedbe7`, + this report).
+- Push: `main` is 6 commits ahead of `origin/main`
+  (`0f3c459`, `5d639fc`, `ca64c58`, `1d5205f`, `aeedbe7`,
+  + this report).
 - Browser proof: `scripts/flow_live_check.py` (server + headless
   Edge) could not run here — unsandboxed execution needs human
   approval and prompts are disabled. Please run it on your PC.
