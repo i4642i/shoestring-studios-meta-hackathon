@@ -70,6 +70,7 @@ class WS:
             raise RuntimeError("ws not accepted: %r" % head[:80])
         self.buf = b""
         self.mid = 0
+        self.events = []
 
     def _fill(self, n):
         while len(self.buf) < n:
@@ -131,6 +132,8 @@ class WS:
                     raise RuntimeError("cdp %s: %s"
                                        % (method, msg["error"]))
                 return msg.get("result", {})
+            if "id" not in msg:
+                self.events.append(msg)
 
     def close(self):
         try:
@@ -323,6 +326,53 @@ PROBE_JS = """(() => {
 })()"""
 
 
+BOX_JS = """(() => {
+  const sc = document.getElementById('fl-scroll');
+  const sr = sc.getBoundingClientRect();
+  const card = document.querySelector('#p-flow .card');
+  const cs = getComputedStyle(card);
+  const st = document.getElementById('fl-status');
+  const tr = document.getElementById('fl-toolbar')
+    .getBoundingClientRect();
+  const str = st.getBoundingClientRect();
+  const hint = document.getElementById('fl-hint');
+  const tag = document.querySelector('#teamframe .teamtag');
+  const cv = document.getElementById('fl-canvas')
+    .getBoundingClientRect();
+  let tagIn = false;
+  if (tag) {
+    const g = tag.getBoundingClientRect();
+    tagIn = g.width > 0 && g.left >= cv.left - 1 &&
+      g.top >= cv.top - 1 && g.right <= cv.right + 1 &&
+      g.bottom <= cv.bottom + 1;
+  }
+  return {
+    scroll: [Math.round(sr.width), Math.round(sr.height),
+             Math.round(sr.top)],
+    cardW: card.clientWidth,
+    cardPad: parseFloat(cs.paddingLeft) +
+      parseFloat(cs.paddingRight),
+    scrollBg: getComputedStyle(sc).backgroundColor,
+    canvasBg: getComputedStyle(
+      document.getElementById('fl-canvas')).backgroundColor,
+    wantH: innerHeight - Math.round(sr.top) - 12,
+    docH: document.documentElement.scrollHeight,
+    winH: innerHeight,
+    scrollX: document.documentElement.scrollWidth >
+      document.documentElement.clientWidth + 1,
+    scrollY: document.documentElement.scrollHeight >
+      document.documentElement.clientHeight + 1,
+    status: st.textContent,
+    statusRight: Math.round(tr.right - str.right),
+    hintShown: getComputedStyle(hint).display !== 'none',
+    helpBtn: !!document.getElementById('fl-help'),
+    tagIn: tagIn,
+    zoomLab: (document.getElementById('fl-zoomlab')
+      || {}).textContent || ''
+  };
+})()"""
+
+
 def box_overlaps(boxes):
     """Node-box pairs whose interiors overlap."""
     bad = []
@@ -334,6 +384,17 @@ def box_overlaps(boxes):
                     and b[1] < a[1] + a[3]:
                 bad.append((i, j))
     return bad
+
+
+def console_errors(events):
+    n = 0
+    for m in events:
+        if m.get("method") == "Runtime.consoleAPICalled" \
+                and m.get("params", {}).get("type") == "error":
+            n += 1
+        elif m.get("method") == "Runtime.exceptionThrown":
+            n += 1
+    return n
 
 
 def stop_proc(proc, name):
@@ -426,6 +487,7 @@ def main():
         hostport, _, path = wsu.split("://", 1)[1].partition("/")
         host, _, port = hostport.partition(":")
         ws = WS(host, int(port or 80), "/" + path)
+        ws.call("Runtime.enable")
         ws.call("Page.navigate",
                 {"url": "http://localhost:%d/" % SERVER_PORT})
         t0 = time.time()
@@ -436,7 +498,20 @@ def main():
         js_eval(ws, "document.querySelector"
                     "('nav button[data-p=flow]').click()")
         time.sleep(2)
+        ws.call("Emulation.setDeviceMetricsOverride",
+                {"width": 1920, "height": 940,
+                 "deviceScaleFactor": 1, "mobile": False})
+        time.sleep(1)
+        js_eval(ws, "window.__flowShown && window.__flowShown()")
+        time.sleep(1)
+        t0 = time.time()
+        while time.time() - t0 < 12:
+            if js_eval(ws, "document.getElementById('fl-status')"
+                            ".textContent"):
+                break
+            time.sleep(0.5)
         out = js_eval(ws, PROBE_JS)
+        box = js_eval(ws, BOX_JS)
         ok(out.get("tabActive") is True, "flow tab activates")
         sw, sh = (out.get("svg") or [0, 0])[:2]
         ok(sw > 0 and sh > 0, "svg is live (%dx%d)" % (sw, sh))
@@ -503,6 +578,42 @@ def main():
            "no page h-scroll at 1920")
         ok(out.get("scrollY") is False,
            "no page v-scroll at 1920")
+        sw_, sh_, stop_ = box.get("scroll") or [0, 0, 0]
+        ok(abs(sw_ - (box.get("cardW", 0) - box.get("cardPad", 0)))
+           <= 3,
+           "grey box fills the card width (%d/%d)"
+           % (sw_, box.get("cardW", 0) - box.get("cardPad", 0)))
+        ok(200 <= sh_ <= (box.get("wantH", 0) + 2),
+           "grey box height %d (want <= %d)"
+           % (sh_, box.get("wantH", 0)))
+        ok(box.get("scrollBg") == "rgb(247, 249, 252)",
+           "scroller is the grey box (%s)"
+           % box.get("scrollBg"))
+        ok(box.get("canvasBg") in ("rgba(0, 0, 0, 0)",
+                                   "transparent"),
+           "stage inside is transparent (%s)"
+           % box.get("canvasBg"))
+        ok((box.get("status") or "").startswith("Valid"),
+           "toolbar status shows the verdict (%r)"
+           % box.get("status"))
+        ok(abs(box.get("statusRight", 99)) <= 6,
+           "status right-aligned (%dpx)"
+           % box.get("statusRight", 99))
+        ok(box.get("helpBtn") is True
+           and box.get("hintShown") is False,
+           "hint hidden behind the ? button")
+        js_eval(ws, "document.getElementById('fl-help').click()")
+        time.sleep(0.5)
+        ok(js_eval(ws, "document.getElementById('fl-hint')"
+                        ".classList.contains('show')") is True,
+           "? button shows the hint")
+        js_eval(ws, "document.getElementById('fl-help').click()")
+        time.sleep(0.5)
+        ok(box.get("tagIn") is True,
+           "video-team frame title not clipped")
+        print("1920x940 fit %s (box %dx%d at top %d, docH %d)"
+              % (box.get("zoomLab"), sw_, sh_, stop_,
+                 box.get("docH")), flush=True)
         shot = ws.call("Page.captureScreenshot",
                        {"format": "png"})["data"]
         with open(PNG1920, "wb") as f:
@@ -517,6 +628,13 @@ def main():
         js_eval(ws, "window.__flowShown && window.__flowShown()")
         time.sleep(1)
         out2 = js_eval(ws, PROBE_JS)
+        box2 = js_eval(ws, BOX_JS)
+        ok(out2.get("scrollX") is False
+           and out2.get("scrollY") is False,
+           "no page scroll at 1280")
+        print("1280x720 fit %s (box %s, docH %s)"
+              % (box2.get("zoomLab"), box2.get("scroll"),
+                 box2.get("docH")), flush=True)
         print("1280 scroll %s/%s"
               % (out2.get("scrollX"), out2.get("scrollY")),
               flush=True)
@@ -536,6 +654,10 @@ def main():
         js_eval(ws, "window.__flowShown && window.__flowShown()")
         time.sleep(1)
         out3 = js_eval(ws, PROBE_JS)
+        box3 = js_eval(ws, BOX_JS)
+        print("390x844 fit %s (box %s, docH %s)"
+              % (box3.get("zoomLab"), box3.get("scroll"),
+                 box3.get("docH")), flush=True)
         print("390 scroll %s/%s"
               % (out3.get("scrollX"), out3.get("scrollY")),
               flush=True)
@@ -551,6 +673,9 @@ def main():
         ok(os.path.isfile(PNG390)
            and os.path.getsize(PNG390) > 1000,
            "screenshot saved (%s)" % PNG390)
+        ws.call("Runtime.disable")
+        nerr = console_errors(ws.events)
+        ok(nerr == 0, "zero console errors (got %d)" % nerr)
     finally:
         if ws is not None:
             ws.close()
