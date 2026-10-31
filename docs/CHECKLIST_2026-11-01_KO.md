@@ -52,11 +52,19 @@
 - [x] J5 카드 1600·방 높이 자동·말풍선 55%·입력창 전체·1920/1280/390 캡처
 
 ## 대기열 (2026-11-01 오후)
-- [x] 1 J3 sign + default camera (10ac785)
-- [x] 2 J5 Order adaptive (0180077)
-- [ ] 3 Flow box (B1/B3/B5 re-test)
-- [ ] 4 J1/J2 Crew portraits
-- [ ] 5 J4 PDF button in Sam's bubble
-- [ ] 6 J6/J7 run controls
-- [ ] 7 J8/J9 employee memory + chat
-- [ ] 8 J10/J11 office live states + click to chat
+- [x] 1 J3 Order lounge sign + default camera (10ac785)
+- [ ] 2 J4 PDF button inside Sam's bubble
+- [x] 3 J5 Order tab adaptive (0180077)
+- [ ] 4 Flow box (B1/B3/B5 re-test)
+- [ ] 5 J1/J2 Crew portraits
+- [ ] 6 J12 Menu order
+- [ ] 7 J6/J7 Run controls
+- [ ] 8 J10/J11 Studio office live states + click to chat
+- [ ] 9 J8/J9 Employee project memory + chat
+- [ ] 10 J13/J14 Input logs + spec check
+- [ ] 11 J15 Board verify view
+- [ ] 12 J16 Project folder logs
+- [ ] 13 J17 Settings layout
+- [ ] 14 J18 PC tab layout + real rights
+- [ ] 15 J19/J20 All tabs width + Gallery
+- [ ] 16 J21 About tab layout + honest claims
