@@ -592,6 +592,30 @@ try:
     ok(prow is not None and prow.get("kind") == "map"
        and prow.get("parts") == [sref + "#s2.1/p2"],
        "draft handoff lists penn with parts")
+    rem = json.loads(json.dumps(D))
+    rem["scenes"][0]["handoff"].append(
+        {"ref": sref + "#s2.1/p2", "to": ["slide_remy"],
+         "why": "w", "how_to_use": "h"})
+    ok(write_storyboard_draft(
+        actx, {"storyboard_draft": rem}).get("ok") is True,
+       "handoff may name remy")
+    rrow = _pc.entry_access(_pc.load_entry_by_ref(sref),
+                            "slide_remy", "o7")
+    ok(rrow is not None and rrow.get("kind") == "map"
+       and rrow.get("parts") == [sref + "#s2.1/p2"],
+       "remy base row is kind=map + parts")
+    bad = json.loads(json.dumps(D))
+    bad["scenes"][0]["handoff"][0]["to"] = ["photo_pia"]
+    ok("Penn, Wren and/or Remy" in " ".join(
+        write_storyboard_draft(
+            actx, {"storyboard_draft": bad}).get("errors", [])),
+       "handoff to pia refuses")
+    bad = json.loads(json.dumps(D))
+    bad["scenes"][0]["end_s"] = 5
+    bad["scenes"][1]["start_s"] = 5
+    ok("at least 10 s" in " ".join(write_storyboard_draft(
+        actx, {"storyboard_draft": bad}).get("errors", [])),
+       "scene under 10 s refuses")
     bad = json.loads(json.dumps(D))
     bad["scenes"][0]["end_s"] = 39
     ok("contiguity" in " ".join(write_storyboard_draft(

@@ -1157,6 +1157,9 @@ def _run_part_split(run_dir, node_id, order_id, order_brief,
     except ValueError as exc:
         return {"ok": False, "error": "part_split: %s" % exc}
     rows = parts.write_clone_rows(order_id, plan)
+    if rows.get("errors"):
+        return {"ok": False,
+                "error": "part_split: %s" % rows["errors"][0]}
     plan["row_writes"] = rows
     _write_json(os.path.join(ndir, parts.SPLIT_FILE), plan)
     res = results.make_result(node_id, order_id,

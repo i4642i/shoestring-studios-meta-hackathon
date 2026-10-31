@@ -740,13 +740,13 @@ def _incoming2(node):
     return lines
 
 
-def _setup_split_run(run_name):
+def _setup_split_run(run_name, draft=None):
     run_dir = os.path.join(RUNS, run_name)
     os.makedirs(run_dir, exist_ok=True)
     wres(run_dir, "pd_marty", "pd_marty",
          {"concept": CONCEPT, "structure": STRUCT})
     wres(run_dir, "plan_ash", "plan_ash",
-         {"storyboard_draft": DRAFT})
+         {"storyboard_draft": draft or DRAFT})
     wres(run_dir, "voice_wren", "voice_wren",
          {"narration": NARR})
     wres(run_dir, "board_penn", "board_penn",
@@ -1072,6 +1072,49 @@ try:
                           encoding="utf-8"))["state"]
        == "step_paused",
        "invalidate resumes a stopped run")
+finally:
+    _pc.ROOT_OVERRIDE = None
+    flow.RUNS_DIR = real_runs
+
+# ---- STEP 3 E1: remy handoff rows ----
+flow.RUNS_DIR = RUNS
+_pc.ROOT_OVERRIDE = tmp
+try:
+    DRAFTR = json.loads(json.dumps(DRAFT))
+    DRAFTR["scenes"][1]["handoff"] = [
+        {"ref": SRC + "#fig1.1", "to": ["slide_remy"],
+         "why": "w", "how_to_use": "h"}]
+    _pc.set_recipients("source", SID, ORDER, ["plan_ash"],
+                       "sales_sam", kind="map")
+    _setup_split_run("rrh", DRAFTR)
+    sentry = _pc.load_entry_by_ref(SRC)
+    r2 = _pc.entry_access(sentry, "slide_remy@p2", ORDER)
+    ok(r2 is not None and r2.get("kind") == "map"
+       and r2.get("parts") == [SRC + "#fig1.1"]
+       and r2.get("set_by") == "part_split",
+       "remy handoff becomes slide_remy@pN map+parts row")
+    ok(_pc.entry_access(sentry, "slide_remy@p1", ORDER) is None
+       and _pc.entry_access(sentry, "slide_remy@p3", ORDER)
+       is None,
+       "other parts get no remy row")
+    _pc.set_recipients("source", SID, ORDER, ["plan_ash"],
+                       "sales_sam", kind="map",
+                       parts=[SRC + "#s2.1/p1"])
+    rrhx = os.path.join(RUNS, "rrhx")
+    os.makedirs(rrhx, exist_ok=True)
+    wres(rrhx, "pd_marty", "pd_marty",
+         {"concept": CONCEPT, "structure": STRUCT})
+    wres(rrhx, "plan_ash", "plan_ash",
+         {"storyboard_draft": DRAFTR})
+    wres(rrhx, "voice_wren", "voice_wren",
+         {"narration": NARR})
+    wres(rrhx, "board_penn", "board_penn",
+         {"storyboard": BOARD, "style_guide": GUIDE})
+    neg = flow._run_code_node(rrhx, "part_split", ORDER, BRIEF,
+                              INCOMING6, lambda ev: None)
+    ok(not neg.get("ok")
+       and "outside plan_ash's listed parts" in neg.get("error", ""),
+       "remy handoff outside ash rows fails the split")
 finally:
     _pc.ROOT_OVERRIDE = None
     flow.RUNS_DIR = real_runs

@@ -572,6 +572,9 @@ def validate_storyboard_draft(obj, struct):
             if not isinstance(en, int) or en <= (st or 0):
                 errors.append("%s needs end_s > start_s" % where)
                 continue
+            if isinstance(st, int) and en - st < 10:
+                errors.append("%s runs %ds, need at least 10 s"
+                              % (where, en - st))
             prev_end = en
             pid = sc.get("part_id")
             if pid not in plan:
@@ -636,10 +639,11 @@ def validate_storyboard_draft(obj, struct):
                         tos = it.get("to")
                         if not isinstance(tos, list) or not tos \
                                 or any(t not in ("board_penn",
-                                                 "voice_wren")
+                                                 "voice_wren",
+                                                 "slide_remy")
                                        for t in tos):
                             errors.append("%s.handoff[%d].to names "
-                                          "Penn and/or Wren only"
+                                          "Penn, Wren and/or Remy only"
                                           % (where, j))
         if isinstance(total, int) and prev_end != total:
             errors.append("scenes end at %d, not total_s %d"

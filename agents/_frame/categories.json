@@ -973,7 +973,7 @@
  },
  "storyboard_draft": {
   "version": 1,
-  "description": "Ash's scene plan: timed scenes from Marty's structure filled with Cleo/Rex material, refs per scene, and the Penn/Wren handoff lists.",
+  "description": "Ash's scene plan: timed scenes from Marty's structure filled with Cleo/Rex material, refs per scene, and the Penn/Wren/Remy handoff lists.",
   "schema": {
    "type": "object",
    "required": [
@@ -1111,7 +1111,8 @@
             "type": "string",
             "enum": [
              "board_penn",
-             "voice_wren"
+             "voice_wren",
+             "slide_remy"
             ]
            }
           },

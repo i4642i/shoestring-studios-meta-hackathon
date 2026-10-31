@@ -101,12 +101,21 @@ def build_plan(structure, draft, narration, concept, guide):
               if isinstance(s, dict)]
     scene_part = {}
     scene_mats = {}
+    remy_by_scene = {}
     for sc in scenes:
         if isinstance(sc.get("n"), int):
             scene_part[sc["n"]] = sc.get("part_id")
             scene_mats[sc["n"]] = [
                 m.get("ref") for m in (sc.get("materials") or [])
                 if isinstance(m, dict) and m.get("ref")]
+            refs = []
+            for h in (sc.get("handoff") or []):
+                if not isinstance(h, dict):
+                    continue
+                if "slide_remy" in (h.get("to") or []) \
+                        and h.get("ref") and h["ref"] not in refs:
+                    refs.append(h["ref"])
+            remy_by_scene[sc["n"]] = refs
     cuts = [c for c in ((narration or {}).get("cuts") or [])
             if isinstance(c, dict) and c.get("cut_id")]
     if not cuts:
@@ -138,12 +147,19 @@ def build_plan(structure, draft, narration, concept, guide):
             for ref in scene_mats.get(sn, []):
                 if ref not in mats:
                     mats.append(ref)
+        rh, seen_rh = [], set()
+        for sn in sns:
+            for r in remy_by_scene.get(sn, []):
+                if r not in seen_rh:
+                    seen_rh.add(r)
+                    rh.append(r)
         plan_parts.append({"no": no, "part_id": pid,
                            "title": p.get("heading") or "",
                            "seconds": secs.get(pid),
                            "scenes": sns,
                            "cuts": [c["cut_id"] for c in mine],
                            "materials": mats, "quota": 0,
+                           "remy_handoff": rh,
                            "boundary": {"prev": None,
                                         "next": None}})
     quotas = quotas_for([len(p["cuts"]) for p in plan_parts])
@@ -512,12 +528,48 @@ def merge_node(node, run_dir, nparts, order_id=None):
     return {"ok": True, "cuts": len(merged["cuts"])}
 
 
+def check_remy_handoff(order_id, plan, root=None):
+    """Ash hands source figures to Remy per scene; part_split turns
+    them into slide_remy@pN rows. Every ref must sit inside Ash's
+    own rows, like apply_handoff. Returns [errors] (validate
+    before writing anything)."""
+    from . import pc
+    errors = []
+    for p in ((plan or {}).get("parts") or []):
+        for ref in (p.get("remy_handoff") or []):
+            try:
+                rpc, rid, _frag = pc.parse_ref(ref)
+                entry = pc.load_entry_by_ref(
+                    pc.entry_ref(rpc, rid), root)
+            except (OSError, ValueError, KeyError):
+                errors.append("remy handoff: bad ref %r" % (ref,))
+                continue
+            mine = pc.entry_access(entry, "plan_ash", order_id)
+            if mine is None:
+                errors.append("remy handoff: plan_ash holds no row "
+                              "for %s (order %s)"
+                              % (pc.entry_ref(rpc, rid), order_id))
+                continue
+            held = pc.row_parts(mine)
+            if held and not any(pc.ref_within(ref, part)
+                                for part in held):
+                errors.append("remy handoff: %r sits outside "
+                              "plan_ash's listed parts" % (ref,))
+    return errors
+
+
 def write_clone_rows(order_id, plan, root=None):
     """Recipient rows for every clone identity (the checks stay
     untouched; only rows are added). Returns {"granted": [...],
-    "skipped": [...]}; missing entries are skipped, never fatal."""
+    "skipped": [...], "errors": [...]}; missing entries are
+    skipped, never fatal, but a bad Remy handoff fails the whole
+    split before anything is written."""
     from . import pc
     granted, skipped = [], []
+    herr = check_remy_handoff(order_id, plan, root)
+    if herr:
+        return {"granted": granted, "skipped": skipped,
+                "errors": herr}
     parts = (plan or {}).get("parts") or []
     by_entry = {}
     for p in parts:
@@ -549,6 +601,31 @@ def write_clone_rows(order_id, plan, root=None):
             granted.append("%s p%d (%s)"
                            % (pc.entry_ref(rpc, rid), no,
                               ",".join(agents)))
+    remy_by_entry = {}
+    for p in parts:
+        for ref in (p.get("remy_handoff") or []):
+            try:
+                rpc, rid, _frag = pc.parse_ref(ref)
+            except ValueError:
+                skipped.append(ref)
+                continue
+            remy_by_entry.setdefault(
+                (rpc, rid), {}).setdefault(
+                    p["no"], []).append(ref)
+    for (rpc, rid), per_no in remy_by_entry.items():
+        for no, refs in per_no.items():
+            agents = ["slide_remy@p%d" % no]
+            try:
+                pc.set_recipients(rpc, rid, order_id, agents,
+                                  SPLIT_NODE, kind="map",
+                                  parts=refs, root=root)
+            except (OSError, ValueError) as exc:
+                skipped.append("%s p%d (%s)"
+                               % (pc.entry_ref(rpc, rid), no, exc))
+                continue
+            granted.append("%s p%d (%s)"
+                           % (pc.entry_ref(rpc, rid), no,
+                              ",".join(agents)))
     try:
         vdoc = pc.content_id("voice:" + order_id)
         ventry = pc.load_entry_by_ref(
@@ -556,7 +633,8 @@ def write_clone_rows(order_id, plan, root=None):
         vref = ventry.get("ref", pc.entry_ref("voice", vdoc))
     except (OSError, ValueError, KeyError):
         skipped.append("voice entry for %s" % order_id)
-        return {"granted": granted, "skipped": skipped}
+        return {"granted": granted, "skipped": skipped,
+                "errors": []}
     for p in parts:
         no = p.get("no")
         agents = ["%s@p%d" % (b, no) for b in CLONE_NODES]
@@ -569,4 +647,4 @@ def write_clone_rows(order_id, plan, root=None):
             skipped.append("voice p%d (%s)" % (no, exc))
             continue
         granted.append("voice p%d (%s)" % (no, ",".join(agents)))
-    return {"granted": granted, "skipped": skipped}
+    return {"granted": granted, "skipped": skipped, "errors": []}

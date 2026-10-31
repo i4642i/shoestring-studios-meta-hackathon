@@ -195,6 +195,35 @@ try:
          "why": "w", "how_to_use": "h"}]}]}
     ap = pc.apply_handoff("ord-20261030-001", draft)
     ok(ap.get("grants") == 2, "handoff applies map+parts rows")
+    prow_t = pc.entry_access(pc.load_entry_by_ref(p["ref"]),
+                             "board_penn", "ord-20261030-001")
+    prow_s = pc.entry_access(pc.load_entry_by_ref(src["ref"]),
+                             "board_penn", "ord-20261030-001")
+    ok(prow_t.get("kind") == "map"
+       and prow_t.get("parts") == [p["ref"] + "#p1"]
+       and prow_s.get("kind") == "map"
+       and prow_s.get("parts") == [src["ref"] + "#s1.1"],
+       "handoff rows are kind=map + parts on theory + source")
+    adir = pc.entry_dir("article", "abcdef012345")
+    os.makedirs(adir, exist_ok=True)
+    aref = "pc://article/abcdef012345"
+    with open(os.path.join(adir, "entry.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"pc": "article", "doc_id": "abcdef012345",
+                   "ref": aref, "recipients": [
+                       {"agent": "plan_ash",
+                        "order_id": "ord-20261030-001",
+                        "kind": "map", "set_by": "case_rex"}]}, f)
+    ap3 = pc.apply_handoff(
+        "ord-20261030-001",
+        {"scenes": [{"n": 9, "handoff": [
+            {"ref": aref + "#p3", "to": ["voice_wren"],
+             "why": "w", "how_to_use": "h"}]}]})
+    arow = pc.entry_access(pc.load_entry_by_ref(aref),
+                           "voice_wren", "ord-20261030-001")
+    ok(ap3.get("grants") == 1 and arow.get("kind") == "map"
+       and arow.get("parts") == [aref + "#p3"],
+       "handoff row on article is kind=map + parts")
     ptext, pmeta2 = pc.prompt_chunks_for(
         "board_penn", "ord-20261030-001", [src["ref"]],
         os.path.join(tmp, "runs"))

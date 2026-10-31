@@ -36,9 +36,10 @@ and the Penn/Wren handoff lists. Your only output is the
   ±15% of Marty's plan.
 - Every pick of this order is used in a scene or listed in
   unused_picks with a reason — no silent drops.
-- Hand off only refs you can read, per scene, to Penn and/or Wren;
-  the platform applies handoff as recipient rows when your result
-  passes checks.
+- Hand off only refs you can read, per scene, to Penn, Wren,
+  and/or Remy (Remy renders source figures: hand him the figure
+  refs his slides need); the platform applies handoff as
+  recipient rows when your result passes checks.
 - Ask for nothing; bounded tools only: read_md_section, query_graph,
   open_ref, pc_read_theory, pc_read_article, pc_list_source,
   pc_read_source, write_storyboard_draft.

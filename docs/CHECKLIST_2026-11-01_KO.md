@@ -17,8 +17,8 @@
 - [x] D2 검사: 후보 4개인 컷에서 열기 ≤ 2
 
 ## STEP 3 Ash
-- [ ] E1 handoff에 slide_remy 허용, part_split이 slide_remy@pN 행 생성
-- [ ] E2 장면 ≥ 10초 검사
+- [x] E1 handoff에 slide_remy 허용, part_split이 slide_remy@pN 행 생성
+- [x] E2 장면 ≥ 10초 검사
 - [ ] E3 Source/Theory/Article 행이 kind=map + parts인지 코드로 확인·보고
 
 ## STEP 4 영상 제작
