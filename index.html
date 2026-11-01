@@ -2244,6 +2244,10 @@ button.linklike { background: none; border: none; padding: 0;
       window.__orderShown();
     if (b.dataset.p === "studio" && window.__studioShown)
       window.__studioShown();
+    const of = document.querySelector("#p-studio iframe.office");
+    if (of && of.contentWindow) of.contentWindow.postMessage(
+      { kind: "office-vis", show: b.dataset.p === "studio" },
+      location.origin);
   });
   (function initTabBody() {
     const init = document.querySelector("nav button.active");
@@ -3283,6 +3287,14 @@ button.linklike { background: none; border: none; padding: 0;
     addEventListener("message", (e) => {
       if (e.origin !== location.origin) return;
       if (e.data && e.data.kind === "office-need-run") tellOfficeRun();
+      if (e.data && e.data.kind === "office-hello") {
+        const of = document.querySelector("#p-studio iframe.office");
+        if (of && of.contentWindow) of.contentWindow.postMessage({
+          kind: "office-vis",
+          show: document.getElementById("p-studio")
+            .classList.contains("active"),
+        }, location.origin);
+      }
     });
     eachBox.onchange = async () => {
       errEl.textContent = "";
@@ -3509,7 +3521,10 @@ button.linklike { background: none; border: none; padding: 0;
           Math.max(320, scene.clientHeight - over - 2) + "px";
       }
     }
-    window.__orderShown = () => requestAnimationFrame(fitOrderRoom);
+    window.__orderShown = () => {
+      requestAnimationFrame(fitOrderRoom);
+      if (window.__recepWake) window.__recepWake();
+    };
     window.addEventListener("resize", () => fitOrderRoom());
     async function newOrder() {
       statusEl.textContent = "Starting…";
@@ -6098,7 +6113,8 @@ function mountViewer(which, box, appearance) {
     };
     let renderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer = new THREE.WebGLRenderer(
+        { antialias: true, powerPreference: "high-performance" });
     } catch (e) { fail(e && e.message ? String(e.message) : "webgl"); return; }
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(box.clientWidth, box.clientHeight);
@@ -6225,7 +6241,8 @@ function renderPortrait(appearance) {
       if (_portraitCache.has(key)) return _portraitCache.get(key);
       if (!_portraitRenderer) {
         _portraitRenderer = new THREE.WebGLRenderer(
-          { antialias: true, alpha: true });
+          { antialias: true, alpha: true,
+            powerPreference: "high-performance" });
         _portraitRenderer.setSize(176, 176, false);
         _portraitRenderer.outputColorSpace = THREE.SRGBColorSpace;
       }
@@ -6315,7 +6332,8 @@ function mountReception(box, appearance, bub) {
   };
   let renderer;
   try {
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer = new THREE.WebGLRenderer(
+      { antialias: true, powerPreference: "high-performance" });
   } catch (e) { fail("webgl"); return; }
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(box.clientWidth, box.clientHeight);
@@ -6724,11 +6742,29 @@ function mountReception(box, appearance, bub) {
     camera.aspect = box.clientWidth / box.clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(box.clientWidth, box.clientHeight);
+    wakeRecep();
   });
   ro.observe(box);
   const hv = new THREE.Vector3();
+  const recepHidden = () =>
+    document.hidden || box.offsetParent === null;
+  const wakeRecep = () => {
+    if (vs.cur && vs.cur.waiting && !recepHidden()) {
+      vs.cur.waiting = false;
+      vs.cur.raf = requestAnimationFrame(tick);
+    }
+  };
+  window.__recepWake = wakeRecep;
+  if (!window.__recepVisWired) {
+    window.__recepVisWired = true;
+    document.addEventListener("visibilitychange", () => {
+      if (window.__recepWake) window.__recepWake();
+    });
+  }
   const tick = () => {
     if (!box.isConnected) return;
+    if (recepHidden()) { vs.cur.waiting = true; return; }
+    vs.cur.waiting = false;
     if (vs.cur && vs.cur.locked) {
       vs.cur.skip = ((vs.cur.skip || 0) + 1) % 12;
       if (vs.cur.skip) {
@@ -6750,6 +6786,7 @@ function mountReception(box, appearance, bub) {
     }
     controls.update();
     renderer.render(scene, camera);
+    vs.cur.frames = (vs.cur.frames || 0) + 1;
     if (bub && bub.isConnected) {
       hv.set(RECEP_SAM.x, RECEP_HEAD_Y, RECEP_SAM.z).project(camera);
       const w = box.clientWidth, h = box.clientHeight;
@@ -6769,6 +6806,25 @@ function mountReception(box, appearance, bub) {
     vs.cur.locked = !!on;
     controls.enabled = !on;
   };
+  window.__recepFrames = () => (vs.cur && vs.cur.frames) || 0;
+  window.__recepPerf = () => new Promise((res) => {
+    const t0 = performance.now();
+    let ticks = 0;
+    const f0 = (vs.cur && vs.cur.frames) || 0;
+    const count = () => {
+      ticks++;
+      if (performance.now() - t0 < 3000) requestAnimationFrame(count);
+      else {
+        const info = renderer.info.render;
+        res({ fps: +(ticks / ((performance.now() - t0) / 1000)).toFixed(1),
+          calls: info.calls, triangles: info.triangles,
+          shadow: key.shadow.mapSize.x,
+          pixelRatio: renderer.getPixelRatio(),
+          frames: ((vs.cur && vs.cur.frames) || 0) - f0 });
+      }
+    };
+    requestAnimationFrame(count);
+  });
 }
 </script>
 </body>

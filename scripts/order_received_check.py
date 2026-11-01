@@ -424,6 +424,23 @@ def main():
            and js_eval(ws, "document.getElementById('o-input')"
                            ".disabled") is False,
            "failed start does not lock the UI")
+        js_eval(ws, "document.querySelector("
+                    "'nav button[data-p=crew]').click()")
+        time.sleep(1.5)
+        r0 = js_eval(ws, "window.__recepFrames "
+                         "&& window.__recepFrames()")
+        time.sleep(2)
+        r1 = js_eval(ws, "window.__recepFrames "
+                         "&& window.__recepFrames()")
+        ok(r0 is not None and r0 >= 0 and r1 == r0,
+           "hidden room stops rendering (%s/%s)" % (r0, r1))
+        js_eval(ws, "document.querySelector("
+                    "'nav button[data-p=order]').click()")
+        time.sleep(2)
+        r2 = js_eval(ws, "window.__recepFrames "
+                         "&& window.__recepFrames()")
+        ok(r2 is not None and r2 > r1,
+           "shown room resumes (%s/%s)" % (r1, r2))
         close_edge(edge, ws, profile, all_events)
         edge, ws, profile = None, None, ""
         # Flip the fixture to in_production on disk (no model).

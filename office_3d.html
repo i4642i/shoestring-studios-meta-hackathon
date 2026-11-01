@@ -161,16 +161,18 @@ const MARGIN = 0.15, BLOCK_COST = 40;
 const SKY = "#9fc5e8";
 const $ = (id) => document.getElementById(id);
 const container = $("app");
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer(
+  { antialias: true, powerPreference: "high-performance" });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 container.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY);
 // No fog: the camera sits 60 m out, so any near fog would haze the scene.
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
 let booted = false;
+const PERF = { frames: 0 };
 function showError(msg, detail) {
   const el = $("error");
   el.style.display = "block";
@@ -189,6 +191,9 @@ let _seed = 1234567;
 const rng = () => (_seed = (_seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
 function shadowify(root) {
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+}
+function receiveOnly(root) {
+  root.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; } });
 }
 function turnTo(obj, targetYaw, rate, dt) {
   let d = targetYaw - obj.rotation.y;
@@ -257,7 +262,7 @@ key.position.set(5, 10, 12);
 key.target.position.set(6, 0, 0);
 scene.add(key, key.target);
 key.castShadow = true;
-key.shadow.mapSize.set(4096, 4096);
+key.shadow.mapSize.set(2048, 2048);
 key.shadow.camera.left = -16;
 key.shadow.camera.right = 16;
 key.shadow.camera.top = 16;
@@ -427,7 +432,7 @@ function buildRoom() {
     for (const [z0, z1] of [[-4, -DOOR], [DOOR, 4]]) {
       const seg = new THREE.Mesh(new THREE.BoxGeometry(0.12, LOW_WALL, z1 - z0), wallMat);
       seg.position.set(px, LOW_WALL / 2, (z0 + z1) / 2);
-      seg.castShadow = true;
+      seg.castShadow = false;
       seg.receiveShadow = true;
       g.add(seg);
       const gl = new THREE.Mesh(new THREE.BoxGeometry(0.06, GLASS_H, z1 - z0),
@@ -569,7 +574,9 @@ async function buildFurniture() {
       const pad = 0.1;
       blocks.push({ x0: fBox.min.x - pad, x1: fBox.max.x + pad, z0: fBox.min.z - pad, z1: fBox.max.z + pad });
     }
-    shadowify(wrap);
+    if (it.f === "desk.glb" || it.f === "bookcaseOpen.glb")
+      shadowify(wrap);
+    else receiveOnly(wrap);
     scene.add(wrap);
     pct(i + 1);
     await new Promise((r) => setTimeout(r, 0));
@@ -925,6 +932,11 @@ addEventListener("message", (e) => {
   if (e.origin !== location.origin) return;
   const d = e.data;
   if (d && d.kind === "office-run") { setLiveRun(d.run_id || ""); return; }
+  if (d && d.kind === "office-vis") {
+    officeShown = !!d.show;
+    wakeOffice();
+    return;
+  }
   if (!d || (d.kind !== "crew-say" && d.kind !== "crew-chat")) return;
   const m = crew.find((x) => x.emp.id === d.id) || crew[0];
   if (!m) return;
@@ -954,7 +966,7 @@ addEventListener("message", (e) => {
 function sizeRenderer() {
   const w = container.clientWidth, h = container.clientHeight;
   if (w < 2 || h < 2) return false; // hidden: ResizeObserver refires on show
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
   renderer.setSize(w, h);
   return true;
 }
@@ -1082,6 +1094,25 @@ function askForRun() {
   if (!liveInit) setTimeout(askForRun, 5000);
 }
 setTimeout(askForRun, 1500);
+window.__officeFrames = () => PERF.frames;
+window.__perf = () => new Promise((res) => {
+  const t0 = performance.now();
+  let ticks = 0;
+  const f0 = PERF.frames;
+  const count = () => {
+    ticks++;
+    if (performance.now() - t0 < 3000) requestAnimationFrame(count);
+    else {
+      const info = renderer.info.render;
+      res({ fps: +(ticks / ((performance.now() - t0) / 1000)).toFixed(1),
+        calls: info.calls, triangles: info.triangles,
+        shadow: key.shadow.mapSize.x,
+        pixelRatio: renderer.getPixelRatio(),
+        frames: PERF.frames - f0 });
+    }
+  };
+  requestAnimationFrame(count);
+});
 window.__officeLive = () => {
   const members = {};
   for (const m of crew) {
@@ -1096,11 +1127,28 @@ window.__officeLive = () => {
   return { run_id: liveRunId, members };
 };
 /* ================= main loop + boot ================= */
+let officeShown = window.parent === window;
+let loopIdle = false;
+let lastFrame = 0;
+function officeHidden() { return document.hidden || !officeShown; }
+function wakeOffice() {
+  if (loopIdle && !officeHidden()) {
+    loopIdle = false;
+    lastFrame = 0;
+    requestAnimationFrame(animate);
+  }
+}
+document.addEventListener("visibilitychange", wakeOffice);
 const timer = new THREE.Timer();
 timer.connect(document);
 const followPoint = new THREE.Vector3();
 function animate() {
+  if (officeHidden()) { loopIdle = true; return; }
+  loopIdle = false;
   requestAnimationFrame(animate);
+  const nowMs = performance.now();
+  if (nowMs - lastFrame < 33) return;
+  lastFrame = nowMs;
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.05);
   const now = performance.now();
@@ -1126,6 +1174,7 @@ function animate() {
       selected.group.position.z);
   }
   renderer.render(scene, camera);
+  PERF.frames++;
 }
 (async function boot() {
   buildRoom();
@@ -1151,6 +1200,8 @@ function animate() {
     doorwaysClear: doorwaysClear(),
   };
   booted = true;
+  try { parent.postMessage({ kind: "office-hello" }, "*"); }
+  catch (e) { /* no parent */ }
 })().catch((e) => showError("Boot failed.", String((e && e.message) || e)));
 
 

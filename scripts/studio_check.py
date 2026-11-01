@@ -4,7 +4,8 @@ Opens index.html at 1280x720, 1920x1080 and 390x844, clicks the
 Studio tab, waits for the office to boot, and records: office
 canvas size vs viewport, bubble overlap, horizontal scroll, the
 chat collapse round-trip, crew/desks/doorways from the boot
-status, and console errors. Screenshots go to runs/.
+status, pause-while-hidden (J26), and console errors. Screenshots
+go to runs/ (office_perf_1920.png is the J26 capture).
 
 Usage: .venv\\Scripts\\python scripts/studio_check.py
 Needs: Edge (no install), free ports 8765 (server) and 9333 (CDP).
@@ -355,6 +356,11 @@ def main():
                 with open(os.path.join(ROOT, "runs", name + ".png"),
                           "wb") as f:
                     f.write(base64.b64decode(shot["data"]))
+                if (w, h) == (1920, 1080):
+                    with open(os.path.join(ROOT, "runs",
+                                           "office_perf_1920.png"),
+                              "wb") as f:
+                        f.write(base64.b64decode(shot["data"]))
                 cdp.drain()
                 errs = console_errors(cdp.events[ev0:])
                 report.append((name, w, h, m, om, errs))
@@ -427,6 +433,28 @@ def main():
                "crew tab hides the office (%s)" % hid)
             ok(back == "flex,none,none",
                "studio tab shows only the office (%s)" % back)
+            # J26: the loop stops while hidden, resumes on show.
+            frames = ("(() => { const f = document.querySelector("
+                      "'#p-studio iframe.office'); try { return f && "
+                      "f.contentWindow.__officeFrames ? "
+                      "f.contentWindow.__officeFrames() : -1; } "
+                      "catch (e) { return -1; } })()")
+            js_eval(cdp, sid, "document.querySelector("
+                    "'nav button[data-p=\"crew\"]'"
+                    ").click()")
+            time.sleep(1.5)
+            f0 = js_eval(cdp, sid, frames)
+            time.sleep(2)
+            f1 = js_eval(cdp, sid, frames)
+            ok(f0 is not None and f0 >= 0 and f1 == f0,
+               "hidden office stops rendering (%s/%s)" % (f0, f1))
+            js_eval(cdp, sid, "document.querySelector("
+                    "'nav button[data-p=\"studio\"]'"
+                    ").click()")
+            time.sleep(2)
+            f2 = js_eval(cdp, sid, frames)
+            ok(f2 is not None and f2 > f1,
+               "shown office resumes (%s/%s)" % (f1, f2))
             cdp.call("Target.closeTarget",
                      {"targetId": tgt["targetId"]})
             cdp.close()
