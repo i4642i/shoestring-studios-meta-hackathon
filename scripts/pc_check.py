@@ -1076,5 +1076,87 @@ ok(je == {"agents": [], "cells": {}},
    "empty order gives empty rights")
 shutil.rmtree(_J18, ignore_errors=True)
 
+# ---- transcribe cache write (live bb3b195801b7: "secs" NameError) ----
+# A paid vision call must be cached with its measured seconds, so a
+# retry never repays it. _vision_chat and the PDF layer are stubbed;
+# the cache write + reuse path is real.
+import importlib.util as _ilu
+import types as _types
+_sp = _ilu.spec_from_file_location(
+    "pc_worker_t", os.path.join(ROOT, "scripts", "pc_worker.py"))
+_wmod = _ilu.module_from_spec(_sp)
+_sp.loader.exec_module(_wmod)
+from agents._frame import pdfingest as _pdi
+class _FakePage:
+    pass
+
+class _FakePdf:
+    def __init__(self):
+        self.pages = [_FakePage()]
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+
+_fake_plumber = _types.ModuleType("pdfplumber")
+_fake_plumber.open = lambda buf: _FakePdf()
+_real_plumber = sys.modules.get("pdfplumber")
+_real_ext = _pdi.extract_page_text
+_real_png = _pdi.page_png
+_real_cand = pc.formula_candidate_pages
+_real_open = _wmod._order_pdf_bytes
+_real_apply = pc.apply_table_vision
+_seen = []
+sys.modules["pdfplumber"] = _fake_plumber
+_pdi.extract_page_text = lambda pg: "nothing here"
+_pdi.page_png = lambda pg: b"PNG"
+pc.formula_candidate_pages = lambda texts: []
+_wmod._order_pdf_bytes = lambda entry: b"fakepdf"
+_vcalls = []
+def _fake_vision(model, png, prompt, timeout=240):
+    _vcalls.append(prompt)
+    return {"columns": ["A"], "rows": [["1"]]}, 30, 40
+_wmod._vision_chat = _fake_vision
+def _fake_apply(entry, addr, cols, rows, page_text, model, now):
+    _seen.append(addr)
+    return (addr, "checked", [])
+pc.apply_table_vision = _fake_apply
+try:
+    _edir = tempfile.mkdtemp(prefix="pc_transcribe_")
+    _entry = {"ref": "pc://source/abcd1234efgh",
+              "doc_id": "abcd1234efgh", "order_id": "ord-test",
+              "pc": "source",
+              "figures": [{"addr": "f8.1", "page": 1,
+                             "kind": "table-image",
+                             "caption": "Table 1",
+                             "file": "f8_1.png"}]}
+    _sum = _wmod.transcribe_entry(_entry, _edir, "m")
+    ok(_sum["tables"] == ["f8.1"] and _sum["calls"] == 1,
+       "vision table transcribed with one paid call")
+    _cf = os.path.join(_edir, "vision_cache",
+                       "table_p1_eqtab-v1.json")
+    _cj = json.load(open(_cf, encoding="utf-8"))
+    ok(isinstance(_cj.get("seconds"), (int, float)),
+       "cache stores the measured seconds (got %r)"
+       % (_cj.get("seconds"),))
+    ok(_cj.get("prompt_tokens") == 30
+       and _cj.get("completion_tokens") == 40
+       and _cj.get("response", {}).get("columns") == ["A"],
+       "cache stores tokens + response")
+    del _vcalls[:]
+    _sum2 = _wmod.transcribe_entry(_entry, _edir, "m")
+    ok(_sum2["cached"] == 1 and not _vcalls,
+       "retry reuses the cache, repays nothing")
+finally:
+    if _real_plumber is None:
+        del sys.modules["pdfplumber"]
+    else:
+        sys.modules["pdfplumber"] = _real_plumber
+    _pdi.extract_page_text = _real_ext
+    _pdi.page_png = _real_png
+    pc.formula_candidate_pages = _real_cand
+    _wmod._order_pdf_bytes = _real_open
+    pc.apply_table_vision = _real_apply
+
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
 sys.exit(1 if FAILS else 0)

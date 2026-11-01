@@ -185,7 +185,7 @@ def _describe_one(model, blob, caption):
     nums = obj.get("numbers", [])
     obj["numbers"] = [str(n) for n in nums] if isinstance(nums, list) \
         else []
-    use = resp.get("usage", {})
+    use = resp.get("usage", {}) or {}
     toks = use.get("prompt_tokens", 0) + use.get("completion_tokens", 0)
     return obj, toks or (len(prompt) + len(text or "")) // 4
 
@@ -331,8 +331,8 @@ def transcribe_entry(entry, edir, model):
         if hit is None:
             prompt = FORMULA_PROMPT if kind == "formula" \
                 else TABLE_PROMPT % next(
-                    f.get("caption", "") for f in entry["figures"]
-                    if f.get("addr") == addr)
+                    (f.get("caption", "") for f in entry["figures"]
+                     if f.get("addr") == addr), "")
             obj = None
             for att in range(2):
                 t0 = time.time()
@@ -340,11 +340,12 @@ def transcribe_entry(entry, edir, model):
                     obj, pt, ct = _vision_chat(model, png_of[page],
                                                prompt)
                     calls += 1
+                    secs = round(time.time() - t0, 1)
                     log(edir, {"ev": "transcribe_call", "kind": kind,
                                "page": page, "attempt": att + 1,
                                "model": model, "prompt_tokens": pt,
                                "completion_tokens": ct,
-                               "seconds": round(time.time() - t0, 1),
+                               "seconds": secs,
                                "error": ""})
                     break
                 except Exception as exc:  # noqa: BLE001 - 1 retry
