@@ -1125,6 +1125,14 @@ ok(not rn.get("ok") and any("p5" in e for e in rn.get("errors", [])),
 shutil.rmtree(covdir3, ignore_errors=True)
 
 
+ok(_tools._lenient_json('{"a": 1}}') == {"a": 1},
+   "trailing brace salvaged")
+ok(_tools._lenient_json('{"a": 1} trailing words') is None,
+   "real trailing junk still rejected")
+ok(_tools._lenient_json('{"a": }') is None,
+   "truncation still rejected")
+
+
 def boom(agent_dir, run_dir, brief, input_md):
     return {"ok": False, "error": "kaput"}
 

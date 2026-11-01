@@ -410,16 +410,29 @@ def _omitted_hints(ctx, errors):
     return hints
 
 
+def _lenient_json(s):
+    """Parse model-emitted JSON generously: plain loads, control-char
+    salvage (spaces, so words never join), then a complete leading
+    object with tiny trailing closers. None when unrecoverable."""
+    cands = [s, re.sub(r"[\x00-\x1f\u2028\u2029]", " ", s)]
+    for c in cands:
+        try:
+            return json.loads(c)
+        except ValueError:
+            pass
+        try:
+            o, end = json.JSONDecoder().raw_decode(c)
+            if re.fullmatch(r"[\s\]}\"]{1,8}", c[end:]):
+                return o
+        except ValueError:
+            pass
+    return None
+
+
 def _write_report(ctx, args, category, validator):
     obj = args.get(category)
     if isinstance(obj, str):
-        try:
-            obj = json.loads(obj)
-        except ValueError:
-            try:
-                obj = json.loads(re.sub(r"[\x00-\x1f]", "", obj))
-            except ValueError:
-                obj = None
+        obj = _lenient_json(obj)
     if not isinstance(obj, dict):
         return {"ok": False,
                 "errors": ["call with {%s: {...}} -- pass the object "
