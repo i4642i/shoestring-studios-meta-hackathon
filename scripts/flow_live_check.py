@@ -9,6 +9,7 @@ saves runs/flow_live.png, and ALWAYS stops the server + Edge
 Usage (needs a sandbox exception for the socket bind):
   .venv\\Scripts\\python scripts/flow_live_check.py
 """
+import _browser
 import base64
 import json
 import os
@@ -484,12 +485,7 @@ def main():
             return 1
         ok(True, "server answers on %d" % SERVER_PORT)
         edge = subprocess.Popen(
-            [EDGE, "--headless", "--no-sandbox", "--disable-gpu",
-             "--use-angle=swiftshader", "--no-first-run",
-             "--disable-extensions",
-             "--remote-debugging-port=%d" % CDP_PORT,
-             "--user-data-dir=" + profile,
-             "--window-size=1920,1080", "about:blank"])
+            _browser.launch_args(CDP_PORT, profile, 1920, 1080))
         t0 = time.time()
         targets = None
         while time.time() - t0 < 40:
@@ -528,6 +524,8 @@ def main():
             if js_eval(ws, "document.readyState") == "complete":
                 break
             time.sleep(0.5)
+        ok(*_browser.renderer_verdict(
+            js_eval(ws, _browser.RENDERER_JS)))
         js_eval(ws, "document.querySelector"
                     "('nav button[data-p=flow]').click()")
         time.sleep(2)
@@ -712,7 +710,7 @@ def main():
     finally:
         if ws is not None:
             ws.close()
-        stop_proc(edge, "edge")
+        _browser.stop_tree(edge, "edge")
         stop_proc(server, "server")
         shutil.rmtree(profile, ignore_errors=True)
     if fails:

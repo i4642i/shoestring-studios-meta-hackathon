@@ -9,6 +9,7 @@ status, and console errors. Screenshots go to runs/.
 Usage: .venv\\Scripts\\python scripts/studio_check.py
 Needs: Edge (no install), free ports 8765 (server) and 9333 (CDP).
 """
+import _browser
 import base64
 import hashlib
 import json
@@ -278,12 +279,9 @@ def main():
         ok(True, "server up on %d" % SRV_PORT)
         tmpd = tempfile.mkdtemp(prefix="studiocheck_")
         proc = subprocess.Popen(
-            [edge, "--headless", "--no-sandbox", "--disable-gpu",
-             "--use-angle=swiftshader", "--no-first-run",
-             "--disable-extensions",
-             "--user-data-dir=" + os.path.join(tmpd, "profile"),
-             "--remote-debugging-port=%d" % CDP_PORT,
-             "--remote-allow-origins=*", "about:blank"],
+            _browser.launch_args(
+                CDP_PORT, os.path.join(tmpd, "profile"),
+                extra=["--remote-allow-origins=*"], binary=edge),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             end = time.time() + 30
@@ -327,6 +325,9 @@ def main():
                 ok(wait_for(cdp, sid,
                             "document.readyState === 'complete'", 30),
                    "%s page loads" % name)
+                if (w, h) == SIZES[0]:
+                    ok(*_browser.renderer_verdict(
+                        js_eval(cdp, sid, _browser.RENDERER_JS)))
                 js_eval(cdp, sid,
                         "document.querySelector("
                         "'nav button[data-p=\"studio\"]'"
@@ -494,8 +495,7 @@ def main():
                     ok(om.get("errHidden"),
                        "%s no error overlay" % name)
         finally:
-            proc.kill()
-            proc.wait()
+            _browser.stop_tree(proc, "edge")
             import shutil
             shutil.rmtree(tmpd, ignore_errors=True)
     finally:

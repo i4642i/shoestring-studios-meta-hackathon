@@ -10,6 +10,7 @@ Saves runs/studio_chat_memory.png, then ALWAYS stops the server +
 Edge and deletes the fixture run (try/finally). Stdlib only. No
 model calls (the server stub answers, env-gated).
 """
+import _browser
 import base64
 import json
 import os
@@ -320,17 +321,11 @@ def main():
                 if ws is not None:
                     ws.close()
                     ws = None
-                stop_proc(edge, "edge")
+                _browser.stop_tree(edge, "edge")
                 edge = None
             shutil.rmtree(profile, ignore_errors=True)
             edge = subprocess.Popen(
-                [EDGE, "--headless", "--no-sandbox",
-                 "--disable-gpu",
-                 "--use-angle=swiftshader", "--no-first-run",
-                 "--disable-extensions",
-                 "--remote-debugging-port=%d" % CDP_PORT,
-                 "--user-data-dir=" + profile,
-                 "--window-size=1920,1080", "about:blank"])
+                _browser.launch_args(CDP_PORT, profile, 1920, 1080))
             t0 = time.time()
             targets = None
             while time.time() - t0 < 40:
@@ -377,6 +372,8 @@ def main():
             print("1 FAILURES")
             return 1
         ok(True, "page loads (attempt %d)" % attempt)
+        ok(*_browser.renderer_verdict(
+            js_eval(ws, _browser.RENDERER_JS)))
         js_eval(ws, "document.querySelector"
                     "('nav button[data-p=studio]').click()")
         ok(wait_for(ws, "Array.from(document.getElementById("
@@ -491,7 +488,7 @@ def main():
         shutil.rmtree(FIX, ignore_errors=True)
         if ws is not None:
             ws.close()
-        stop_proc(edge, "edge")
+        _browser.stop_tree(edge, "edge")
         stop_proc(server, "server")
         shutil.rmtree(profile, ignore_errors=True)
     if fails:

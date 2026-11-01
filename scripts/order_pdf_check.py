@@ -13,6 +13,7 @@ calls (orders + intake + upload are plain HTTP):
 Saves runs/order_pdf_bubble.png, then ALWAYS stops the server + Edge
 and deletes the fixture orders (try/finally). Stdlib only.
 """
+import _browser
 import base64
 import json
 import os
@@ -165,12 +166,7 @@ def open_edge(seed_oid=None):
     profile = os.path.join(tempfile.gettempdir(), "order_pdf_profile")
     shutil.rmtree(profile, ignore_errors=True)
     edge = subprocess.Popen(
-        [EDGE, "--headless", "--no-sandbox", "--disable-gpu",
-         "--use-angle=swiftshader", "--no-first-run",
-         "--disable-extensions",
-         "--remote-debugging-port=%d" % CDP_PORT,
-         "--user-data-dir=" + profile,
-         "--window-size=1280,720", "about:blank"])
+        _browser.launch_args(CDP_PORT, profile, 1280, 720))
     ws = None
     try:
         t0 = time.time()
@@ -188,7 +184,7 @@ def open_edge(seed_oid=None):
         page = next((t for t in (targets or [])
                      if t.get("type") == "page"), None)
         if page is None:
-            stop_proc(edge, "edge")
+            _browser.stop_tree(edge, "edge")
             return None, None, profile
         wsu = page["webSocketDebuggerUrl"]
         hostport, _, path = wsu.split("://", 1)[1].partition("/")
@@ -209,7 +205,7 @@ def open_edge(seed_oid=None):
     except Exception:
         if ws is not None:
             ws.close()
-        stop_proc(edge, "edge")
+        _browser.stop_tree(edge, "edge")
         raise
     return edge, ws, profile
 
@@ -218,7 +214,7 @@ def close_edge(edge, ws, profile, all_events):
     if ws is not None:
         all_events.extend(ws.events)
         ws.close()
-    stop_proc(edge, "edge")
+    _browser.stop_tree(edge, "edge")
     shutil.rmtree(profile or "", ignore_errors=True)
 
 
@@ -369,6 +365,8 @@ def main():
         ok(wait_for(ws, "!!document.querySelector("
                         "'#o-scene canvas')", timeout=60),
            "reception canvas mounted")
+        ok(*_browser.renderer_verdict(
+            js_eval(ws, _browser.RENDERER_JS)))
 
         # use the order the page itself created, so resume is the real flow
         oid1 = wait_oid(ws)

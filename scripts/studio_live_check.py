@@ -10,6 +10,7 @@ Saves runs/studio_controls_1920.png and runs/studio_controls_390.png,
 then ALWAYS stops the server + Edge and deletes the fixture run
 (try/finally). Stdlib only. No model calls.
 """
+import _browser
 import base64
 import json
 import os
@@ -296,12 +297,7 @@ def main():
             return 1
         ok(True, "server answers on %d" % SERVER_PORT)
         edge = subprocess.Popen(
-            [EDGE, "--headless", "--no-sandbox", "--disable-gpu",
-             "--use-angle=swiftshader", "--no-first-run",
-             "--disable-extensions",
-             "--remote-debugging-port=%d" % CDP_PORT,
-             "--user-data-dir=" + profile,
-             "--window-size=1920,1080", "about:blank"])
+            _browser.launch_args(CDP_PORT, profile, 1920, 1080))
         t0 = time.time()
         targets = None
         while time.time() - t0 < 40:
@@ -340,6 +336,8 @@ def main():
             if js_eval(ws, "document.readyState") == "complete":
                 break
             time.sleep(0.5)
+        ok(*_browser.renderer_verdict(
+            js_eval(ws, _browser.RENDERER_JS)))
         js_eval(ws, "document.querySelector"
                     "('nav button[data-p=studio]').click()")
         ok(wait_for(ws, "document.getElementById('st-chip')"
@@ -433,7 +431,7 @@ def main():
         shutil.rmtree(FIX, ignore_errors=True)
         if ws is not None:
             ws.close()
-        stop_proc(edge, "edge")
+        _browser.stop_tree(edge, "edge")
         stop_proc(server, "server")
         shutil.rmtree(profile, ignore_errors=True)
     if fails:
