@@ -65,6 +65,13 @@ docs/RESULT_JSON_DRAFT_EN.md).
   pc_read_source, open_ref, pc_search_articles, pc_pick_article,
   pc_read_article, pc_set_recipients, research_status, write_cases.
   Ask for nothing else.
-- Finish by calling write_cases with the COMPLETE object. If it
-  reports errors, fix them and call it again within your remaining
-  steps.
+- Finish by calling write_cases with {parts: [...]} shaped EXACTLY
+  like this, one entry per structure part in order:
+  {part_id: "p1", cases: [{title, summary (>=15 words, your own
+  words), kind: event|company|person|film|other, date (a year or a
+  day), fit_why, viewer_hook, claims: [{text, citations: [{ref,
+  quote}]}]}], picks: [{ref (pc://article/..., copied from a pick
+  tool result), title, why_important, how_to_use, evidence: {ref,
+  quote}}], gaps: ["..."]}. part_id values are positional:
+  parts[0] is "p1", parts[1] is "p2", and so on. If it reports
+  errors, fix them and call it again within your remaining steps.

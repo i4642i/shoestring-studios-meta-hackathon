@@ -42,7 +42,7 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
 - Spend steps like money: at most 2 picks per part; stop searching a
   part once its claims are covered. Call write_concepts as soon as
   every part is covered -- never keep researching after coverage.
-  Keep at least 3 steps unspent for writer fixes.
+  Keep at least 3 steps unspent for writer fixes.
 - Bound reads too: open at most 2 picked items per part; a read
   must end in a claim or a gap note. Call write_concepts as soon
   as every part is covered -- never keep reading after coverage.
@@ -64,6 +64,13 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   pc_read_source, open_ref, pc_search_theory, pc_pick_theory,
   pc_read_theory, pc_set_recipients, research_status,
   write_concepts. Ask for nothing else.
-- Finish by calling write_concepts with the COMPLETE object. If it
-  reports errors, fix them and call it again within your remaining
-  steps.
+- Finish by calling write_concepts with {parts: [...]} shaped
+  EXACTLY like this, one entry per structure part in order:
+  {part_id: "p1", concept_name, easy_explanation (>=30 words),
+  why_it_came_about, analogy_or_example, common_misunderstanding,
+  claims: [{text, citations: [{ref, quote}]}],
+  picks: [{ref (pc://theory/..., copied from a pick tool result),
+  title, why_important, how_to_use, evidence: {ref, quote}}],
+  gaps: ["..."]}. part_id values are positional: parts[0] is "p1",
+  parts[1] is "p2", and so on. If it reports errors, fix them and
+  call it again within your remaining steps.
