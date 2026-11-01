@@ -742,15 +742,11 @@
       "type": "string"
      },
      "type": "array"
-    },
-    "source_summary": {
-     "type": "string"
     }
    },
    "required": [
     "order_id",
     "client_answers",
-    "source_summary",
     "production_notes",
     "open_questions"
    ],

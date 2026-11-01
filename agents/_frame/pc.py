@@ -312,9 +312,10 @@ def clean_pages(pages):
 
 # ---- section split (Source: numbered headings) ----
 def split_sections(paras):
-    """Split cleaned paragraphs at numbered headings (depth <= 1 starts
-    a top section; deeper numbers become subsections of the current
-    one). Returns [{"n", "heading", "paras", "subsections"}]."""
+    """Split cleaned paragraphs at numbered headings (exactly one dot
+    starts a top section; bare numbers stay body text; deeper numbers
+    become subsections of the current one). Returns [{"n", "heading",
+    "paras", "subsections"}]."""
     secs = []
     seen = set()
     cur = {"n": "0", "heading": "", "paras": [], "subsections": [],
@@ -331,7 +332,7 @@ def split_sections(paras):
             cur["paras"].append(p)
             continue
         m = _is_heading(p["text"])
-        if m and m[0].count(".") <= 1 and m[0] not in seen:
+        if m and m[0].count(".") == 1 and m[0] not in seen:
             if cur["paras"] or cur["n"] != "0":
                 secs.append(cur)
             seen.add(m[0])
@@ -340,7 +341,7 @@ def split_sections(paras):
             p = dict(p)
             cur["paras"].append(p)
             continue
-        if m:
+        if m and m[0].count(".") >= 1:
             cur["subsections"].append(p["text"])
         cur["paras"].append(p)
     if cur["paras"] or not secs:

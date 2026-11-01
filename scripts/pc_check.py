@@ -107,8 +107,21 @@ ok([s["n"] for s in WRP] == ["1"]
    "wrapped line starting with a bare number joins")
 BHD = pc.split_sections(pc.clean_pages(
     ["Body ends here.\n10 APPENDIX\nAppendix text."]))
-ok([s["n"] for s in BHD] == ["0", "10"],
-   "bare number heads a section after a sentence end")
+ok([s["n"] for s in BHD] == ["1"]
+   and "10 APPENDIX" in " ".join(
+       p["text"] for p in BHD[0]["paras"]),
+   "bare number stays body text after a sentence end")
+FNT = pc.split_sections(pc.clean_pages(
+    ["Real text ends here.\n\n1 Berkeley Lab, http://www.lbl.gov/about.\n\n1.1 Next real.\nBody."]))
+ok([s["n"] for s in FNT] == ["0", "1.1"]
+   and "Berkeley Lab" in " ".join(
+       p["text"] for p in FNT[0]["paras"]),
+   "footnote number never becomes a section")
+TBL = pc.split_sections(pc.clean_pages(
+    ["Row above.\n\n3 10 X X\n\n4 17 X X X\n\n"
+     "1.2 After.\nBody."]))
+ok([s["n"] for s in TBL] == ["0", "1.2"],
+   "table row numbers never become sections")
 DUP = pc.split_sections(
     pc.clean_pages(["1.1 A\nBody a.\n\n1.1 A again\nBody b."]))
 ok([s["n"] for s in DUP] == ["1.1"]

@@ -26,9 +26,10 @@ then move on.
 
 ## Writing the request
 
-- Read the parsed source file before writing anything.
+- The parsed source does not exist yet at your time; never describe
+  the file contents.
 - client_answers: the 5 recorded answers, one line each.
-- source_summary: what the file is about, which parts matter.
+- source summary: skipped -- the Source PC map covers the file.
 - production_notes: scope, emphasis, risks, checks — concrete items.
 - open_questions: genuinely unclear items only, else an empty list.
 - Never invent client quotes or source passages.

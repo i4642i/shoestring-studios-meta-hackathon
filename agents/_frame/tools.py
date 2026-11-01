@@ -1375,12 +1375,12 @@ def final_request_prompt(oid, form, pdf_name, pdf_bytes):
         "text:\n"
         '{"order_id": "...", "client_answers": {"audience": "...", '
         '"length": "...", "depth": "...", "theme": "...", '
-        '"source": "..."}, "source_summary": "...", '
+        '"source": "..."}, '
         '"production_notes": ["...", ...], "open_questions": [...]}\n'
         "Rules: client_answers.audience/length/depth/theme come from the "
         "FORM below, word for word; client_answers.source is the PDF file "
-        "name. source_summary: 2-3 sentences on what the source covers "
-        "(from the file name only, never invent contents). "
+        "name. Never describe the source contents: the file is not "
+        "parsed yet at your time; the Source PC map summarizes it. "
         "production_notes: 2-5 short crew instructions grounded in the "
         "form. open_questions: [] unless something is genuinely unclear.\n"
         "ORDER: %s\nFORM: %s\nSOURCE PDF: %s (%d bytes)"

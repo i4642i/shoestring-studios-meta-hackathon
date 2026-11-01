@@ -66,7 +66,7 @@ source) → read → `write_request` (validates `request`, auto-builds
 ```json
 {
   "type": "object",
-  "required": ["order_id", "client_answers", "source_summary",
+  "required": ["order_id", "client_answers",
                "production_notes", "open_questions"],
   "properties": {
     "order_id": {"type": "string"},
@@ -79,7 +79,6 @@ source) → read → `write_request` (validates `request`, auto-builds
         "source": {"type": "string"}
       }
     },
-    "source_summary": {"type": "string"},
     "production_notes": {"type": "array", "items": {"type": "string"}},
     "open_questions": {"type": "array", "items": {"type": "string"}}
   }

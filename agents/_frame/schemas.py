@@ -453,7 +453,7 @@ def validate_cases(obj):
     return errors
 
 
-REQUIRED_REQUEST_TOP = ("order_id", "client_answers", "source_summary",
+REQUIRED_REQUEST_TOP = ("order_id", "client_answers",
                           "production_notes", "open_questions")
 REQUIRED_ANSWERS = ("audience", "length", "depth", "theme", "source")
 
@@ -477,10 +477,6 @@ def validate_request(obj):
                 errors.append("client_answers.%s must be a non-empty string" % k)
     elif "client_answers" in obj:
         errors.append("client_answers must be an object")
-    if "source_summary" in obj and (
-            not isinstance(obj["source_summary"], str)
-            or not obj["source_summary"].strip()):
-        errors.append("source_summary must be a non-empty string")
     notes = obj.get("production_notes")
     if isinstance(notes, list):
         if not notes or any(not isinstance(n, str) or not n.strip()
@@ -509,8 +505,7 @@ def render_request_md(obj):
              "- Depth: %s" % ans["depth"],
              "- Theme direction: %s" % ans["theme"],
              "- Source material: %s" % ans["source"],
-             "", "## Source summary", "",
-             obj["source_summary"], "", "## Production notes", ""]
+             "", "## Production notes", ""]
     lines += ["- %s" % n for n in obj["production_notes"]]
     lines += ["", "## Open questions", ""]
     if obj["open_questions"]:

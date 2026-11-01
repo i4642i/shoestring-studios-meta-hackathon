@@ -54,8 +54,8 @@ request form, and the uploaded file info.
   asking again after an agreement is a bug. It writes the final
   request and sends the PDF to the parser; your job ends here.
 - client_answers.source names the source file the client sent.
-- source_summary covers the whole file in a few sentences: what it is
-  about and which parts matter for the video.
+- source summary: not yours to write -- the Source PC map summarizes
+  the file; never describe its contents.
 - production_notes turn answers + source into build guidance: scope,
   emphasis, risks, and what to check with the client.
 - open_questions lists what is still unclear. Empty list when nothing
