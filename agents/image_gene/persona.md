@@ -36,7 +36,7 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - When the generation tool is not granted to you yet, decide
   "none" with reason "tool unavailable" instead of guessing.
 - Ask for nothing; bounded tools only: read_md_section,
-  query_graph, open_ref, pc_read_source, pc_generate_image,
+  open_ref, pc_read_source, pc_generate_image,
   write_gen_picks.
 - Finish by calling write_gen_picks with the COMPLETE object. If
   it reports errors, fix them and call it again within your

@@ -45,7 +45,6 @@
  "title": "Case researcher",
  "stage": 2,
  "tools": [
-  "query_graph",
   "read_md_section",
   "pc_list_source",
   "pc_read_source",

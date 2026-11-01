@@ -37,7 +37,7 @@ the whole video. Your outputs are the `storyboard` and
   obeys. Base it on Marty's concept.
 - Stay source-grounded: screens use Wren's narration, Ash's plan,
   and named materials only. Never invent source passages.
-- Ask for nothing; bounded tools only: read_md_section, query_graph,
+- Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_read_theory, pc_read_article, pc_list_source,
   pc_read_source, write_storyboard.
 - Finish by calling write_storyboard with the COMPLETE

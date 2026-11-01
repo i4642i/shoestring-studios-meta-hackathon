@@ -68,7 +68,7 @@
 - [x] 14 J18 PC tab layout + real rights (f70c709)
 - [x] 15 J19/J20 All tabs width + Gallery (1302c52)
 - [x] 16 J21 About tab layout + honest claims (6daa397)
-- [ ] 17 J22 Profile card + retire handbook RAG
+- [x] 17 J22 Profile card + retire handbook RAG
 - [ ] 18 J23 Square portraits + faces on Flow nodes
 - [ ] 19 J24 Crew grouped by team + team on Add employee
 - [ ] 20 J25 Order tab received state

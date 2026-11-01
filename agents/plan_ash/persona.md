@@ -40,7 +40,7 @@ and the Penn/Wren handoff lists. Your only output is the
   and/or Remy (Remy renders source figures: hand him the figure
   refs his slides need); the platform applies handoff as
   recipient rows when your result passes checks.
-- Ask for nothing; bounded tools only: read_md_section, query_graph,
+- Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_read_theory, pc_read_article, pc_list_source,
   pc_read_source, write_storyboard_draft.
 - Finish by calling write_storyboard_draft with the COMPLETE object.

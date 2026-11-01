@@ -34,7 +34,7 @@ docs/RESULT_JSON_DRAFT_EN.md).
   says so honestly; log status remotion_unavailable with
   renders_n 0 and an empty slide_file instead of a file.
 - Ask for nothing; bounded tools only: read_md_section,
-  query_graph, open_ref, render_slide, remy_view_slide,
+  open_ref, render_slide, remy_view_slide,
   write_render_log.
 - Finish by calling write_render_log with the COMPLETE object.
   If it reports errors, fix them and call it again within your

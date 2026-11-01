@@ -42,7 +42,7 @@ on-screen text, and timing per cut. Your only output is the
 - When candidates are all "none" (helpers stubbed), plan text
   blocks from Penn's on-screen text.
 - Ask for nothing; bounded tools only: read_md_section,
-  query_graph, open_ref, pc_list_source, pc_read_source,
+  open_ref, pc_list_source, pc_read_source,
   vera_view_image, write_slide_draft.
 - Finish by calling write_slide_draft with the COMPLETE object.
   If it reports errors, fix them and call it again within your

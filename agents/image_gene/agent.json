@@ -21,7 +21,6 @@
  "title": "Image generator",
  "stage": 7,
  "tools": [
-  "query_graph",
   "read_md_section",
   "open_ref",
   "pc_read_source",

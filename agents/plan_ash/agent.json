@@ -22,7 +22,6 @@
  "title": "Planning PD",
  "stage": 3,
  "tools": [
-  "query_graph",
   "read_md_section",
   "open_ref",
   "pc_read_theory",

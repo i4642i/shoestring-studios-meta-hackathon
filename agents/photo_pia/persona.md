@@ -36,7 +36,7 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - When a tool is not granted to you yet, decide "none" with reason
   "tool unavailable" instead of guessing.
 - Ask for nothing; bounded tools only: read_md_section,
-  query_graph, open_ref, pc_list_source, pc_read_source,
+  open_ref, pc_list_source, pc_read_source,
   pc_search_images, pc_pick_image, write_photo_picks.
 - Finish by calling write_photo_picks with the COMPLETE object. If
   it reports errors, fix them and call it again within your

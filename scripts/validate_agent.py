@@ -26,13 +26,14 @@ def validate(path):
     want_id = os.path.basename(os.path.normpath(path))
     agent_js = os.path.join(path, "agent.json")
     persona_md = os.path.join(path, "persona.md")
+    profile_md = os.path.join(path, "profile.md")
     handbook = os.path.join(path, "handbook")
     appearance = os.path.join(path, "appearance.json")
     tools_dir = os.path.join(path, "tools")
 
     if not ID_RE.match(want_id):
         errs.append("folder id breaks naming rule: %s" % want_id)
-    for p in (agent_js, persona_md, appearance):
+    for p in (agent_js, persona_md, appearance, profile_md):
         if not os.path.isfile(p):
             errs.append("missing: %s" % p)
     if not (os.path.isdir(handbook)
@@ -122,6 +123,15 @@ def validate(path):
                 errs.append("persona.md missing %s" % section)
         if not text.startswith("# "):
             errs.append("persona.md must start with '# <Name>'")
+    if os.path.isfile(profile_md):
+        with open(profile_md, encoding="utf-8") as f:
+            prof = f.read()
+        if not prof.startswith("# "):
+            errs.append("profile.md must start with '# <Name>'")
+        for section in ("## Duties", "## Flow", "## PCs",
+                        "## Tools"):
+            if section not in prof:
+                errs.append("profile.md missing %s" % section)
     return errs
 
 

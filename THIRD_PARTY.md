@@ -17,7 +17,7 @@ Built on free software (open source except the Remotion slide renderer, which is
 
 | Name | Version | License | What we use it for | Link |
 | --- | --- | --- | --- | --- |
-| LightRAG (lightrag-hku) | 1.5.7 | MIT | Knowledge-graph index (CPU-only): queried today by the handbook tool and the Studio project-memory chat. PC entries get an index too, but no tool searches it yet — PC tools read the stored text. | [PyPI](https://pypi.org/project/lightrag-hku/) |
+| LightRAG (lightrag-hku) | 1.5.7 | MIT | Knowledge-graph index (CPU-only): queried today by the Studio project-memory chat. PC entries get an index too, but no tool searches it yet — PC tools read the stored text. | [PyPI](https://pypi.org/project/lightrag-hku/) |
 | sentence-transformers | 6.2.0 | Apache-2.0 | Local embedding model runner (local profile). Imported directly by our code. | [PyPI](https://pypi.org/project/sentence-transformers/) |
 | numpy | 2.4.6 | BSD-3-Clause | Embedding math in the LightRAG adapter. Imported directly by our code. | [PyPI](https://pypi.org/project/numpy/) |
 | torch (CPU) | 2.14.1+cpu | BSD-3-Clause | CPU tensors behind sentence-transformers. | [PyPI](https://pypi.org/project/torch/) |

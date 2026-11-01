@@ -50,7 +50,7 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - After reading each pick and before writing, list plan_ash (map)
   on it: pc_set_recipients({ref: <pick ref>, map: ["plan_ash"]}).
   Ash sees your picks only through this list.
-- Bounded tools only: read_md_section, query_graph, pc_list_source,
+- Bounded tools only: read_md_section, pc_list_source,
   pc_read_source, open_ref, pc_search_articles, pc_pick_article,
   pc_read_article, pc_set_recipients, research_status, write_cases.
   Ask for nothing else.

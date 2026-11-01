@@ -609,20 +609,6 @@ def write_cases(ctx, args):
     return _write_report(ctx, args, "cases", validate_cases)
 
 
-def query_graph(ctx, args):
-    st = graph.get_status(ctx["agent_dir"])
-    if st["state"] != "indexed":
-        return {"state": st["state"], "reason": st.get("reason", ""),
-                "hint": "read input_md directly instead"}
-    ans = graph.query(ctx["agent_dir"], args.get("question", ""))
-    out = {"state": "indexed", "answer": ans}
-    if isinstance(ans, dict):
-        for k in ("profile", "model", "dim"):
-            if ans.get(k) is not None:
-                out[k] = ans[k]
-    return out
-
-
 def _entry_for(ctx, ref):
     """The Source entry for this run: explicit ref, else the order's."""
     if not ref:
@@ -2084,13 +2070,6 @@ TOOLS = {
         "made, citations written, per part. Call it before writing.",
         {"type": "object", "properties": {},
          "additionalProperties": False},
-    ),
-    "query_graph": (
-        query_graph,
-        "Ask the employee knowledge graph. Honest when no index exists yet.",
-        {"type": "object",
-         "properties": {"question": {"type": "string"}},
-         "required": ["question"], "additionalProperties": False},
     ),
     "pc_list_source": (
         pc_list_source,

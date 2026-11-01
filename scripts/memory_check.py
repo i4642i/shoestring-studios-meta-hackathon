@@ -245,30 +245,43 @@ try:
                            "STATUS.json"),
               json.dumps({"state": "building"}))
         code, obj = chat("explain_cleo", "r6")
-        ok(code == 409 and obj.get("memory") == "building"
-           and obj.get("error") == "Memory building…",
-           "m8 building -> 409 disabled")
+        ok(code == 200 and obj.get("reply")
+           == "I remember this project.",
+           "m8 building -> 200 interview")
+        ok("My memory of this project is still building."
+           in seen_system.get("system", ""),
+           "m8 building sentence in prompt")
         wfile(os.path.join(TMP, "r6", "memory", "explain_cleo",
                            "STATUS.json"),
               json.dumps({"state": "failed", "error": "no GPU"}))
         code, obj = chat("explain_cleo", "r6")
-        ok(code == 409 and "no GPU" in obj.get("error", "")
-           and obj.get("memory") == "failed",
-           "m8 failed -> 409 with reason")
+        ok(code == 200, "m8 failed -> 200 interview")
+        ok("My memory of this project failed to build: no GPU."
+           in seen_system.get("system", ""),
+           "m8 failed sentence in prompt")
         code, obj = chat("explain_cleo", "r2")
-        ok(code == 409 and obj.get("memory") == "not yet",
-           "m8 no memory -> 409 not yet")
+        ok(code == 200, "m8 no memory -> 200 interview")
+        ok("I have not worked on this project yet."
+           in seen_system.get("system", ""),
+           "m8 not-yet sentence in prompt")
+        ok("# Cleo" in seen_system.get("system", "")
+           and "PROFILE CARD" in seen_system.get("system", ""),
+           "m8 interview prompt holds the profile")
         code, obj = chat("explain_cleo", "no-such-run")
         ok(code == 404, "m8 unknown run -> 404")
         code, obj = chat("photo_pia", "r1")
-        ok(code == 409 and obj.get("memory") == "closed",
-           "m8 closed project -> 409")
+        ok(code == 200, "m8 closed project -> 200 interview")
+        ok("My memory of this project was deleted when the "
+           "project closed." in seen_system.get("system", ""),
+           "m8 closed sentence in prompt")
         code, obj = chat("photo_pia", "r2")
         ok(code == 200 and obj.get("reply")
            == "I remember this project.",
            "m8 ready -> 200 reply")
         ok("PROJECT MEMORY" in seen_system.get("system", "")
            and "stub memory says" in seen_system.get(
+               "system", "")
+           and "UNAVAILABLE" not in seen_system.get(
                "system", ""),
            "m8 memory context in the prompt")
         captured.clear()
@@ -276,7 +289,8 @@ try:
             {"messages": [{"role": "user",
                            "content": "hi"}]}).encode()
         handler._api_chat("explain_cleo")
-        ok(captured["code"] == 200,
+        ok(captured["code"] == 200
+           and "PROFILE CARD" in seen_system.get("system", ""),
            "m8 legacy chat without run still works")
     finally:
         runner._chat = real_chat

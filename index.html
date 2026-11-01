@@ -197,8 +197,8 @@
   .idcard .nm { display: block; font-size: 18px; font-weight: 800; }
   .idcard .ti { display: block; font-size: 13px; color: var(--dim); margin: 2px 0 8px; }
   .idcard .meta { display: block; font-size: 12px; color: var(--dim); font-family: monospace; }
-  .idcard .g { display: block; font-size: 11px; font-weight: 700; margin-top: 8px; color: var(--dim); }
-  .idcard .g.on { color: #1e7d32; }
+
+
   .idempty { font-size: 14px; color: var(--dim); }
   @media (max-width: 700px) {
     .idcard .idpic { width: 56px; height: 56px; }
@@ -700,6 +700,15 @@
   .se-run { color: #b45309; }
   .se-fail { color: #b91c1c; }
   .se-meta { font-size: 11px; color: var(--dim); margin: 2px 0 6px; }
+  .se-mem { border-top: 1px solid var(--line); padding: 8px 0;
+    font-size: 12px; }
+  .se-chip { display: inline-block; font-size: 11px;
+    border-radius: 999px; padding: 2px 9px; margin: 3px 6px 0 0;
+    background: #f4f4f5; color: #4b5563; }
+  .se-chip.ready { background: #dcfce7; color: #166534; }
+  .se-chip.building { background: #fef3c7; color: #92400e; }
+  .se-chip.failed { background: #fee2e2; color: #b91c1c; }
+  .se-mem button { font-size: 11px; margin-left: 6px; }
   @media (max-width: 1199px) {
     #se-cols { flex-direction: column; }
     #se-left, #se-right { width: 100%; }
@@ -751,13 +760,15 @@
       <div id="se-right">
         <div class="card se-sub">
     <h3>INDEX STATUS</h3>
-    <p><button id="se-buildall">BUILD ALL (ACTIVE PROFILE)</button> <span id="se-bamsg"></span></p>
+    <p class="se-meta">PC indexes build when entries are added; rebuild one entry from its PC page (REBUILD INDEX). Memories build when a report is approved.</p>
     <div id="se-tablewrap">
     <table id="se-table">
-      <thead><tr><th>AGENT</th><th id="se-th-local">LOCAL</th><th id="se-th-jetson">JETSON</th></tr></thead>
+      <thead><tr><th>INDEX</th><th id="se-th-local">LOCAL</th><th id="se-th-jetson">JETSON</th></tr></thead>
       <tbody id="se-rows"><tr><td colspan="3">Loading…</td></tr></tbody>
     </table>
     </div>
+    <h3>PROJECT MEMORIES</h3>
+    <div id="se-membox"></div>
         </div>
       </div>
     </div>
@@ -2113,7 +2124,7 @@ button.linklike { background: none; border: none; padding: 0;
     <h3>AI &amp; RAG</h3>
     <div class="credwrap"><table class="credtab">
     <tr><th>Name</th><th>Version</th><th>License</th><th>What we use it for</th><th>Link</th></tr>
-    <tr><td>LightRAG (lightrag-hku)</td><td>1.5.7</td><td>MIT</td><td>Knowledge-graph index (CPU-only): queried today by the handbook tool and the Studio project-memory chat. PC entries get an index too, but no tool searches it yet — PC tools read the stored text.</td><td><a href="https://pypi.org/project/lightrag-hku/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>LightRAG (lightrag-hku)</td><td>1.5.7</td><td>MIT</td><td>Knowledge-graph index (CPU-only): queried today by the Studio project-memory chat. PC entries get an index too, but no tool searches it yet — PC tools read the stored text.</td><td><a href="https://pypi.org/project/lightrag-hku/" target="_blank" rel="noopener">PyPI</a></td></tr>
     <tr><td>sentence-transformers</td><td>6.2.0</td><td>Apache-2.0</td><td>Local embedding model runner (local profile). Imported directly by our code.</td><td><a href="https://pypi.org/project/sentence-transformers/" target="_blank" rel="noopener">PyPI</a></td></tr>
     <tr><td>numpy</td><td>2.4.6</td><td>BSD-3-Clause</td><td>Embedding math in the LightRAG adapter. Imported directly by our code.</td><td><a href="https://pypi.org/project/numpy/" target="_blank" rel="noopener">PyPI</a></td></tr>
     <tr><td>torch (CPU)</td><td>2.14.1+cpu</td><td>BSD-3-Clause</td><td>CPU tensors behind sentence-transformers.</td><td><a href="https://pypi.org/project/torch/" target="_blank" rel="noopener">PyPI</a></td></tr>
@@ -2422,11 +2433,11 @@ button.linklike { background: none; border: none; padding: 0;
         const meta = document.createElement("span");
         meta.className = "meta";
         meta.textContent = (c.stage === 0 || c.stage ? "S" + c.stage + " · " : "") + c.id + " · " + c.model;
-        const g = document.createElement("span");
-        const ready = c.graph === "indexed";
-        g.className = "g" + (ready ? " on" : "");
-        g.textContent = ready ? "● GRAPH READY" : "○ NO GRAPH";
-        b.append(stripe, top, meta, g);
+
+
+
+
+        b.append(stripe, top, meta);
         b.onclick = () => show(c.id).catch(fail);
         roster.appendChild(b);
       });
@@ -2843,9 +2854,7 @@ button.linklike { background: none; border: none; padding: 0;
     const history = [];
     const histories = {};
     let curWho = "";
-    /* Item 9 memory badges. MEM_CHAT_OPEN=false: chat needs memory
-       ready (item 17 re-opens interviews without memory). */
-    const MEM_CHAT_OPEN = false;
+    /* Item 17: interviews stay open without memory. */
     const MEM_BADGE = { ready: "memory ready", building: "building…",
       failed: "failed", none: "not yet", closed: "closed" };
     let memStates = { closed: false, agents: {} };
@@ -2875,17 +2884,13 @@ button.linklike { background: none; border: none; padding: 0;
       if (retryBtn)
         retryBtn.style.display =
           (rid && badge === "failed") ? "" : "none";
-      if (!rid || MEM_CHAT_OPEN || badge === "ready") {
-        input.disabled = false;
-        input.placeholder = "Say hi to the crew…";
-        return;
-      }
-      input.disabled = true;
+      input.disabled = !who.value;
       input.placeholder =
+        !rid || badge === "ready" ? "Say hi to the crew…" :
         badge === "building" ? "Memory building…" :
         badge === "failed" ? "Memory build failed: " + err :
         badge === "closed" ? "This project is closed." :
-        "No project memory yet — approve the report first.";
+        "No project memory yet — interview only.";
     }
     async function refreshMem() {
       const rid = runId();
@@ -4929,7 +4934,6 @@ button.linklike { background: none; border: none; padding: 0;
     if (!rows) return;
     const errline = document.getElementById("se-err");
     const testout = document.getElementById("se-testout");
-    const bamsg = document.getElementById("se-bamsg");
     let last = null;
     let lastTest = { ok: null, at: "" };
     try {
@@ -4954,27 +4958,31 @@ button.linklike { background: none; border: none; padding: 0;
           "(all-MiniLM-L6-v2)</b> \u2014 no connection needed";
       }
     }
-    function cellHtml(eid, prof, st) {
+    function pcCell(st, prof, active) {
       const word = st.building ? "building"
         : st.failed ? "failed"
         : st.built ? "built" : "not built";
       let h = '<div class="se-st se-' +
         (st.building ? "run" : st.failed ? "fail"
           : st.built ? "ok" : "wait") + '">' + word + "</div>";
-      h += '<div class="se-meta">' + (st.built
-        ? esc(st.model || "\u2014") + " \u00b7 dim " +
+      if (st.built) {
+        h += '<div class="se-meta">' +
+          esc(String(st.entries_indexed)) + "/" +
+          esc(String(st.entries_total)) + " entries</div>";
+        h += '<div class="se-meta">' +
+          esc(st.model || "\u2014") + " \u00b7 dim " +
           esc(String(st.dim == null ? "\u2014" : st.dim)) +
-          " \u00b7 " + esc(st.indexed_at || "\u2014")
-        : "\u2014") + "</div>";
-      if (!st.built && !st.building)
-        h += '<button data-build="' + esc(eid) + "|" + prof +
-          '">BUILD INDEX</button>';
+          " \u00b7 " + esc(st.indexed_at || "\u2014") +
+          "</div>";
+      } else {
+        h += '<div class="se-meta">' +
+          esc(String(st.entries_total)) + " entries</div>";
+      }
       return h;
     }
     async function load() {
       try {
         errline.textContent = "";
-        if (bamsg) bamsg.textContent = "";
         const s = await api.get("api/settings");
         last = s;
         renderActive();
@@ -5001,37 +5009,69 @@ button.linklike { background: none; border: none; padding: 0;
           s.profile === "local" ? "se-on" : "";
         document.getElementById("se-th-jetson").className =
           s.profile === "jetson" ? "se-on" : "";
-        const eids = Object.keys(s.agents || {}).sort();
-        if (!eids.length) {
-          rows.innerHTML = '<tr><td colspan="3">No employees.</td></tr>';
-          return;
-        }
         rows.innerHTML = "";
         let anyBuilding = false;
-        eids.forEach(eid => {
+        const pcs = s.pcs || {};
+        const names = { source: "Source PC", theory: "Theory PC",
+          article: "Article PC" };
+        ["source", "theory", "article"].forEach(p => {
           const tr = document.createElement("tr");
           const tds = ["local", "jetson"].map(prof => {
-            const st = (s.agents[eid] || {})[prof] || {};
+            const st = ((pcs[p] || {})[prof]) || {};
             if (st.building) anyBuilding = true;
             return '<td class="' +
               (prof === s.profile ? "se-on" : "") + '">' +
-              cellHtml(eid, prof, st) + "</td>";
+              pcCell(st, prof, s.profile) + "</td>";
           }).join("");
-          tr.innerHTML = "<td>" + esc(eid) + "</td>" + tds;
+          tr.innerHTML = "<td>" + names[p] + "</td>" + tds;
           rows.appendChild(tr);
         });
-        rows.querySelectorAll("[data-build]").forEach(b => {
-          b.onclick = async () => {
-            try {
-              const parts = b.dataset.build.split("|");
-              const r = await api.send("POST", "api/crew/" + parts[0] + "/index",
-                { profile: parts[1] });
-              if (!r.started) fail(new Error(r.reason || "build refused"));
-              load();
-            } catch (e) { fail(e); }
-          };
+        const membox = document.getElementById("se-membox");
+        membox.innerHTML = "";
+        (s.memories || []).forEach(m => {
+          const d = document.createElement("div");
+          d.className = "se-mem";
+          const head = document.createElement("div");
+          head.innerHTML = "<b>" + esc(m.run_id) + "</b> \u00b7 " +
+            esc(m.order_id || "?") +
+            (m.closed ? " \u00b7 closed" : "");
+          d.appendChild(head);
+          const agents = m.agents || {};
+          Object.keys(agents).sort().forEach(eid => {
+            const st = agents[eid] || {};
+            const chip = document.createElement("span");
+            chip.className = "se-chip " + (st.state || "none");
+            chip.textContent = eid + ": " + (st.state || "?");
+            chip.title = st.error || st.state || "";
+            d.appendChild(chip);
+            if (st.state === "failed" && !m.closed) {
+              const rb = document.createElement("button");
+              rb.textContent = "Retry";
+              rb.onclick = async () => {
+                if (!window.confirm("Retry the memory build for " +
+                    eid + "? This makes model calls."))
+                  return;
+                await api.send("POST", "api/flows/runs/" +
+                  m.run_id + "/memory/" + eid, {});
+                load();
+              };
+              d.appendChild(rb);
+            }
+          });
+          if (!Object.keys(agents).length) {
+            const none = document.createElement("span");
+            none.className = "se-meta";
+            none.textContent = "no memories yet";
+            d.appendChild(none);
+          }
+          membox.appendChild(d);
         });
+        if (!(s.memories || []).length) {
+          membox.innerHTML =
+            '<span class="se-meta">no runs yet</span>';
+        }
         if (anyBuilding) setTimeout(load, 5000);
+
       } catch (e) {
         rows.innerHTML = '<tr><td colspan="3">Settings unavailable \u2014 is the server running?</td></tr>';
       }
@@ -5073,32 +5113,6 @@ button.linklike { background: none; border: none; padding: 0;
         testout.textContent = "Failed: " + e.message;
         noteTest(false);
       }
-    };
-    document.getElementById("se-buildall").onclick = async () => {
-      try {
-        if (!last) return;
-        const prof = last.profile || "jetson";
-        const todo = Object.keys(last.agents || {}).sort()
-          .filter(eid => {
-            const st = (last.agents[eid] || {})[prof] || {};
-            return !st.built && !st.building;
-          });
-        if (!todo.length) {
-          bamsg.textContent = "Everything is built.";
-          return;
-        }
-        if (!window.confirm("Build " + todo.length + " " +
-            prof + " indexes? This makes model calls."))
-          return;
-        for (const eid of todo) {
-          const r = await api.send("POST",
-            "api/crew/" + eid + "/index", { profile: prof });
-          if (!r.started)
-            throw new Error(eid + ": " +
-              (r.reason || "build refused"));
-        }
-        load();
-      } catch (e) { fail(e); }
     };
     load();
   })();

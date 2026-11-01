@@ -38,7 +38,7 @@ docs/RESULT_JSON_DRAFT_EN.md).
   verbatim from a ref you can open.
 - Lines are spoken text: no markdown, no stage directions, no "as you
   can see on this slide".
-- Ask for nothing; bounded tools only: read_md_section, query_graph,
+- Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_read_theory, pc_read_article, pc_list_source,
   pc_read_source, make_voice, write_narration.
 - Finish by calling write_narration with the COMPLETE object. If it

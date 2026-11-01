@@ -354,8 +354,8 @@ def main():
            % out.get("nameLeftOfPic"))
         ok("sales_sam" in (out.get("meta") or ""),
            "id/model line unchanged (%s)" % out.get("meta"))
-        ok("GRAPH" in (out.get("graph") or ""),
-           "graph line unchanged (%s)" % out.get("graph"))
+        ok(not out.get("graph"),
+           "graph line gone (%s)" % out.get("graph"))
         data = ws.call("Page.captureScreenshot",
                        {"format": "png"})["data"]
         with open(PNG1920, "wb") as f:

@@ -36,6 +36,7 @@ import validate_agent  # noqa: E402
 import intake  # noqa: E402
 from agents._frame import pc  # noqa: E402
 from agents._frame import gallery  # noqa: E402
+from agents._frame import profiles  # noqa: E402
 
 ALLOWED_UPLOAD = (".md", ".txt", ".pdf")
 
@@ -44,7 +45,6 @@ INTAKE_KEYS = intake.INTAKE_KEYS
 PC_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 MAX_PDF_BYTES = 25 * 1024 * 1024
 
-_INDEX_JOBS = {}  # (eid, profile) -> Popen of a running run_index.py build
 _PC_JOBS = {}  # doc_id -> Popen of a running pc_worker.py build
 _FLOW_JOBS = {}  # run_id -> live flow run status (threads share memory)
 
@@ -304,9 +304,7 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "settings"] and len(parts) == 3 \
                 and parts[2] == "test":
             return self._api_settings_test()
-        if parts[:2] == ["api", "crew"] and len(parts) == 4 \
-                and parts[3] == "index":
-            return self._api_index_build(parts[2])
+
         if parts[:2] == ["api", "flows"] and len(parts) == 3:
             if parts[2] == "validate":
                 return self._api_flow_validate()
@@ -513,6 +511,22 @@ class Handler(BaseHTTPRequestHandler):
             json.dump({"variant": body.get("variant") or self._pick_variant(),
                        "tint": body.get("tint") or "#ffffff"},
                       f, ensure_ascii=False, indent=2)
+        prof_names = {}
+        for _eid in sorted(os.listdir(os.path.join(ROOT, "agents"))):
+            _jp = os.path.join(ROOT, "agents", _eid, "agent.json")
+            if os.path.isfile(_jp):
+                try:
+                    with open(_jp, encoding="utf-8") as _f:
+                        prof_names[_eid] = json.load(_f).get(
+                            "name", _eid)
+                except ValueError:
+                    continue
+        with open(os.path.join(path, "profile.md"), "w",
+                  encoding="utf-8") as f:
+            f.write(profiles.build_profile(
+                path,
+                os.path.join(ROOT, "data", "flows", "default.json"),
+                prof_names))
         errs = validate_agent.validate(path)
         if errs:
             shutil.rmtree(path, ignore_errors=True)
@@ -677,9 +691,12 @@ class Handler(BaseHTTPRequestHandler):
                        or len(m["content"]) > 2000 for m in msgs)):
             return self._json(400, {"error": "need {messages: [{role, content}*]} (<=12, <=2000 chars)"})
         agent = self._load_agent(path)
-        with open(os.path.join(path, "persona.md"), encoding="utf-8") as f:
-            persona = f.read()
-        mem_ctx = ""
+        try:
+            system_base = profiles.system_base(path)
+        except OSError as exc:
+            return self._json(500, {"error": "bad prompt files: %s"
+                                             % exc})
+        mem_ctx, note, mem_badge = "", "", "none"
         run_id = body.get("run_id") if isinstance(body, dict) else ""
         if run_id:
             last_q = ""
@@ -687,20 +704,21 @@ class Handler(BaseHTTPRequestHandler):
                 if m.get("role") == "user":
                     last_q = m["content"]
                     break
-            code, obj, mem_ctx = self._memory_gate(
+            code, obj, mem_ctx, note = self._memory_gate(
                 eid, run_id, last_q)
             if code != 200:
                 return self._json(code, obj)
+            mem_badge = obj.get("memory", "none")
         if not runner.key_present(agent["model"]):
             return self._json(503, {"error": "%s missing: add it to .env"
                                     % runner.key_var(agent["model"])})
-        system = (persona + "\n\n[LIVE CHAT — reply in English as %s, %s. "
+        system = (system_base + "\n\n[LIVE CHAT — reply in English as %s, %s. "
                   "Always reply in English only: never Korean or any other "
                   "language, no matter what language the user writes in. "
                   "Keep replies to 1-3 short sentences. Stay in character; "
                   "you work at Shoestring Studios.]"
                   % (agent["name"], agent["title"]))
-        if mem_ctx:
+        if mem_badge == "ready" and mem_ctx:
             system += ("\n\n[PROJECT MEMORY — run %s. Answer ONLY "
                        "from this memory about THIS project: what you "
                        "received, decided and why, sources and "
@@ -709,6 +727,15 @@ class Handler(BaseHTTPRequestHandler):
                        "tool calls, no promises to change results "
                        "(changes go through Re-run with note).]\n%s"
                        % (run_id, mem_ctx[:4000]))
+        elif run_id and mem_badge != "ready":
+            system += ("\n\n[PROJECT MEMORY — run %s: UNAVAILABLE. "
+                       "You may still answer interview questions about "
+                       "YOURSELF (who you are, your job, team, duties, "
+                       "tools, who you work with) from the profile card "
+                       "above. If asked anything about the project — "
+                       "what you received, decided, or used — reply "
+                       "with EXACTLY this sentence and nothing else: "
+                       "\"%s\"]" % (run_id, note))
         try:
             resp = runner._chat(
                 agent["model"],
@@ -845,33 +872,35 @@ class Handler(BaseHTTPRequestHandler):
         return out
 
     def _memory_gate(self, eid, run_id, question):
-        """Item 9 chat gate. Returns (code, obj, mem_ctx)."""
+        """Item 17 chat memory: interviews stay open without memory.
+
+        Returns (code, obj, mem_ctx, note): 404 only for a bad run;
+        otherwise 200 with mem_ctx ("" unless ready) and note (the
+        exact no-memory sentence, "" when ready)."""
         if not self._run_dir(run_id):
             return (404, {"error": "no such run",
-                          "memory": "none"}, "")
+                          "memory": "none"}, "", "")
         if memstore.is_closed(run_id, flows.RUNS_DIR):
-            return (409, {"error": "This project is closed.",
-                          "memory": "closed"}, "")
+            return (200, {"memory": "closed"}, "",
+                    profiles.refusal_for("closed"))
         st = memstore.memory_state(run_id, eid, flows.RUNS_DIR)
         if st["state"] == "building":
-            return (409, {"error": "Memory building…",
-                          "memory": "building"}, "")
+            return (200, {"memory": "building"}, "",
+                    profiles.refusal_for("building"))
         if st["state"] == "failed":
-            return (409, {"error": "Memory build failed: %s"
-                                   % (st["error"]
-                                      or "unknown reason"),
-                          "memory": "failed"}, "")
+            return (200, {"memory": "failed"}, "",
+                    profiles.refusal_for("failed",
+                                         st.get("error", "")))
         if st["state"] != "ready":
-            return (409, {"error": "No project memory yet — my "
-                                   "report has not been approved.",
-                          "memory": "not yet"}, "")
+            return (200, {"memory": "not yet"}, "",
+                    profiles.refusal_for("none"))
         try:
             ctx = memstore.query_memory(run_id, eid, question,
                                         flows.RUNS_DIR)
         except RuntimeError as exc:
-            return (409, {"error": str(exc),
-                          "memory": "failed"}, "")
-        return (200, {"memory": "ready"}, ctx)
+            return (200, {"memory": "failed"}, "",
+                    profiles.refusal_for("failed", str(exc)))
+        return (200, {"memory": "ready"}, ctx, "")
 
     def _api_start_prompt(self, eid):
         """Preview the recipients-gated PC input preloaded for one
@@ -926,6 +955,53 @@ class Handler(BaseHTTPRequestHandler):
         with open(os.path.join(d, "meta.json"), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
 
+    @staticmethod
+    def _pc_entry_failed(edir):
+        try:
+            with open(os.path.join(edir, "log.jsonl"),
+                      encoding="utf-8") as f:
+                lines = f.read().splitlines()[-5:]
+        except OSError:
+            return False
+        for ln in lines:
+            try:
+                ev = json.loads(ln)
+            except ValueError:
+                continue
+            if ev.get("ev") in ("failed", "map_failed",
+                                "index_failed") and ev.get("error"):
+                return True
+        return False
+
+    def _pc_profile_cell(self, pcname, prof, entries):
+        idx = os.path.join(pc.index_dir(pcname, prof), "index.json")
+        mark = None
+        try:
+            with open(idx, encoding="utf-8") as f:
+                mark = json.load(f)
+        except (OSError, ValueError):
+            mark = None
+        indexed = set((mark or {}).get("entries", [])
+                      if isinstance(mark, dict) else [])
+        building, failed = False, False
+        for doc_id in entries:
+            job = _PC_JOBS.get(doc_id)
+            if job is not None and job.poll() is None:
+                building = True
+            if doc_id not in indexed and self._pc_entry_failed(
+                    os.path.join(pc.pc_dir(pcname), "entries",
+                                 doc_id)):
+                failed = True
+        cell = {"built": bool(mark), "building": building,
+                "failed": failed and not building,
+                "entries_indexed": len(indexed & set(entries)),
+                "entries_total": len(entries)}
+        if isinstance(mark, dict):
+            cell["model"] = mark.get("model", "")
+            cell["dim"] = mark.get("dim", 0)
+            cell["indexed_at"] = mark.get("indexed_at", "")
+        return cell
+
     def _api_settings_get(self):
         mod = graph._adapter()
         eff = mod.resolved_settings()
@@ -933,33 +1009,47 @@ class Handler(BaseHTTPRequestHandler):
             token_set = bool(mod.load_key("EMBED_REMOTE_TOKEN"))
         except RuntimeError:
             token_set = False
-        agents_out = {}
-        adir = os.path.join(ROOT, "agents")
-        for eid in sorted(os.listdir(adir)):
-            path = self._employee(eid)
-            if not path:
-                continue
-            per = {}
-            for prof in ("local", "jetson"):
-                mark = mod.read_marker(path, prof)
-                job = _INDEX_JOBS.get((eid, prof))
-                code = job.poll() if job is not None else None
-                building = code is None and job is not None
-                failed = code is not None and code != 0 \
-                    and not mark
-                if mark:
-                    per[prof] = {
-                        "built": True, "building": building,
-                        "failed": False,
-                        "model": mark.get("model", ""),
-                        "dim": mark.get("dim", 0),
-                        "chunk_size": mark.get("chunk_size", 0),
-                        "indexed_at": mark.get("indexed_at", "")}
-                else:
-                    per[prof] = {"built": False,
-                                 "building": building,
-                                 "failed": failed}
-            agents_out[eid] = per
+        self._pc_reap_finished()
+        pcs_out = {}
+        for pcname in ("source", "theory", "article"):
+            ed = os.path.join(pc.pc_dir(pcname), "entries")
+            entries = []
+            if os.path.isdir(ed):
+                for doc_id in sorted(os.listdir(ed)):
+                    if re.fullmatch(r"[0-9a-f]{12}",
+                                    doc_id or "") and os.path.isfile(
+                            os.path.join(ed, doc_id,
+                                         "entry.json")):
+                        entries.append(doc_id)
+            pcs_out[pcname] = {
+                prof: self._pc_profile_cell(pcname, prof, entries)
+                for prof in ("local", "jetson")}
+        mem_out = []
+        rdir = flows.RUNS_DIR
+        if os.path.isdir(rdir):
+            names = sorted(
+                os.listdir(rdir),
+                key=lambda n: os.path.getmtime(os.path.join(
+                    rdir, n)), reverse=True)
+            for n in names:
+                if len(mem_out) >= 5:
+                    break
+                if not os.path.isdir(os.path.join(rdir, n)):
+                    continue
+                try:
+                    with open(os.path.join(rdir, n, "STATUS.json"),
+                              encoding="utf-8") as f:
+                        st = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                if not isinstance(st, dict):
+                    continue
+                mem_out.append({
+                    "run_id": n,
+                    "order_id": st.get("order_id", ""),
+                    "closed": memstore.is_closed(n, flows.RUNS_DIR),
+                    "agents": memstore.run_memory_states(
+                        n, flows.RUNS_DIR)})
         out = {"profile": eff["profile"], "jetson_url": eff["jetson_url"],
                "llm_model": eff["llm_model"], "query_mode": eff["query_mode"],
                "top_k": eff["top_k"], "chunk_local": eff["chunk_local"],
@@ -968,7 +1058,8 @@ class Handler(BaseHTTPRequestHandler):
                                "provider": runner.provider_of(m)[0]}
                               for m in runner.LLM_MODELS],
                "query_modes": list(mod.QUERY_MODES),
-               "token_set": token_set, "agents": agents_out}
+               "token_set": token_set, "pcs": pcs_out,
+               "memories": mem_out}
         if eff["problems"]:
             out["settings_error"] = "; ".join(eff["problems"])
         return self._json(200, out)
@@ -1024,45 +1115,6 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, {"ok": True, "model": h.get("model"),
                                 "device": h.get("device"),
                                 "dim": h.get("dim"), "ms": h.get("ms")})
-
-    def _api_index_build(self, eid):
-        path = self._employee(eid)
-        if not path:
-            return self._json(404, {"error": "no such employee"})
-        body = self._read_json()
-        mod = graph._adapter()
-        want = str((body or {}).get("profile") or "").strip().lower()
-        try:
-            prof = mod.profile_config(want or None)["profile"]
-        except RuntimeError as exc:
-            return self._json(400, {"error": str(exc)})
-        job = _INDEX_JOBS.get((eid, prof))
-        if job is not None and job.poll() is None:
-            return self._json(200, {"started": False,
-                                    "reason": "already building"})
-        if prof == "jetson":
-            try:
-                mod.jetson_health()
-            except RuntimeError as exc:
-                return self._json(200, {"started": False,
-                                        "reason": str(exc)})
-        logdir = os.path.join(ROOT, "experiments", "lightrag", "storage",
-                              eid, prof)
-        os.makedirs(logdir, exist_ok=True)
-        logf = open(os.path.join(logdir, "build.log"), "a", encoding="utf-8")
-        try:
-            job = subprocess.Popen(
-                [sys.executable,
-                 os.path.join("experiments", "lightrag", "run_index.py"),
-                 os.path.join("agents", eid), prof],
-                cwd=ROOT, stdout=logf, stderr=subprocess.STDOUT)
-        except OSError as exc:
-            logf.close()
-            return self._json(200, {"started": False,
-                                    "reason": "spawn failed: %s" % exc})
-        logf.close()
-        _INDEX_JOBS[(eid, prof)] = job
-        return self._json(200, {"started": True, "profile": prof})
 
     def _api_flows_list(self):
         out = []
@@ -1243,18 +1295,6 @@ class Handler(BaseHTTPRequestHandler):
             out["flow_id"] = job.get("flow_id", "")
             out["order_id"] = job.get("order_id", "")
         return self._json(200, out)
-
-    @staticmethod
-    def _handbook_hints(agent_dir, text):
-        """LightRAG answer excerpt for the client's latest line ("", if none)."""
-        try:
-            res = graph.query(agent_dir, text)
-        except Exception as exc:  # noqa: BLE001 - no index, chat goes on plain
-            print("[WARN] handbook hints unavailable: %s" % exc)
-            return ""
-        if not isinstance(res, dict):
-            return ""
-        return str(res.get("answer", ""))[:1200]
 
     @staticmethod
     def _check_messages(body):
@@ -1855,8 +1895,11 @@ class Handler(BaseHTTPRequestHandler):
         free = isinstance(body, dict) and body.get("mode") == "free"
         path = self._employee(meta["assignee"])
         agent = self._load_agent(path)
-        with open(os.path.join(path, "persona.md"), encoding="utf-8") as f:
-            persona = f.read()
+        try:
+            system_base = profiles.system_base(path)
+        except OSError as exc:
+            return self._json(500, {"error": "bad prompt files: %s"
+                                             % exc})
         if not runner.key_present(agent["model"]):
             return self._json(503, {"error": "%s missing: add it to .env"
                                     % runner.key_var(agent["model"])})
@@ -1882,16 +1925,15 @@ class Handler(BaseHTTPRequestHandler):
         else:
             context.append("Still missing: %s. Steer the chat toward them, "
                            "one question at a time." % ", ".join(missing))
-        hints = self._handbook_hints(path, msgs[-1]["content"])
-        if hints:
-            context.append("Handbook examples for this topic (follow their "
-                           "style when the client is vague; never present "
-                           "an example as the client's own words):\n" + hints)
+        context.append("Your handbook (in the prompt above) holds sales "
+                       "examples: follow their style when the client is "
+                       "vague; never present an example as the client's "
+                       "own words.")
         if free:
             context.append("Free-chat mode: converse naturally like a friendly "
                            "sales call, but still cover every missing topic "
                            "before the client is done.")
-        system = (persona + "\n\n" + "\n".join(context)
+        system = (system_base + "\n\n" + "\n".join(context)
                   + "\nAlways reply in English only: never Korean or any other "
                   "language, no matter what language the user writes in. "
                   + intake.NO_PROMISE_RULE + " "
@@ -2763,7 +2805,8 @@ def main():
 
         def _stub_chat(model, messages, tools, timeout=120):
             first = messages[0]["content"] if messages else ""
-            has = "PROJECT MEMORY" in first
+            has = "PROJECT MEMORY" in first \
+                and "UNAVAILABLE" not in first
             return {"choices": [{"message": {
                 "content": "Stub reply from memory "
                            "(project ctx: %s)." % has}}]}

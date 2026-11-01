@@ -21,7 +21,6 @@
  "title": "Slide builder",
  "stage": 9,
  "tools": [
-  "query_graph",
   "read_md_section",
   "open_ref",
   "render_slide",

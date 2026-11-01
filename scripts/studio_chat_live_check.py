@@ -411,11 +411,21 @@ def main():
                     " s.dispatchEvent(new Event('change')); })()")
         time.sleep(1)
         gate = json.loads(js_eval(ws, GATE_JS) or "{}")
-        ok(gate.get("disabled") is True
+        ok(gate.get("disabled") is False
            and gate.get("retry") is True
            and "stub boom" in (gate.get("ph") or ""),
-           "failed state disables input + retry (%s)"
+           "failed state keeps input open + retry (%s)"
            % gate.get("ph"))
+        js_eval(ws, "(() => { document.getElementById("
+                    "'chatinput').value = 'who are you?';"
+                    " document.getElementById('chatform')"
+                    ".dispatchEvent(new Event('submit',"
+                    " {cancelable: true})); })()")
+        ok(wait_for(ws, "Array.from(document.querySelectorAll("
+                        "'#chatmsgs .cmsg.them')).some(d => "
+                        "d.textContent.indexOf('project ctx: "
+                        "False') >= 0)", timeout=30),
+           "interview without memory renders")
         js_eval(ws, "document.getElementById('chatretry').click()")
         ok(wait_for(ws, "(JSON.parse(" + OPT_JS + ")).some(o => "
                         "o.indexOf('Cleo') >= 0 && o.indexOf("
@@ -472,9 +482,9 @@ def main():
                         "o.indexOf('[closed]') >= 0)", timeout=30),
            "close marks every badge closed")
         gate = json.loads(js_eval(ws, GATE_JS) or "{}")
-        ok(gate.get("disabled") is True
+        ok(gate.get("disabled") is False
            and gate.get("ph") == "This project is closed.",
-           "closed project disables input")
+           "closed project keeps input open")
         ok(not os.path.exists(os.path.join(FIX, "memory"))
            and os.path.isfile(os.path.join(
                FIX, "MEMORY_CLOSED.json"))

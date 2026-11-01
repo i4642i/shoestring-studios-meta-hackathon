@@ -29,6 +29,7 @@ RUNS = os.path.join(ROOT, "runs")
 PNG1920 = os.path.join(RUNS, "settings_1920.png")
 PNG390 = os.path.join(RUNS, "settings_390.png")
 SERVER_LOG = os.path.join(RUNS, "settings_server.log")
+FIX = os.path.join(ROOT, "runs", "sefix1")
 
 fails = 0
 
@@ -223,27 +224,16 @@ LAYOUT_JS = """(() => {
     rows: document.querySelectorAll('#se-rows tr').length,
     cells: document.querySelectorAll(
       '#se-rows tr:first-child td').length,
+    firstRow: (document.querySelector(
+      '#se-rows tr:first-child td') || {}).textContent || '',
+    memRuns: document.querySelectorAll(
+      '#se-membox .se-mem').length,
     buildAll: !!document.getElementById('se-buildall'),
     active: document.getElementById('se-active').textContent,
     pageScroll: de.scrollHeight > de.clientHeight + 2,
     hscroll: de.scrollWidth > de.clientWidth + 2
   };
 })()"""
-
-CLICK_BUILDALL_JS = """(() => {
-  const b = document.getElementById('se-buildall');
-  if (b) b.click();
-  return !!b;
-})()"""
-
-AFTER_ERR_JS = \
-    "document.getElementById('se-err').textContent"
-AFTER_BAMSG_JS = \
-    "document.getElementById('se-bamsg').textContent"
-AFTER_BUILDING_JS = """Array.from(document.querySelectorAll(
-  '#se-rows .se-st')).filter(
-  e => e.textContent === 'building').length"""
-
 
 def stop_proc(proc, name):
     if proc is None or proc.poll() is not None:
@@ -288,6 +278,13 @@ def main():
     profile = os.path.join(tempfile.gettempdir(),
                            "settings_profile")
     shutil.rmtree(profile, ignore_errors=True)
+    shutil.rmtree(FIX, ignore_errors=True)
+    os.makedirs(FIX, exist_ok=True)
+    with open(os.path.join(FIX, "STATUS.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"run_id": "sefix1",
+                   "order_id": "ord-20261101-900",
+                   "state": "done"}, f)
     try:
         logf = open(SERVER_LOG, "w", encoding="utf-8")
         server = subprocess.Popen(
@@ -370,36 +367,29 @@ def main():
         ok(abs(lay.get("cardW", 0) - 1600) < 2,
            "card width 1600 at 1920 (%s)"
            % lay.get("cardW"))
-        ok(lay.get("th") == ["AGENT", "LOCAL", "JETSON"],
+        ok(lay.get("th") == ["INDEX", "LOCAL", "JETSON"],
            "matrix headers (%s)" % lay.get("th"))
         ok(len(lay.get("on", [])) == 1,
            "active column highlighted (%s)" % lay.get("on"))
         ok(lay.get("onCells") == lay.get("rows"),
            "active cells match rows (%s/%s)"
            % (lay.get("onCells"), lay.get("rows")))
-        ok(lay.get("rows", 0) >= 10 and lay.get("cells") == 3,
-           "one row per agent, 3 cells (%s rows)"
-           % lay.get("rows"))
-        ok(lay.get("buildAll") is True,
-           "build-all button present")
+        ok(lay.get("rows") == 3 and lay.get("cells") == 3
+           and lay.get("firstRow") == "Source PC",
+           "one row per PC index (%s rows)" % lay.get("rows"))
+        ok(lay.get("buildAll") is False,
+           "handbook build-all gone")
+        ok(lay.get("memRuns", 0) >= 1,
+           "memories list runs (%s)" % lay.get("memRuns"))
         ok((lay.get("active") or "").startswith("Active:"),
            "active profile line (%s)" % lay.get("active"))
         ok(lay.get("pageScroll") is False,
            "no page scroll at 1920x1000")
         ok(lay.get("hscroll") is False,
            "no horizontal scroll at 1920")
-        ok(js_eval(ws, CLICK_BUILDALL_JS) is True,
-           "build-all clicked (confirm neutered)")
-        time.sleep(1)
-        drain_dialogs(ws, 2)
-        after_err = js_eval(ws, AFTER_ERR_JS)
-        after_bamsg = js_eval(ws, AFTER_BAMSG_JS)
-        after_building = js_eval(ws, AFTER_BUILDING_JS)
-        after = {"err": after_err, "bamsg": after_bamsg,
-                 "building": after_building}
-        ok(after_building == 0 and after_err == ""
-           and after_bamsg in ("", "Everything is built."),
-           "build-all gate: nothing started (%s)" % after)
+        ok(js_eval(ws, "document.querySelectorAll"
+                        "('#se-rows button').length") == 0,
+           "no handbook build buttons in the matrix")
         shot(ws, PNG1920)
         ws.call("Emulation.setDeviceMetricsOverride",
                 {"width": 390, "height": 844,
@@ -421,6 +411,7 @@ def main():
         nerr = console_errors(ws.events)
         ok(nerr == 0, "zero console errors (got %d)" % nerr)
     finally:
+        shutil.rmtree(FIX, ignore_errors=True)
         if ws is not None:
             ws.close()
         _browser.stop_tree(edge, "edge")

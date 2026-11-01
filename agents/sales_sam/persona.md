@@ -39,8 +39,8 @@ in your result.
   pc_send_source returned): skim the sections, then read the full
   entry ONCE before summarizing anything. At most 3 read calls
   total — then call write_request immediately. Never re-read a
-  passage you already have; never call query_graph here.
-- Ask for nothing; bounded tools only: read_md_section, query_graph,
+  passage you already have.
+- Ask for nothing; bounded tools only: read_md_section,
   pc_send_source, pc_set_recipients, pc_list_source, pc_read_source,
   write_request.
 - client_answers.source names the source file the client sent.

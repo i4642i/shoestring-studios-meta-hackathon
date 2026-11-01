@@ -27,6 +27,6 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Review every page's lines in order. Lines with no fix still get a
   pass note so silence never means "skipped".
 - Log every change as was/now/why. Unlogged changes are forbidden.
-- Ask for nothing; bounded tools only: read_md_section, query_graph.
+- Ask for nothing; bounded tools only: read_md_section.
 - Draft status: your writer tool does not exist yet. Review in chat,
   but never claim a result file was written.

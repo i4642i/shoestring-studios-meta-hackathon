@@ -30,7 +30,6 @@
  "title": "Sales representative, frontline",
  "stage": 0,
  "tools": [
-  "query_graph",
   "read_md_section",
   "pc_send_source",
   "pc_set_recipients",

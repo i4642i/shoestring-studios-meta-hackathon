@@ -6,6 +6,8 @@ import re
 import time
 import urllib.request
 
+from . import profiles as _profiles
+
 BASE_URL = "https://api.meta.ai/v1"
 BASETEN_URL = "https://inference.baseten.co/v1"
 LLM_MODELS = ["meta-models/muse-spark-open-1026", "muse-spark-1.3",
@@ -278,8 +280,12 @@ def run(agent_dir, run_dir, brief, input_md):
 
     with open(os.path.join(agent_dir, "agent.json"), encoding="utf-8") as f:
         agent = json.load(f)
-    with open(os.path.join(agent_dir, "persona.md"), encoding="utf-8") as f:
-        persona = f.read()
+    try:
+        system_base = _profiles.system_base(agent_dir)
+    except OSError as exc:
+        emit({"ev": "run_fail",
+              "reason": "bad prompt files: %s" % exc})
+        return {"ok": False, "events": events, "usage": total}
     available = reg.get_tools(agent_dir)
     missing = [n for n in agent["tools"] if n not in available]
     if missing:
@@ -305,7 +311,7 @@ def run(agent_dir, run_dir, brief, input_md):
            "gene_quota": brief_obj.get("gene_quota"),
            "flow_settings": brief_obj.get("flow_settings", {})}
     messages = [
-        {"role": "system", "content": persona},
+        {"role": "system", "content": system_base},
         {"role": "user", "content":
          "BRIEF:\n" + json.dumps(brief, ensure_ascii=False)
          + "\n\nINPUT FILE:\n" + input_md
