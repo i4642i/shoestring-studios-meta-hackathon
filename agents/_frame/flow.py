@@ -26,7 +26,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 AGENTS = os.path.dirname(HERE)
 ROOT = os.path.dirname(AGENTS)
 FLOWS_DIR = os.path.join(ROOT, "data", "flows")
-RUNS_DIR = os.path.join(ROOT, "runs")
+RUNS_DIR = os.environ.get("SHOESTRING_RUNS_DIR") or os.path.join(
+    ROOT, "runs")  # override is check-only (empty-state live check)
 ORDERS_DIR = os.path.join(ROOT, "orders")
 FINAL_NODE = "final"
 INTAKE_AGENT = "sales_sam"

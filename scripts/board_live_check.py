@@ -3,9 +3,12 @@
 Writes a throwaway fixture run into runs/boardshot1, starts
 scripts/server.py on port 8765 (never 8000), drives headless Edge
 over CDP like a user (open /, click the Board nav item), asserts
-the stage strip + table + side panel, saves runs/board_1920.png,
-runs/board_1280.png and runs/board_cell.png (photo cell clicked),
-and ALWAYS stops the server + Edge and deletes the fixture run
+the stage strip + table + side panel + verify cards + summary bar,
+saves runs/board_1920.png, runs/board_1280.png,
+runs/board_cell.png (photo cell clicked) and
+runs/board_verify_1920.png, then re-runs the Board against an
+empty runs folder (SHOESTRING_RUNS_DIR) for runs/board_empty.png,
+and ALWAYS stops servers + Edge and deletes the fixture run
 (try/finally). Stdlib only.
 
 Usage (needs a sandbox exception for the socket bind):
@@ -33,6 +36,8 @@ FIX = os.path.join(RUNS, "boardshot1")
 PNG1920 = os.path.join(RUNS, "board_1920.png")
 PNG1280 = os.path.join(RUNS, "board_1280.png")
 PNGCELL = os.path.join(RUNS, "board_cell.png")
+PNGVERIFY = os.path.join(RUNS, "board_verify_1920.png")
+PNGEMPTY = os.path.join(RUNS, "board_empty.png")
 SERVER_LOG = os.path.join(RUNS, "board_live_server.log")
 
 fails = 0
@@ -275,6 +280,57 @@ NARROW_JS = """(() => {
           wrapH: wr.height};
 })()"""
 
+SUMMARY_JS = """(() => {
+  const s = document.getElementById('bd-sum');
+  const a = s ? s.querySelector('a') : null;
+  const t = document.querySelector(
+    '#bd-table tr.bd-emptyrow td');
+  return {text: s ? s.textContent : '',
+          href: a ? a.getAttribute('href') : '',
+          empty: t ? t.textContent : ''};
+})()"""
+
+HLCOUNT_JS = """(() => document.querySelectorAll(
+  '#bd-table td.bd-hl').length)()"""
+
+CLICK_HL_JS = """((id) => {
+  const b = document.getElementById(id);
+  if (b) b.click();
+  return !!b;
+})"""
+
+VALL_JS = """((on) => {
+  const c = document.getElementById('bd-vall');
+  if (!c) return {has: false};
+  c.checked = !!on;
+  c.dispatchEvent(new Event('change'));
+  const cols = Array.from(document.querySelectorAll(
+    '#bd-side .bd-vcols > div'))
+    .map(d => (d.querySelector('b') || {}).textContent);
+  return {has: true, cols: cols};
+})"""
+
+SIDECLONE_JS = """(() => {
+  const c = document.querySelector('#bd-side .bd-clone');
+  const v = document.getElementById('bd-vall');
+  return {clone: c ? c.textContent : '',
+          allParts: !!v};
+})()"""
+
+EMPTY_JS = """(() => {
+  const t = document.getElementById('bd-table');
+  const h2 = t ? t.querySelectorAll('thead tr')[1] : null;
+  const row = t ? t.querySelector('tr.bd-emptyrow td') : null;
+  const sel = document.getElementById('bd-run');
+  return {cols: h2 ? h2.children.length : 0,
+          group1: t && t.querySelector('.bd-grp-story') ?
+            t.querySelector('.bd-grp-story').textContent : '',
+          group2: t && t.querySelector('.bd-grp-video') ?
+            t.querySelector('.bd-grp-video').textContent : '',
+          empty: row ? row.textContent : '',
+          picker: sel ? sel.textContent : ''};
+})()"""
+
 
 def wres(node, categories):
     ndir = os.path.join(FIX, node)
@@ -480,6 +536,89 @@ def make_fixture():
         json.dump({"run_id": "boardshot1", "flow_id": "default",
                    "order_id": "ord-shot-001", "state": "done",
                    "approved": APPROVED}, f)
+    with open(os.path.join(FIX, "events.jsonl"), "w",
+              encoding="utf-8") as f:
+        f.write('{"at": "09:00:01", "ev": "agent_start", '
+                '"agent": "pd_marty"}\n')
+        f.write('{"at": "09:00:05", "ev": "agent_done", '
+                '"agent": "pd_marty"}\n')
+        f.write('{"at": "09:00:06", "ev": "agent_start", '
+                '"agent": "photo_pia@p1"}\n')
+    _verify_files(os.path.join(FIX, "pd_marty"), "pd_marty",
+                  None, True)
+    _verify_files(os.path.join(FIX, "photo_pia", "p1"),
+                  "photo_pia", 1, False)
+
+
+def _wjson(path, obj):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(obj, f)
+
+
+def _wjsonl(path, rows):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+
+
+def _verify_files(ndir, node, part, spec_ok):
+    """J15 files: usage, events, inputs_log, inputs_check,
+    reads_log. The pia clone fails one tool + the spec."""
+    label = node if part is None else "%s@p%d" % (node, part)
+    _wjson(os.path.join(ndir, "usage.json"),
+           {"llm_calls": 2 if part is None else 1,
+            "prompt_tokens": 100 if part is None else 10,
+            "completion_tokens": 50 if part is None else 5})
+    if part is None:
+        _wjsonl(os.path.join(ndir, "events.jsonl"), [
+            {"t": "09:00:02", "ev": "run_start",
+             "agent": node},
+            {"t": "09:00:03", "ev": "tool", "step": 1,
+             "tool": "pc_read_source", "ok": True,
+             "detail": "s1.1"},
+            {"t": "09:00:04", "ev": "tool", "step": 2,
+             "tool": "write_structure", "ok": True}])
+        reads = [{"at": "2026-01-01T09:00:03",
+                  "tool": "pc_read_source", "pc": "source",
+                  "ref": "pc://source/shot#s1.1",
+                  "section": "s1.1", "item": "",
+                  "allowed": True, "reason": ""}]
+    else:
+        _wjsonl(os.path.join(ndir, "events.jsonl"), [
+            {"t": "09:00:07", "ev": "tool", "step": 1,
+             "tool": "pc_search_images", "ok": True,
+             "detail": "alpha"},
+            {"t": "09:00:08", "ev": "tool", "step": 2,
+             "tool": "pc_pick_image", "ok": False,
+             "error": "shot refusal"}])
+        reads = [
+            {"at": "2026-01-01T09:00:07",
+             "tool": "pc_search_images", "pc": "image",
+             "ref": "", "section": "", "item": "alpha",
+             "allowed": True, "reason": ""},
+            {"at": "2026-01-01T09:00:08",
+             "tool": "pc_pick_image", "pc": "image",
+             "ref": "pc://image/%s" % SHOT_IMG,
+             "section": "", "item": "", "allowed": False,
+             "reason": "shot refusal"}]
+    _wjsonl(os.path.join(ndir, "reads_log.jsonl"), reads)
+    _wjson(os.path.join(ndir, "inputs_log.json"),
+           {"node": label, "order_id": "ord-shot-001",
+            "run_id": "boardshot1",
+            "received": [{"item": "request",
+                          "category": "request",
+                          "from": "sales_sam"}],
+            "pc": [{"pc": "source", "kind": "full"}],
+            "est_input_tokens": 1200, "sha1": "abc",
+            "inputs_md_bytes": 10})
+    _wjson(os.path.join(ndir, "inputs_check.json"),
+           {"node": label, "spec": "expected_inputs.json",
+            "ok": spec_ok,
+            "missing": [] if spec_ok else ["concept"],
+            "extra": [], "wrong_part": [],
+            "wrong_kind": []})
 
 
 def stop_proc(proc, name):
@@ -694,6 +833,81 @@ def main():
         ok(os.path.isfile(PNGCELL)
            and os.path.getsize(PNGCELL) > 1000,
            "screenshot saved (%s)" % PNGCELL)
+        vurl = ("http://127.0.0.1:%d/api/flows/runs/boardshot1"
+                "/verify?node=photo_pia&part=1" % SERVER_PORT)
+        with urllib.request.urlopen(vurl, timeout=10) as r:
+            vpay = json.load(r)
+        ok(vpay.get("ok") is True and vpay.get("clone") ==
+           "photo_pia@p1" and vpay["spec"]["ok"] is False
+           and len(vpay["events"]) == 3
+           and sum(1 for e in vpay["events"]
+                   if e.get("ev") == "tool"
+                   and e.get("phrase")) == 2,
+           "verify endpoint: clone/spec/events/phrases")
+        furl = ("http://127.0.0.1:%d/api/flows/runs/boardshot1"
+                "/files" % SERVER_PORT)
+        with urllib.request.urlopen(furl, timeout=10) as r:
+            fbody = r.read().decode("utf-8", "replace")
+        ok(r.status == 200 and "STATUS.json" in fbody
+           and "photo_pia/p1/events.jsonl" in fbody,
+           "files endpoint lists the run folder")
+        time.sleep(1)
+        vc2 = js_eval(ws, SIDECARDS_JS)
+        for want in ("INPUTS RECEIVED", "PC READS",
+                     "SPEC CHECK", "EVENTS", "COST & TIME"):
+            ok(want in vc2.get("cards", []),
+               "side shows %s (%s)"
+               % (want, vc2.get("cards")))
+        ok("REFUSED" in (vc2.get("text") or "")
+           and "shot refusal" in (vc2.get("text") or ""),
+           "refused read shown red with the reason")
+        ok("differs from spec" in (vc2.get("text") or "")
+           and "concept" in (vc2.get("text") or ""),
+           "spec failure shown with the missing item")
+        ok("3 events" in (vc2.get("text") or ""),
+           "events card merges node + run rows")
+        sc2 = js_eval(ws, SIDECLONE_JS)
+        ok(sc2.get("clone") == "photo_pia@p1"
+           and sc2.get("allParts") is True,
+           "clone cell shows its id + All parts (%s)" % sc2)
+        sm = js_eval(ws, SUMMARY_JS)
+        ok("done" in (sm.get("text") or "")
+           and "Errors: 1" in (sm.get("text") or "")
+           and "Spec failures: 1" in (sm.get("text") or "")
+           and "3 calls" in (sm.get("text") or "")
+           and (sm.get("href") or "").endswith(
+               "api/flows/runs/boardshot1/files"),
+           "summary bar state/errors/spec/cost/link (%s)"
+           % sm.get("text"))
+        ok(js_eval(ws, CLICK_HL_JS + '("bd-hl-err")') is True,
+           "errors count clicked")
+        time.sleep(0.5)
+        ok(js_eval(ws, HLCOUNT_JS) >= 1,
+           "error cells highlighted")
+        ok(js_eval(ws, CLICK_HL_JS + '("bd-hl-spec")')
+           is True, "spec count clicked")
+        time.sleep(0.5)
+        ok(js_eval(ws, HLCOUNT_JS) >= 1,
+           "spec cells highlighted")
+        ok(js_eval(ws, CLICK_HL_JS + '("bd-hl-spec")')
+           is True, "spec count clicked again")
+        time.sleep(0.5)
+        ok(js_eval(ws, HLCOUNT_JS) == 0,
+           "highlight toggles off")
+        vv = js_eval(ws, VALL_JS + "(true)")
+        ok(vv.get("has") is True, "all-parts toggle present")
+        time.sleep(1.5)
+        cols = js_eval(ws, "Array.from(document.querySelectorAll"
+                           "('#bd-side .bd-vcols > div > b'))"
+                           ".map(b => b.textContent)")
+        ok(cols == ["photo_pia@p1", "photo_pia@p2"],
+           "all parts shown side by side (%s)" % cols)
+        js_eval(ws, VALL_JS + "(false)")
+        time.sleep(1.5)
+        shot(ws, PNGVERIFY)
+        ok(os.path.isfile(PNGVERIFY)
+           and os.path.getsize(PNGVERIFY) > 1000,
+           "screenshot saved (%s)" % PNGVERIFY)
         ws.call("Emulation.setDeviceMetricsOverride",
                 {"width": 390, "height": 844,
                  "deviceScaleFactor": 1, "mobile": False})
@@ -714,11 +928,132 @@ def main():
         shutil.rmtree(profile, ignore_errors=True)
         shutil.rmtree(FIX, ignore_errors=True)
         shutil.rmtree(PCFIX, ignore_errors=True)
+    if not fails:
+        empty_phase()
     if fails:
         print("%d FAILURES" % fails)
         return 1
     print("ALL PASS")
     return 0
+
+
+def empty_phase():
+    """Board against an empty runs folder: headers + grey row."""
+    empty_runs = os.path.join(tempfile.gettempdir(),
+                              "board_empty_runs")
+    shutil.rmtree(empty_runs, ignore_errors=True)
+    os.makedirs(empty_runs)
+    server, edge, ws = None, None, None
+    profile = os.path.join(tempfile.gettempdir(),
+                           "board_empty_profile")
+    shutil.rmtree(profile, ignore_errors=True)
+    try:
+        logf = open(SERVER_LOG, "w", encoding="utf-8")
+        env = dict(os.environ)
+        env["SHOESTRING_RUNS_DIR"] = empty_runs
+        server = subprocess.Popen(
+            [sys.executable, "scripts/server.py",
+             "--port", str(SERVER_PORT)],
+            cwd=ROOT, stdout=logf, stderr=subprocess.STDOUT,
+            env=env)
+        t0 = time.time()
+        while time.time() - t0 < 40:
+            try:
+                with urllib.request.urlopen(
+                        "http://127.0.0.1:%d/api/version"
+                        % SERVER_PORT, timeout=3) as r:
+                    if r.status == 200:
+                        break
+            except OSError:
+                time.sleep(1)
+        else:
+            ok(False, "empty-phase server answers")
+            return
+        with urllib.request.urlopen(
+                "http://127.0.0.1:%d/api/flows/runs"
+                % SERVER_PORT, timeout=10) as r:
+            runs = json.load(r)
+        ok(runs.get("runs") == [], "empty runs list")
+        edge = subprocess.Popen(
+            _browser.launch_args(CDP_PORT, profile, 1280, 720))
+        t0 = time.time()
+        targets = None
+        while time.time() - t0 < 40:
+            try:
+                with urllib.request.urlopen(
+                        "http://127.0.0.1:%d/json/list"
+                        % CDP_PORT, timeout=3) as r:
+                    targets = json.load(r)
+                if targets:
+                    break
+            except OSError:
+                time.sleep(1)
+        if not targets:
+            ok(False, "empty-phase edge cdp answers")
+            return
+        page = next((t for t in targets
+                     if t.get("type") == "page"), None)
+        if page is None:
+            ok(False, "empty-phase page target found")
+            return
+        wsu = page["webSocketDebuggerUrl"]
+        hostport, _, path = wsu.split("://", 1)[1].partition("/")
+        host, _, port = hostport.partition(":")
+        ws = WS(host, int(port or 80), "/" + path)
+        ws.call("Runtime.enable")
+        ws.call("Page.enable")
+        ws.call("Page.addScriptToEvaluateOnNewDocument",
+                {"source": "window.confirm=()=>false;"})
+        ws.call("Page.navigate",
+                {"url": "http://localhost:%d/" % SERVER_PORT})
+        drain_dialogs(ws, 12)
+        t0 = time.time()
+        while time.time() - t0 < 40:
+            if js_eval(ws, "document.readyState") == "complete":
+                break
+            time.sleep(0.5)
+        js_eval(ws, "document.querySelector"
+                    "('nav button[data-p=board]').click()")
+        t0 = time.time()
+        while time.time() - t0 < 30:
+            n = js_eval(ws, "document.querySelectorAll"
+                            "('#bd-table tr.bd-emptyrow td')"
+                            ".length")
+            if n:
+                break
+            time.sleep(0.5)
+        time.sleep(1)
+        out = js_eval(ws, EMPTY_JS)
+        ok(out.get("cols") == 12,
+           "empty state keeps 12 columns (%s)"
+           % out.get("cols"))
+        ok(out.get("group1") == "STORYBOARD TEAM"
+           and out.get("group2") == "VIDEO TEAM",
+           "empty state keeps group headers")
+        ok("No runs yet" in (out.get("empty") or "")
+           and "Order tab" in (out.get("empty") or ""),
+           "empty grey row text")
+        ok("no runs" in (out.get("picker") or ""),
+           "run picker says no runs")
+        stext = js_eval(ws, "document.getElementById('bd-sum')"
+                            ".textContent")
+        ok("No runs yet" in (stext or ""),
+           "summary says no runs yet")
+        shot(ws, PNGEMPTY)
+        ok(os.path.isfile(PNGEMPTY)
+           and os.path.getsize(PNGEMPTY) > 1000,
+           "screenshot saved (%s)" % PNGEMPTY)
+        ws.call("Runtime.disable")
+        nerr = console_errors(ws.events)
+        ok(nerr == 0, "empty state: zero console errors "
+           "(got %d)" % nerr)
+    finally:
+        if ws is not None:
+            ws.close()
+        _browser.stop_tree(edge, "edge")
+        stop_proc(server, "server")
+        shutil.rmtree(profile, ignore_errors=True)
+        shutil.rmtree(empty_runs, ignore_errors=True)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ Run:   python scripts/server.py [--port 8000]
 Open:  http://localhost:8000
 """
 import argparse
+import html
 import json
 import mimetypes
 import os
@@ -231,6 +232,12 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 5 \
                 and parts[2] == "runs" and parts[4] == "board":
             return self._api_flow_board(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "verify":
+            return self._api_flow_verify(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "files":
+            return self._api_flow_files(parts[3])
         if parts[:2] == ["api", "flows"] and len(parts) == 5 \
                 and parts[2] == "runs" and parts[4] == "state":
             return self._api_flow_run_state(parts[3])
@@ -1478,12 +1485,64 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, out)
         return self._json(200, out)
 
-    def _api_flow_path(self, run_id, node, rel):
-        """Path mode of the step file endpoint: Remy slide PNGs and
-        other small dashboard files inside one stage folder."""
+    def _api_flow_verify(self, run_id):
         if not self._run_id_ok(run_id):
             return self._json(404, {"error": "no such run"})
-        full = board.safe_run_path(flows.RUNS_DIR, run_id, node, rel)
+        qs = unquote(self.path).split("?", 1)
+        q = dict(parse_qsl(qs[1])) if len(qs) > 1 else {}
+        part = None
+        if q.get("part"):
+            try:
+                part = int(q["part"])
+            except ValueError:
+                return self._json(404, {"error": "no such part"})
+        out = board.build_verify(run_id, q.get("node", ""),
+                                 part)
+        if not out.get("ok"):
+            return self._json(404, out)
+        return self._json(200, out)
+
+    def _api_flow_files(self, run_id):
+        """Read-only run-folder listing (the Board's "Open run
+        folder" link). Every row links to the file endpoint."""
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        out = board.list_run_files(run_id)
+        if not out.get("ok"):
+            return self._json(404, out)
+        rows = []
+        for e in out["files"]:
+            url = "/api/flows/runs/%s/file?node=%s&path=%s" % (
+                run_id, e["node"], e["rel"])
+            rows.append("<tr><td><a href=\"%s\">%s</a></td>"
+                        "<td>%d</td></tr>"
+                        % (html.escape(url, quote=True),
+                           html.escape(e["path"]),
+                           e["size"]))
+        body = ("<!doctype html><html><head><meta charset=\"utf-8\">"
+                "<title>run %s</title></head><body>"
+                "<h1>run %s</h1>"
+                "<table><tr><th>file</th><th>bytes</th></tr>%s"
+                "</table></body></html>") % (
+                    html.escape(run_id), html.escape(run_id),
+                    "".join(rows))
+        data = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type",
+                         "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _api_flow_path(self, run_id, node, rel):
+        """Path mode of the step file endpoint: Remy slide PNGs and
+        other small dashboard files inside one stage folder. An
+        empty node means the run folder itself (STATUS.json,
+        events.jsonl, flow.json)."""
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        full = board.safe_run_path(
+            flows.RUNS_DIR, run_id, node, rel)
         if full is None:
             return self._json(404, {"error": "no such file"})
         with open(full, "rb") as f:
@@ -1500,6 +1559,10 @@ class Handler(BaseHTTPRequestHandler):
 
     _RUN_FILES = {"INPUTS.md": "text/markdown",
                   "INPUTS.json": "application/json",
+                  "inputs_log.json": "application/json",
+                  "inputs_check.json": "application/json",
+                  "reads_log.jsonl": "text/plain",
+                  "events.jsonl": "text/plain",
                   "report.md": "text/markdown",
                   "summary_ko.md": "text/markdown",
                   "result.json": "application/json",

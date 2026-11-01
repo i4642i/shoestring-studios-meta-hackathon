@@ -8,6 +8,7 @@ stage yields "wait" cells; nothing here raises on partial runs.
 import json
 import os
 import re
+import time
 from urllib.parse import quote
 
 from . import parts as _parts
@@ -41,7 +42,17 @@ _COLUMN_STAGE = {"part_time": "marty", "part": "marty", "scene": "ash",
 
 _KEY_NODE = {key: node for key, node, _w, _t, _l in STAGES}
 
-_STAGE_FILES = ("report.md", "result.json", "INPUTS.md", "INPUTS.json")
+_WHO_BY_NODE = {node: who for _k, node, who, _t, _l in STAGES}
+
+_STAGE_FILES = ("report.md", "result.json", "INPUTS.md", "INPUTS.json",
+                "inputs_log.json")
+
+_VERIFY_FILES = ("report.md", "result.json", "INPUTS.md",
+                 "INPUTS.json", "inputs_log.json",
+                 "inputs_check.json", "reads_log.jsonl",
+                 "events.jsonl", "usage.json")
+
+_MAX_VERIFY_ROWS = 500
 
 _RUN_PATH_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".json",
                   ".md", ".txt", ".srt")
@@ -73,17 +84,25 @@ def safe_run_path(runs_root, run_id, node, rel):
 
     Rejects absolute paths, drive letters, ".." escapes, and
     non-dashboard extensions. Used by the step file endpoint to
-    serve Remy slide PNGs (path mode).
+    serve Remy slide PNGs (path mode). An empty node means the
+    run folder itself (flat names only: STATUS.json,
+    events.jsonl, flow.json).
     """
-    sub = clone_run_dir(node)
+    if node:
+        sub = clone_run_dir(node)
+    else:
+        sub = ""
     if not run_id_ok(run_id) or sub is None:
         return None
     if not rel or not isinstance(rel, str):
         return None
     if os.path.isabs(rel) or ":" in rel.split("/")[0]:
         return None
-    norm = os.path.normpath(rel.replace("\\", "/"))
+    clean = rel.replace("\\", "/")
+    norm = os.path.normpath(clean)
     if norm.startswith("../") or norm == "..":
+        return None
+    if not node and "/" in clean:
         return None
     if os.path.splitext(norm)[1].lower() not in _RUN_PATH_EXTS:
         return None
@@ -585,4 +604,309 @@ def build_board(run_id, runs_root=None, pc_root=None, running=False):
     return {"ok": True, "run_id": run_id, "run_state": run_state,
             "run_error": status.get("error", ""),
             "stages": stages, "parts": parts,
-            "style_guide": guide}
+            "style_guide": guide,
+            "summary": _summary_of(run_dir, status, run_state)}
+
+
+def _iter_stage_dirs(run_dir):
+    """(node, part|None, dir) for every board node dir on disk."""
+    out = []
+    nodes = set(_KEY_NODE.values())
+    try:
+        names = sorted(os.listdir(run_dir))
+    except OSError:
+        return out
+    for name in names:
+        if name not in nodes:
+            continue
+        ndir = os.path.join(run_dir, name)
+        if not os.path.isdir(ndir):
+            continue
+        out.append((name, None, ndir))
+        if name in _parts.CLONE_NODES:
+            try:
+                subs = sorted(os.listdir(ndir))
+            except OSError:
+                continue
+            for sub in subs:
+                if len(sub) < 2 or sub[0] != "p" \
+                        or not sub[1:].isdigit():
+                    continue
+                sdir = os.path.join(ndir, sub)
+                if os.path.isdir(sdir):
+                    out.append((name, int(sub[1:]), sdir))
+    return out
+
+
+def _read_jsonl(path, cap=_MAX_VERIFY_ROWS):
+    rows = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return rows
+    for ln in lines:
+        try:
+            row = json.loads(ln)
+        except ValueError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+        if len(rows) >= cap:
+            break
+    return rows
+
+
+def _run_cost_total(run_dir):
+    """Summed usage over the same dirs flow._run_cost walks
+    (memory builds + every stage dir, clones included), so the
+    Board summary matches the Studio control bar."""
+    cost = {"llm_calls": 0, "prompt_tokens": 0,
+            "completion_tokens": 0}
+    mdir = os.path.join(run_dir, "memory")
+    dirs = []
+    if os.path.isdir(mdir):
+        try:
+            subs = sorted(os.listdir(mdir))
+        except OSError:
+            subs = []
+        for agent in subs:
+            adir = os.path.join(mdir, agent)
+            if os.path.isdir(adir):
+                dirs.append(adir)
+    dirs.extend(d for _n, _p, d in _iter_stage_dirs(run_dir))
+    for d in dirs:
+        u = _load_json(os.path.join(d, "usage.json")) or {}
+        for k in cost:
+            if isinstance(u.get(k), int) \
+                    and not isinstance(u.get(k), bool):
+                cost[k] += u[k]
+    return cost
+
+
+def _elapsed_s(run_dir, state, status_mtime):
+    """Run length from file times (no timestamps are stored):
+    oldest entry in the run folder to STATUS.json's change, or
+    to now while the run is live. Seconds, or None."""
+    try:
+        names = os.listdir(run_dir)
+    except OSError:
+        return None
+    marks = []
+    for n in names:
+        try:
+            marks.append(os.path.getmtime(
+                os.path.join(run_dir, n)))
+        except OSError:
+            pass
+    if not marks:
+        return None
+    start = min(marks)
+    if state in ("running", "pausing"):
+        end = time.time()
+    else:
+        end = status_mtime or max(marks)
+    return max(0, int(end - start))
+
+
+def _scan_errors(run_dir, status):
+    """Failed tool calls and run_fail rows, per node/part."""
+    errs = []
+    for node, part, d in _iter_stage_dirs(run_dir):
+        for row in _read_jsonl(os.path.join(d, "events.jsonl")):
+            if row.get("ev") == "run_fail":
+                errs.append((node, part,
+                             str(row.get("reason", ""))))
+            elif row.get("ev") == "tool" \
+                    and row.get("ok") is False:
+                reason = row.get("error") or ""
+                if not reason and isinstance(
+                        row.get("errors"), list) \
+                        and row["errors"]:
+                    reason = str(row["errors"][0])
+                errs.append((node, part, "%s: %s" % (
+                    row.get("tool", "tool"),
+                    reason or "failed")))
+    if status.get("state") == "failed" and status.get("error"):
+        errs.append(("", None, str(status["error"])))
+    return [{"node": n, "part": p, "reason": r[:160]}
+            for n, p, r in errs]
+
+
+def _scan_spec(run_dir):
+    """inputs_check.json rows with ok False, per node/part."""
+    fails = []
+    for node, part, d in _iter_stage_dirs(run_dir):
+        chk = _load_json(os.path.join(d, "inputs_check.json"))
+        if isinstance(chk, dict) and chk.get("ok") is False:
+            item = {"node": node, "part": part}
+            for k in ("missing", "extra", "wrong_part",
+                      "wrong_kind"):
+                vals = chk.get(k) or []
+                item[k] = [str(v) for v in vals[:10]]
+                item["n_" + k] = len(vals)
+            fails.append(item)
+    return fails
+
+
+def _current_label(status):
+    """(current id, short who label) from STATUS.json."""
+    cur = status.get("current", "") or ""
+    if not cur:
+        return "", ""
+    base, no = _parts.parse_clone_id(cur)
+    who = _WHO_BY_NODE.get(base, "")
+    if not who:
+        return cur, cur
+    if no is None:
+        return cur, who
+    return cur, "%s P%d" % (who, no)
+
+
+def _summary_of(run_dir, status, state):
+    try:
+        smtime = os.path.getmtime(
+            os.path.join(run_dir, "STATUS.json"))
+    except OSError:
+        smtime = None
+    cur, who = _current_label(status)
+    return {"state": state, "current": cur,
+            "current_who": who,
+            "elapsed_s": _elapsed_s(run_dir, state, smtime),
+            "cost": _run_cost_total(run_dir),
+            "errors": _scan_errors(run_dir, status),
+            "spec_failures": _scan_spec(run_dir)}
+
+
+def build_summary(run_id, runs_root=None):
+    """One-run verify summary. Never raises on partial runs."""
+    from . import flow as _flow
+    runs_root = runs_root or _flow.RUNS_DIR
+    if not run_id_ok(run_id):
+        return {"ok": False, "error": "no such run: %r" % (run_id,)}
+    run_dir = os.path.join(runs_root, run_id)
+    if not os.path.isdir(run_dir):
+        return {"ok": False, "error": "no such run: %r" % (run_id,)}
+    status = _load_json(os.path.join(run_dir, "STATUS.json")) or {}
+    out = _summary_of(run_dir, status,
+                      status.get("state", "unknown"))
+    out.update(ok=True, run_id=run_id)
+    return out
+
+
+def _ev_time(row):
+    return row.get("t") or row.get("at") or ""
+
+
+def build_verify(run_id, node, part=None, runs_root=None):
+    """Everything the Board needs to verify one employee/part:
+    inputs manifest, PC reads, spec check, merged events with
+    plain phrases, cost, and file links. Unknown nodes fail;
+    a stage that has not run yet returns empty sections."""
+    from . import flow as _flow
+    from . import office as _office
+    runs_root = runs_root or _flow.RUNS_DIR
+    if not run_id_ok(run_id):
+        return {"ok": False, "error": "no such run: %r" % (run_id,)}
+    run_dir = os.path.join(runs_root, run_id)
+    if not os.path.isdir(run_dir):
+        return {"ok": False, "error": "no such run: %r" % (run_id,)}
+    base, no = _parts.parse_clone_id(node or "")
+    if no is not None and part is None:
+        part = no
+    node = base or ""
+    nodes = set(_KEY_NODE.values())
+    if node not in nodes:
+        return {"ok": False,
+                "error": "no such node: %r" % (node,)}
+    if part is not None and (node not in _parts.CLONE_NODES
+                             or not isinstance(part, int)
+                             or isinstance(part, bool)
+                             or part < 1):
+        return {"ok": False,
+                "error": "no such part: %r" % (part,)}
+    if part is None:
+        ndir = os.path.join(run_dir, node)
+    else:
+        ndir = os.path.join(run_dir, node, "p%d" % part)
+    ndir = ndir if os.path.isdir(ndir) else None
+    label = node if part is None else "%s@p%d" % (node, part)
+    inputs = _load_json(os.path.join(ndir, "inputs_log.json")) \
+        if ndir else None
+    spec = _load_json(os.path.join(ndir, "inputs_check.json")) \
+        if ndir else None
+    reads = _read_jsonl(os.path.join(ndir, "reads_log.jsonl")) \
+        if ndir else []
+    want = {node, label}
+    run_rows = [r for r in _read_jsonl(
+        os.path.join(run_dir, "events.jsonl"), cap=2000)
+        if r.get("agent") in want]
+    node_rows = _read_jsonl(os.path.join(ndir, "events.jsonl")) \
+        if ndir else []
+    all_rows = run_rows + node_rows
+    order = sorted(range(len(all_rows)),
+                   key=lambda i: _ev_time(all_rows[i]))
+    gen = 0
+    events = []
+    for i in order:
+        row = dict(all_rows[i])
+        if row.get("ev") == "tool":
+            if row.get("tool") == "pc_generate_image":
+                gen += 1
+            row["phrase"] = _office.action_phrase(
+                row.get("tool"), row.get("detail"), gen, 0)
+        events.append(row)
+    usage = _load_json(os.path.join(ndir, "usage.json")) \
+        if ndir else None
+    times = [_ev_time(r) for r in events if _ev_time(r)]
+    files = {}
+    if ndir:
+        for name in _VERIFY_FILES:
+            if os.path.isfile(os.path.join(ndir, name)):
+                files[name] = _run_file_url(run_id, label, name)
+    return {"ok": True, "run_id": run_id, "node": node,
+            "part": part, "clone": label,
+            "inputs": inputs if isinstance(inputs, dict)
+            else {"present": False},
+            "reads": reads,
+            "spec": spec if isinstance(spec, dict)
+            else {"present": False},
+            "events": events,
+            "cost": {"usage": usage,
+                     "started": times[0] if times else None,
+                     "finished": times[-1] if times else None},
+            "files": files}
+
+
+def list_run_files(run_id, runs_root=None):
+    """Every file under one run folder, for the read-only
+    run-folder listing. Sorted relative paths with sizes."""
+    from . import flow as _flow
+    runs_root = runs_root or _flow.RUNS_DIR
+    if not run_id_ok(run_id):
+        return {"ok": False, "error": "no such run: %r" % (run_id,)}
+    run_dir = os.path.join(runs_root, run_id)
+    if not os.path.isdir(run_dir):
+        return {"ok": False, "error": "no such run: %r" % (run_id,)}
+    out = []
+    for dirpath, _dirs, files in os.walk(run_dir):
+        for fn in sorted(files):
+            full = os.path.join(dirpath, fn)
+            try:
+                size = os.path.getsize(full)
+            except OSError:
+                continue
+            rel = os.path.relpath(full, run_dir).replace(
+                "\\", "/")
+            if "/" in rel:
+                first, rest = rel.split("/", 1)
+            else:
+                first, rest = "", rel
+            out.append({"path": rel, "size": size,
+                        "node": first, "rel": rest})
+            if len(out) >= 2000:
+                break
+        if len(out) >= 2000:
+            break
+    out.sort(key=lambda e: e["path"])
+    return {"ok": True, "run_id": run_id, "files": out}

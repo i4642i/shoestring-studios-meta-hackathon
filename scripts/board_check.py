@@ -592,6 +592,205 @@ try:
        and board.clone_run_dir("photo_pia") == "photo_pia"
        and board.clone_run_dir("a/b") is None,
        "clone_run_dir maps ids safely")
+
+    def wjson(path, obj):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(obj, f)
+
+    def wjsonl(path, rows):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            for r in rows:
+                f.write(json.dumps(r) + "\n")
+
+    V = os.path.join(RUNS, "boardvrf1")
+    os.makedirs(V, exist_ok=True)
+    wstatus("boardvrf1", {"run_id": "boardvrf1",
+                          "flow_id": "default",
+                          "order_id": "ord-board-001",
+                          "state": "running",
+                          "current": "photo_pia@p1",
+                          "approved": ["pd_marty"]})
+    wjson(os.path.join(V, "flow.json"), {"id": "default"})
+    wjsonl(os.path.join(V, "events.jsonl"), [
+        {"at": "09:00:01", "ev": "agent_start",
+         "agent": "pd_marty"},
+        {"at": "09:00:05", "ev": "agent_done",
+         "agent": "pd_marty"},
+        {"at": "09:00:06", "ev": "agent_start",
+         "agent": "photo_pia@p1"}])
+    M = os.path.join(V, "pd_marty")
+    wjson(os.path.join(M, "usage.json"),
+          {"llm_calls": 2, "prompt_tokens": 100,
+           "completion_tokens": 50})
+    wjsonl(os.path.join(M, "events.jsonl"), [
+        {"t": "09:00:02", "ev": "run_start",
+         "agent": "pd_marty"},
+        {"t": "09:00:03", "ev": "tool", "step": 1,
+         "tool": "pc_read_source", "ok": True,
+         "detail": "s1.1"},
+        {"t": "09:00:04", "ev": "tool", "step": 2,
+         "tool": "write_structure", "ok": True},
+        {"t": "09:00:05", "ev": "run_done",
+         "usage": {"prompt": 100, "completion": 50}}])
+    wjson(os.path.join(M, "inputs_log.json"),
+          {"node": "pd_marty", "order_id": "ord-board-001",
+           "run_id": "boardvrf1", "received": [
+               {"item": "request", "category": "request",
+                "from": "sales_sam"}],
+           "pc": [{"pc": "source", "kind": "full"}],
+           "est_input_tokens": 1200, "sha1": "abc",
+           "inputs_md_bytes": 10})
+    wjson(os.path.join(M, "inputs_check.json"),
+          {"node": "pd_marty", "spec": "expected_inputs.json",
+           "ok": True, "missing": [], "extra": [],
+           "wrong_part": [], "wrong_kind": []})
+    wjsonl(os.path.join(M, "reads_log.jsonl"), [
+        {"at": "2026-01-01T09:00:03", "tool": "pc_read_source",
+         "pc": "source", "ref": SRC_REF, "section": "s1.1",
+         "item": "", "allowed": True, "reason": ""}])
+    P1 = os.path.join(V, "photo_pia", "p1")
+    wjson(os.path.join(P1, "usage.json"),
+          {"llm_calls": 1, "prompt_tokens": 10,
+           "completion_tokens": 5})
+    wjsonl(os.path.join(P1, "events.jsonl"), [
+        {"t": "09:00:07", "ev": "tool", "step": 1,
+         "tool": "pc_search_images", "ok": True,
+         "detail": "alpha"},
+        {"t": "09:00:08", "ev": "tool", "step": 2,
+         "tool": "pc_pick_image", "ok": False,
+         "error": "no access to this item"}])
+    wjson(os.path.join(P1, "inputs_log.json"),
+          {"node": "photo_pia@p1", "received": [],
+           "pc": [], "est_input_tokens": 0, "sha1": "x",
+           "inputs_md_bytes": 0})
+    wjson(os.path.join(P1, "inputs_check.json"),
+          {"node": "photo_pia@p1", "spec": "expected_inputs.json",
+           "ok": False, "missing": ["concept"], "extra": [],
+           "wrong_part": [], "wrong_kind": []})
+    wjsonl(os.path.join(P1, "reads_log.jsonl"), [
+        {"at": "2026-01-01T09:00:07",
+         "tool": "pc_search_images", "pc": "image", "ref": "",
+         "section": "", "item": "alpha", "allowed": True,
+         "reason": ""},
+        {"at": "2026-01-01T09:00:08", "tool": "pc_pick_image",
+         "pc": "image", "ref": IMG_REF, "section": "",
+         "item": "", "allowed": False,
+         "reason": "no access to this item"}])
+    G2 = os.path.join(V, "image_gene", "p2")
+    wjsonl(os.path.join(G2, "events.jsonl"), [
+        {"t": "09:00:09", "ev": "run_fail",
+         "reason": "writer tool closed"}])
+
+    full = board.build_board("boardvrf1", runs_root=RUNS)
+    sm = full["summary"]
+    ok(sm["state"] == "running"
+       and sm["current"] == "photo_pia@p1"
+       and sm["current_who"] == "Pia P1",
+       "summary state/current/current_who")
+    ok(isinstance(sm["elapsed_s"], int)
+       and sm["elapsed_s"] >= 0,
+       "summary elapsed seconds")
+    ok(sm["cost"] == {"llm_calls": 3, "prompt_tokens": 110,
+                      "completion_tokens": 55},
+       "summary cost sums every usage.json")
+    ok([(e["node"], e["part"]) for e in sm["errors"]]
+       == [("image_gene", 2), ("photo_pia", 1)]
+       and sm["errors"][0]["reason"] == "writer tool closed"
+       and "no access" in sm["errors"][1]["reason"],
+       "summary errors list node/part/reason")
+    ok(len(sm["spec_failures"]) == 1
+       and sm["spec_failures"][0]["node"] == "photo_pia"
+       and sm["spec_failures"][0]["part"] == 1
+       and sm["spec_failures"][0]["missing"] == ["concept"],
+       "summary spec failures list node/part/missing")
+    sm2 = board.build_summary("boardvrf1", runs_root=RUNS)
+    ok(sm2.get("ok") is True
+       and sm2["current_who"] == "Pia P1"
+       and sm2["cost"]["llm_calls"] == 3,
+       "build_summary matches the board summary")
+    ok(board.build_summary("nosuchrun",
+                           runs_root=RUNS).get("ok") is False,
+       "summary rejects a missing run")
+
+    mv = board.build_verify("boardvrf1", "pd_marty",
+                            runs_root=RUNS)
+    ok(mv.get("ok") is True and mv["clone"] == "pd_marty"
+       and mv["inputs"]["est_input_tokens"] == 1200
+       and len(mv["inputs"]["received"]) == 1
+       and mv["spec"]["ok"] is True
+       and len(mv["reads"]) == 1
+       and mv["reads"][0]["allowed"] is True,
+       "verify marty inputs/reads/spec")
+    mts = [board._ev_time(r) for r in mv["events"]]
+    ok(mts == sorted(mts)
+       and [r.get("ev") for r in mv["events"]]
+       == ["agent_start", "run_start", "tool", "tool",
+           "agent_done", "run_done"],
+       "verify marty events merge node + run rows in time order")
+    mtools = [r for r in mv["events"]
+              if r.get("ev") == "tool"]
+    ok(all(r.get("phrase") for r in mtools)
+       and mtools[0]["phrase"] == "Reading source s1.1"
+       and mtools[1]["phrase"] == "Writing report\u2026",
+       "verify tool rows carry plain phrases")
+    ok(mv["cost"]["usage"]["llm_calls"] == 2
+       and mv["cost"]["started"] == "09:00:01"
+       and mv["cost"]["finished"] == "09:00:05"
+       and mv["files"]["usage.json"].endswith(
+           "file?node=pd_marty&name=usage.json")
+       and mv["files"]["reads_log.jsonl"].endswith(
+           "name=reads_log.jsonl"),
+       "verify marty cost/span/file links")
+    pv = board.build_verify("boardvrf1", "photo_pia@p1",
+                            runs_root=RUNS)
+    ok(pv.get("ok") is True and pv["part"] == 1
+       and pv["spec"]["ok"] is False
+       and pv["spec"]["missing"] == ["concept"]
+       and sum(1 for r in pv["reads"]
+               if r["allowed"] is False) == 1
+       and any(r.get("error") for r in pv["events"]),
+       "verify clone id form, spec fail, refused read")
+    wv = board.build_verify("boardvrf1", "board_vera",
+                            runs_root=RUNS)
+    ok(wv.get("ok") is True
+       and wv["inputs"] == {"present": False}
+       and wv["spec"] == {"present": False}
+       and wv["events"] == [] and wv["files"] == {},
+       "verify missing stage returns empty sections")
+    ok(board.build_verify("boardvrf1", "sales_sam",
+                          runs_root=RUNS).get("ok") is False
+       and board.build_verify("boardvrf1", "pd_marty", 1,
+                              runs_root=RUNS).get("ok")
+       is False
+       and board.build_verify("boardvrf1", "photo_pia", 0,
+                              runs_root=RUNS).get("ok")
+       is False
+       and board.build_verify("nosuchrun", "pd_marty",
+                              runs_root=RUNS).get("ok")
+       is False,
+       "verify rejects bad node/part/run")
+    lf = board.list_run_files("boardvrf1", runs_root=RUNS)
+    paths = [e["path"] for e in lf["files"]]
+    ok(lf.get("ok") is True and paths == sorted(paths)
+       and "STATUS.json" in paths
+       and "pd_marty/usage.json" in paths
+       and "photo_pia/p1/events.jsonl" in paths
+       and [e for e in lf["files"]
+            if e["path"] == "STATUS.json"][0]["node"] == "",
+       "run files list sorted paths, root node empty")
+    ok(board.list_run_files("nosuchrun",
+                            runs_root=RUNS).get("ok")
+       is False, "run files reject a missing run")
+    ok(board.safe_run_path(RUNS, "boardvrf1", "",
+                           "STATUS.json") is not None
+       and board.safe_run_path(RUNS, "boardvrf1", "",
+                               "flow.json") is not None
+       and board.safe_run_path(RUNS, "boardvrf1", "",
+                               "pd_marty/usage.json")
+       is None,
+       "run-root files resolve flat only")
 finally:
     _pc.ROOT_OVERRIDE = None
 

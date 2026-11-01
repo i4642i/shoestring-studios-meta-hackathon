@@ -834,6 +834,32 @@ button.linklike { background: none; border: none; padding: 0;
   background: rgba(147,197,253,.25); color: #dbeafe; font-size: 9px;
   font-style: normal; padding: 0 3px; overflow: hidden; white-space: nowrap; }
 #bd-side ul.bd-log { margin: 4px 0; padding-left: 16px; }
+#bd-sum { display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  margin: 10px 0 0; font-size: 12px; color: var(--dim); }
+#bd-sum b { color: #111; }
+#bd-sum button.bd-link { background: none; border: none; padding: 0;
+  color: #0064e0; font-size: 12px; cursor: pointer;
+  text-decoration: underline; }
+#bd-table td.bd-hl { outline: 3px solid #dc2626; outline-offset: -3px; }
+#bd-table tr.bd-emptyrow td { background: #eef0f3; color: #6b7280;
+  font-style: italic; text-align: center; }
+#bd-side table.bd-vtab { width: 100%; border-collapse: collapse;
+  font-size: 11px; margin-top: 4px; }
+#bd-side table.bd-vtab td, #bd-side table.bd-vtab th {
+  border-top: 1px solid var(--line); padding: 3px 4px;
+  vertical-align: top; text-align: left; }
+#bd-side .bd-bad { color: #b91c1c; font-weight: 700; }
+#bd-side .bd-okline { color: #15803d; font-weight: 700; }
+#bd-side details.bd-ev { margin-top: 4px; }
+#bd-side details.bd-ev summary { cursor: pointer; font-weight: 700; }
+#bd-side details.bd-ev ol { margin: 4px 0; padding-left: 20px; }
+#bd-side details.bd-ev li { margin-bottom: 2px; }
+#bd-side details.bd-ev small { color: var(--dim); }
+#bd-side .bd-vcols { display: flex; gap: 8px; align-items: flex-start; }
+#bd-side .bd-vcols > div { flex: 1; min-width: 0; }
+#bd-side .bd-vf { margin: 0 0 8px; }
+#bd-side label.bd-all { display: inline-block; margin: 0 0 8px 8px;
+  font-size: 11px; font-weight: 700; }
 #bd-side .bd-sw { display: inline-block; width: 12px; height: 12px;
   border-radius: 3px; border: 1px solid var(--line); vertical-align: -1px; }
 #bd-light { position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 99;
@@ -864,6 +890,7 @@ button.linklike { background: none; border: none; padding: 0;
       <button id="bd-stop">Stop</button>
       <div id="bd-legend"></div>
     </div>
+    <div id="bd-sum"></div>
     <div id="bd-strip"></div>
     <div id="bd-main">
       <div id="bd-tablewrap"><table id="bd-table"></table></div>
@@ -902,7 +929,8 @@ button.linklike { background: none; border: none; padding: 0;
     ok: "#dcfce7", err: "#fee2e2", none: "#e5e7eb" };
   const TEAMC = { story: "#0064e0", video: "#c2571b" };
   const B = { runs: [], run: "", flowId: "", orderId: "", board: null,
-    sel: null, timer: 0, loaded: false, poll: 0 };
+    sel: null, timer: 0, loaded: false, poll: 0, vcache: {},
+    vall: false, hl: null, hlKey: "" };
   const $ = id => document.getElementById(id);
   function err(t) { $("bd-err").textContent = t || ""; }
   function fmtT(s) {
@@ -931,6 +959,7 @@ button.linklike { background: none; border: none; padding: 0;
   }
   async function loadRuns() {
     const d = await api.get("api/flows/runs");
+    B.vcache = {};
     B.runs = d.runs || [];
     const sel = $("bd-run");
     const keep = sel.value || B.run;
@@ -950,7 +979,13 @@ button.linklike { background: none; border: none; padding: 0;
     B.orderId = cur.order_id || "";
   }
   async function loadBoard() {
-    if (!B.run) return;
+    if (!B.run) {
+      B.board = null;
+      B.hl = null;
+      B.hlKey = "";
+      renderEmpty();
+      return;
+    }
     err("");
     const wrap = $("bd-tablewrap");
     const sl = wrap.scrollLeft, st = wrap.scrollTop;
@@ -959,6 +994,8 @@ button.linklike { background: none; border: none; padding: 0;
     if (!B.board.ok) throw new Error(B.board.error || "board failed");
     fillParts();
     renderStrip();
+    renderSum();
+    paintHl();
     renderTable();
     renderTarget();
     renderSide();
@@ -1165,6 +1202,7 @@ button.linklike { background: none; border: none; padding: 0;
     return {};
   }
   function selectCell(cutId, col, partNo, sceneN) {
+    B.vall = false;
     B.sel = { kind: "cell", cut: cutId, col,
       part: partNo ? +partNo : null,
       scene: (sceneN == null || sceneN === "") ? null : +sceneN };
@@ -1189,6 +1227,7 @@ button.linklike { background: none; border: none; padding: 0;
     const s = stageOf(key);
     const files = s.files || {};
     const order = ["report.md", "result.json", "INPUTS.md",
+      "inputs_log.json",
       "INPUTS.json"];
     const links = order.filter(n => files[n]).map(n =>
       '<a href="' + esc(files[n]) +
@@ -1238,6 +1277,8 @@ button.linklike { background: none; border: none; padding: 0;
         cut.part != null) {
       h += '<span class="bd-clone">' +
         esc(BDNODES[col.stage] + "@p" + cut.part) + "</span>";
+      h += '<label class="bd-all"><input type="checkbox" id="bd-vall"' +
+        (B.vall ? " checked" : "") + "> All parts</label>";
     }
     if (col.id === "part_time" || col.id === "part") {
       const pages = (part.pages || []).length
@@ -1362,8 +1403,19 @@ button.linklike { background: none; border: none; padding: 0;
         : "Range: <b>" + esc(fmtT(v.t0) + "\u2013" + fmtT(v.t1)) +
           "</b><br>Subtitle: " + esc(v.subtitle || ""));
     }
+    const vt = verifyTarget(col);
+    const vkey = B.run + "|" + vt.node + "|" +
+      (vt.part == null ? "" : vt.part) + "|" +
+      (B.vall ? "all" : "one");
+    h += '<div class="bd-vf">Loading verify\u2026</div>';
     h += stageCard(col.stage);
     el.innerHTML = h;
+    const vall = el.querySelector("#bd-vall");
+    if (vall) vall.onchange = () => {
+      B.vall = vall.checked;
+      renderSide();
+    };
+    loadVerify(el, col, vt, vkey);
     el.querySelectorAll("[data-big]").forEach(img => {
       img.onclick = () => {
         const l = $("bd-light");
@@ -1394,6 +1446,246 @@ button.linklike { background: none; border: none; padding: 0;
       });
     } else {
       el.innerHTML = h;
+    }
+  }
+  function renderEmpty() {
+    $("bd-sum").innerHTML = "No runs yet.";
+    $("bd-strip").innerHTML = "";
+    const t = $("bd-table");
+    t.innerHTML = "<thead><tr>" +
+      '<th colspan="6" class="bd-grp-story">STORYBOARD TEAM</th>' +
+      '<th colspan="6" class="bd-grp-video">VIDEO TEAM</th></tr><tr>' +
+      COLS.map(c => "<th>" + esc(c.title) + "<small>" + esc(c.who) +
+        "</small></th>").join("") + "</tr></thead>" +
+      '<tbody><tr class="bd-emptyrow"><td colspan="12">' +
+      "No runs yet \u2014 place an order in the Order tab; " +
+      "progress appears here.</td></tr></tbody>";
+    $("bd-side").textContent = "Click any cell to see the result.";
+    $("bd-target").textContent = "Target: \u2014";
+    const chip = $("bd-chip");
+    chip.textContent = "\u2014";
+    chip.className = "";
+  }
+  function renderSum() {
+    const el = $("bd-sum");
+    const s = (B.board && B.board.summary) || {};
+    const st = s.state || "?";
+    const cur = s.current_who || s.current || "\u2014";
+    const elap = (typeof s.elapsed_s === "number")
+      ? fmtT(s.elapsed_s) : "\u2014";
+    const errs = s.errors || [];
+    const spec = s.spec_failures || [];
+    el.innerHTML = "State: <b>" + esc(st) + "</b> \u00b7 " +
+      "Current: <b>" + esc(cur) + "</b> \u00b7 " +
+      "Elapsed: <b>" + esc(elap) + "</b> \u00b7 " +
+      "Cost: <b>" + esc(bdCost(s.cost)) + "</b> \u00b7 " +
+      '<button class="bd-link" id="bd-hl-err">Errors: ' +
+      errs.length + "</button> \u00b7 " +
+      '<button class="bd-link" id="bd-hl-spec">Spec failures: ' +
+      spec.length + "</button> \u00b7 " +
+      '<a href="api/flows/runs/' + encodeURIComponent(B.run) +
+      '/files" target="_blank" rel="noopener">Open run folder</a>';
+    const setHl = (name, list) => {
+      const key = name + JSON.stringify(list);
+      B.hl = (B.hlKey === key) ? null : list;
+      B.hlKey = B.hl ? key : "";
+      paintHl();
+    };
+    $("bd-hl-err").onclick = () => setHl("err", errs.map(e =>
+      ({ node: e.node, part: e.part })));
+    $("bd-hl-spec").onclick = () => setHl("spec", spec.map(e =>
+      ({ node: e.node, part: e.part })));
+  }
+  function hlMatch(td, list) {
+    const col = COLS.find(c => c.id === td.dataset.col);
+    if (!col) return false;
+    const node = BDNODES[col.stage];
+    let part = null;
+    if (td.dataset.cut) {
+      const f = findCut(td.dataset.cut);
+      part = (f.cut && f.cut.part != null) ? f.cut.part : null;
+    } else if (td.dataset.part) {
+      part = +td.dataset.part;
+    }
+    return list.some(t => t.node === node &&
+      (t.part == null || part == null || t.part === part));
+  }
+  function paintHl() {
+    const t = $("bd-table");
+    t.querySelectorAll(".bd-hl").forEach(x =>
+      x.classList.remove("bd-hl"));
+    if (!B.hl || !B.hl.length) return;
+    t.querySelectorAll("td[data-col]").forEach(td => {
+      if (hlMatch(td, B.hl)) td.classList.add("bd-hl");
+    });
+  }
+  function verifyTarget(col) {
+    const node = BDNODES[col.stage];
+    let part = null;
+    if (CLONES.includes(col.stage)) {
+      const f = B.sel.cut ? findCut(B.sel.cut) : {};
+      if (f.cut && f.cut.part != null) part = f.cut.part;
+    }
+    return { node, part };
+  }
+  function fileLinks(files, names) {
+    return names.filter(n => files[n]).map(n =>
+      '<a href="' + esc(files[n]) +
+      '" target="_blank" rel="noopener">' + esc(n) + "</a>")
+      .join(" \u00b7 ");
+  }
+  function verifyCards(v) {
+    const files = v.files || {};
+    let h = "";
+    const inp = v.inputs || {};
+    if (inp.present === false) {
+      h += card("INPUTS RECEIVED",
+        "No inputs manifest yet (stage has not run)." +
+        (files["INPUTS.md"] ? "<br>" +
+          fileLinks(files, ["INPUTS.md"]) : ""));
+    } else {
+      const rec = inp.received || [];
+      const pc = inp.pc || [];
+      let b = "Received: <b>" + rec.length + "</b> \u00b7 " +
+        "PC chunks: <b>" + pc.length + "</b>";
+      if (inp.est_input_tokens != null)
+        b += " \u00b7 Est: <b>" + inp.est_input_tokens +
+          " tokens</b>";
+      rec.forEach(r => {
+        b += "<br><code>" + esc(r.from || "?") + " \u2192 " +
+          esc(r.item || "?") + "</code>";
+      });
+      pc.forEach(p => {
+        b += "<br><code>PC " + esc(p.pc || "?") + " " +
+          esc(p.kind || "") + "</code>";
+      });
+      const links = fileLinks(files,
+        ["inputs_log.json", "INPUTS.md", "INPUTS.json"]);
+      if (links) b += "<br>" + links;
+      h += card("INPUTS RECEIVED", b);
+    }
+    const reads = v.reads || [];
+    if (!reads.length) {
+      h += card("PC READS", "No PC reads logged." +
+        (files["reads_log.jsonl"] ? "<br>" +
+          fileLinks(files, ["reads_log.jsonl"]) : ""));
+    } else {
+      let b = '<table class="bd-vtab"><tr><th>tool</th>' +
+        "<th>pc / ref</th><th>verdict</th></tr>";
+      reads.forEach(r => {
+        const what = esc(r.ref || r.item || r.section ||
+          r.tool || "");
+        b += r.allowed ? "<tr><td>" + esc(r.tool || "") +
+          "</td><td>" + what + "</td><td>\u2713</td></tr>"
+          : "<tr><td>" + esc(r.tool || "") + "</td><td>" +
+          what + '</td><td><span class="bd-bad">REFUSED' +
+          (r.reason ? ": " + esc(r.reason) : "") +
+          "</span></td></tr>";
+      });
+      b += "</table>";
+      const links = fileLinks(files, ["reads_log.jsonl"]);
+      if (links) b += links;
+      h += card("PC READS", b);
+    }
+    const sp = v.spec || {};
+    if (sp.present === false) {
+      h += card("SPEC CHECK",
+        "No spec entry for this node (check skipped).");
+    } else if (sp.ok) {
+      h += card("SPEC CHECK",
+        '<span class="bd-okline">\u2714 matches spec</span>');
+    } else {
+      let b = '<span class="bd-bad">\u2716 differs from ' +
+        "spec</span>";
+      [["missing", sp.missing], ["extra", sp.extra],
+       ["wrong part", sp.wrong_part],
+       ["wrong kind", sp.wrong_kind]].forEach(pair => {
+        (pair[1] || []).forEach(x => {
+          b += "<br>" + esc(pair[0]) + ": <code>" +
+            esc(x) + "</code>";
+        });
+      });
+      const links = fileLinks(files, ["inputs_check.json"]);
+      if (links) b += "<br>" + links;
+      h += card("SPEC CHECK", b);
+    }
+    const evs = v.events || [];
+    if (!evs.length) {
+      h += card("EVENTS", "No events yet.");
+    } else {
+      let b = '<details class="bd-ev"><summary>' + evs.length +
+        " events</summary><ol>";
+      evs.forEach(r => {
+        const t = esc(r.t || r.at || "");
+        const bad = r.ev === "run_fail" ||
+          (r.ev === "tool" && r.ok === false);
+        let txt = esc(r.phrase || r.ev || "");
+        if (r.ev === "tool" && r.detail)
+          txt += " <small>" + esc(r.tool + " " +
+            r.detail) + "</small>";
+        else if (r.ev === "tool")
+          txt += " <small>" + esc(r.tool || "") + "</small>";
+        if (r.error)
+          txt += ' <small class="bd-bad">' + esc(r.error) +
+            "</small>";
+        if (r.reason && r.ev !== "tool")
+          txt += " <small>" + esc(r.reason) + "</small>";
+        b += bad ? '<li class="bd-bad">' + t + " " + txt +
+          "</li>" : "<li>" + t + " " + txt + "</li>";
+      });
+      b += "</ol></details>";
+      const links = fileLinks(files, ["events.jsonl"]);
+      if (links) b += links;
+      h += card("EVENTS", b);
+    }
+    const u = (v.cost || {}).usage;
+    let cb = "Cost: <b>" + esc(bdCost(u)) + "</b>";
+    if (v.cost && (v.cost.started || v.cost.finished))
+      cb += "<br>Time: " + esc(v.cost.started || "?") +
+        " \u2013 " + esc(v.cost.finished || "?");
+    const cl = fileLinks(files, ["usage.json"]);
+    if (cl) cb += "<br>" + cl;
+    h += card("COST & TIME", cb);
+    return h;
+  }
+  async function loadVerify(el, col, vt, vkey) {
+    const box = el.querySelector(".bd-vf");
+    if (!box) return;
+    const one = async (node, part) => {
+      const key = B.run + "|" + node + "|" +
+        (part == null ? "" : part);
+      if (!B.vcache[key]) {
+        let url = "api/flows/runs/" +
+          encodeURIComponent(B.run) + "/verify?node=" +
+          encodeURIComponent(node);
+        if (part != null) url += "&part=" + part;
+        B.vcache[key] = await api.get(url);
+      }
+      return B.vcache[key];
+    };
+    try {
+      let h = "";
+      if (B.vall && CLONES.includes(col.stage)) {
+        const nos = (B.board.parts || []).map(p => p.no);
+        const list = nos.length ? nos : [1];
+        const vs = [];
+        for (const n of list) vs.push(await one(vt.node, n));
+        h = '<div class="bd-vcols">' + vs.map(v =>
+          "<div><b>" + esc(v.clone || "") + "</b>" +
+          verifyCards(v) + "</div>").join("") + "</div>";
+      } else {
+        h = verifyCards(await one(vt.node, vt.part));
+      }
+      const cur = B.run + "|" + vt.node + "|" +
+        (vt.part == null ? "" : vt.part) + "|" +
+        (B.vall ? "all" : "one");
+      if (el.querySelector(".bd-vf") === box && cur === vkey)
+        box.innerHTML = h;
+    } catch (e) {
+      if (el.querySelector(".bd-vf") === box)
+        box.innerHTML = card("VERIFY",
+          '<span class="bd-bad">Error: ' + esc(e.message) +
+          "</span>");
     }
   }
   function targetNode() {
@@ -1450,7 +1742,8 @@ button.linklike { background: none; border: none; padding: 0;
     if (B.timer) { clearTimeout(B.timer); B.timer = 0; }
     const running = B.board &&
       (((B.board.stages || []).some(s => s.status === "run")) ||
-        B.board.run_state === "running");
+        B.board.run_state === "running" ||
+        B.board.run_state === "pausing");
     if (running && B.run)
       B.timer = setTimeout(() => loadBoard().catch(e =>
         err("Error: " + e.message)), 3000);
@@ -1469,6 +1762,8 @@ button.linklike { background: none; border: none; padding: 0;
       B.flowId = cur.flow_id || "";
       B.orderId = cur.order_id || "";
       B.sel = null;
+      B.hl = null;
+      B.hlKey = "";
       loadBoard().catch(e => err("Error: " + e.message));
     };
     $("bd-part").onchange = renderTarget;
