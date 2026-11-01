@@ -50,6 +50,19 @@ _YES = frozenset([
     "\ub124", "\uc608", "\uc751", "\uc5b4", "\uc2dc\uc791",
     "\uc2dc\uc791\ud574", "\uc88b\uc544", "\uadf8\ub798",
 ])
+_FILLERS = frozenset([
+    "okay", "ok", "yeah", "yep", "well", "sure", "fine",
+    "please", "let's", "lets",
+    "\ub124", "\uc608", "\uc751", "\uc5b4",
+])
+_CORE_YES = frozenset([
+    "start", "go", "go ahead", "do it", "start production",
+    "\uc2dc\uc791", "\uc2dc\uc791\ud574",
+])
+_CORE_NO = frozenset([
+    "no", "not yet", "nope",
+    "\uc544\ub2c8", "\uc544\ub2c8\uc694", "\uc544\uc9c1",
+])
 _NO = frozenset([
     "no", "no not yet", "not yet", "nope", "wait", "hold on",
     "not now", "later",
@@ -74,6 +87,33 @@ def classify_confirm(text):
     if t in _YES:
         return "yes"
     if t in _NO:
+        return "no"
+    words = t.split(" ")
+    while words and words[0] in _FILLERS:
+        words.pop(0)
+    while words and words[-1] == "please":
+        words.pop()
+    core = " ".join(words)
+    if core in _CORE_YES:
+        return "yes"
+    if core in _CORE_NO:
+        return "no"
+    return None
+
+
+JUDGE_PROMPT = (
+    'You classify a reply to "Shall I start production now?". '
+    'Reply with exactly one word: YES if they agree to start, '
+    'NO if they decline or want to wait, UNCLEAR otherwise. '
+    'No other text.\n\nClient reply: "')
+
+
+def parse_confirm_word(text):
+    '''One-word LLM verdict to yes/no/unclear (None).'''
+    t = (text or "").strip().upper()
+    if t == "YES":
+        return "yes"
+    if t == "NO":
         return "no"
     return None
 

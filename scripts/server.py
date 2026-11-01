@@ -2023,6 +2023,12 @@ class Handler(BaseHTTPRequestHandler):
                                     meta.get("files", {}))
         ready = not missing
         step = intake.confirm_step(ready, extra)
+        if step == "ask" and ready:
+            judged = self._judge_confirm(agent["model"], extra)
+            if judged == "yes":
+                step = "start"
+            elif judged == "no":
+                step = "keep"
         if step == "start":
             code, out = self._do_chat_accept(oid, d, meta, extra)
             return self._json(code, out)
@@ -2094,6 +2100,24 @@ class Handler(BaseHTTPRequestHandler):
         projlog.do_refresh(oid)
         return self._json(200, intake.chat_reply_payload(
             text, ready, missing))
+
+    @staticmethod
+    def _judge_confirm(model, user_text):
+        """One-word LLM verdict on an unclear ready-turn reply.
+
+        Returns "yes", "no" or None (keep asking). Keywords stay the
+        fast path; this runs only when they are unclear."""
+        try:
+            resp = runner._chat(
+                model,
+                [{"role": "system",
+                  "content": intake.JUDGE_PROMPT + user_text + "\""}],
+                None, timeout=30)
+            word = ((resp.get("choices") or [{}])[0]
+                    .get("message", {}).get("content", ""))
+            return intake.parse_confirm_word(word)
+        except Exception:  # noqa: BLE001 - fallback keeps "ask"
+            return None
 
     @staticmethod
     def _chat_append(d, user, reply, raw=None):

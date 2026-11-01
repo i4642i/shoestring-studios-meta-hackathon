@@ -129,7 +129,8 @@ ok('rec["raw"]' in _srv,
    "chat log keeps the raw reply for audit")
 
 # ---- conversation-only start: no buttons, yes/no by text ----
-for _y in ("yes, start", "Yes, start.", "go ahead", "ok", "START", "please start"):
+for _y in ("yes, start", "Yes, start.", "go ahead", "ok", "START", "please start",
+         "ok let's start", "sure, go ahead", "start please", "let's go"):
     ok(intake.classify_confirm(_y) == "yes",
        "clear yes: %r" % (_y,))
 for _n in ("No, not yet.", "not yet", "wait"):
@@ -142,10 +143,20 @@ ok(intake.confirm_step(False, "yes, start") == "chat",
    "not ready: normal model turn")
 ok(intake.confirm_step(True, "yes, start") == "start",
    "ready + yes starts (ord-20261101-245 regression)")
+ok(intake.confirm_step(True, "ok let's start") == "start",
+   "ready + ok-let-start starts (ord-20261101-271 regression)")
 ok(intake.confirm_step(True, "No, not yet.") == "keep",
    "ready + no keeps the consultation open")
 ok(intake.confirm_step(True, "hmm?") == "ask",
    "ready + unclear asks once more")
+ok(intake.parse_confirm_word("YES") == "yes"
+   and intake.parse_confirm_word("  no\n") == "no"
+   and intake.parse_confirm_word("UNCLEAR") is None
+   and intake.parse_confirm_word("Yes, start!") is None,
+   "one-word verdict parses strictly")
+ok("_judge_confirm" in _srv and "JUDGE_PROMPT" in open(
+   os.path.join(ROOT, "scripts", "intake.py"), encoding="utf-8").read(),
+   "unclear ready turns get a one-word LLM verdict")
 ok("o-confirm" not in _ui and "o-yes" not in _ui and "showConfirm" not in _ui,
    "confirm buttons and their wiring are gone")
 ok("_do_chat_accept" in _srv and "accepted" in _srv,
