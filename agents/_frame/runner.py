@@ -334,6 +334,16 @@ def run(agent_dir, run_dir, brief, input_md):
     order_id = brief_obj.get("order_id", "adhoc")
     run_id = (brief_obj.get("flow_run_id") or brief_obj.get("run_id")
               or "%s-%s" % (order_id, agent["id"]))
+    if isinstance(input_md, str) and os.path.isfile(input_md):
+        try:
+            with open(input_md, encoding="utf-8") as f:
+                input_text = f.read()
+        except OSError:
+            input_text = input_md
+    elif isinstance(input_md, str):
+        input_text = input_md
+    else:
+        input_text = str(input_md)
     ctx = {"run_dir": run_dir, "agent_dir": agent_dir, "input_md": input_md,
            "producer": brief_obj.get("clone_id") or agent["id"],
            "order_id": order_id, "run_id": run_id,
@@ -343,7 +353,7 @@ def run(agent_dir, run_dir, brief, input_md):
         {"role": "system", "content": system_base},
         {"role": "user", "content":
          "BRIEF:\n" + json.dumps(brief, ensure_ascii=False)
-         + "\n\nINPUT FILE:\n" + input_md
+         + "\n\nINPUT FILE:\n" + input_text
          + "\n\nDo the job. Use tools. Read before writing. "
            "Finish by calling %s with the complete output object." % writer},
     ]

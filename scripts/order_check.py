@@ -244,6 +244,33 @@ ok("_finalize_order" in _srv and "finalize_and_send" in _srv
    and "_try_fill_answers" not in _srv and "_extract_intake" not in _srv
    and "_run_parse_stage" not in _srv,
    "finalize replaces the extraction call and the blocking parse")
+_seen = []
+
+
+def _cap(*a, **k):
+    _seen.append((a, k))
+    raise TimeoutError("stop")
+
+
+_runner._chat = _cap
+try:
+    _rd2 = tempfile.mkdtemp(prefix="sam_input_")
+    _fp = os.path.join(_rd2, "INPUTS.md")
+    open(_fp, "w", encoding="utf-8").write("# bundle body here")
+    _runner.run(os.path.join(ROOT, "agents", "pd_marty"), _rd2,
+                {"order_id": "fixture-ord", "answers": {}}, _fp)
+    _runner.run(os.path.join(ROOT, "agents", "pd_marty"), _rd2,
+                {"order_id": "fixture-ord", "answers": {}},
+                "# raw body here")
+finally:
+    _runner._chat = _old_chat
+    shutil.rmtree(_rd2, ignore_errors=True)
+ok(any("# bundle body here" in str(m)
+       for a, k in _seen for m in a[1]),
+   "input file path is inlined into the prompt")
+ok(any("# raw body here" in str(m)
+       for a, k in _seen for m in a[1]),
+   "raw input text still passes through")
 # ---- the chat-filled form is the source of truth ----
 _td = tempfile.mkdtemp(prefix="sam_form_")
 json.dump({"id": "fixture-ord", "assignee": "sales_sam",
