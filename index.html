@@ -190,7 +190,7 @@
   .idcard .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 10px;
     border-radius: 12px 0 0 12px; }
   .idcard .idtop { display: flex; align-items: center; gap: 12px; }
-  .idcard .idpic { flex: none; width: 72px; height: 72px; border-radius: 50%;
+  .idcard .idpic { flex: none; width: 88px; height: 88px; border-radius: 6px;
     background: #e5e7eb; overflow: hidden; }
   .idcard .idpic img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .idcard .idtx { min-width: 0; }
@@ -201,7 +201,7 @@
 
   .idempty { font-size: 14px; color: var(--dim); }
   @media (max-width: 700px) {
-    .idcard .idpic { width: 56px; height: 56px; }
+    .idcard .idpic { width: 64px; height: 64px; }
   }
   .badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
   .badge.on { background: #1e7d32; color: #fff; border-color: #1e7d32; }
@@ -818,6 +818,14 @@ body.tab-flow { padding-bottom: 0; }
   box-shadow: 0 0 0 2px rgba(220,38,38,.2); }
 .fl-node.draft { border-style: dashed; border-color: #9ca3af;
   background: #f3f4f6; }
+.fl-node.face { width: 232px; }
+.fl-node .fl-head { display: flex; gap: 8px; align-items: center;
+  margin-bottom: 2px; }
+.fl-node .fl-face { flex: none; width: 44px; height: 44px;
+  border-radius: 6px; background: #e5e7eb; overflow: hidden; }
+.fl-node .fl-face img { width: 100%; height: 100%; object-fit: cover;
+  display: block; }
+.fl-node .fl-who { min-width: 0; }
 .fl-node h4 { margin: 0 0 2px; font-size: 15px; font-weight: 700;
   color: var(--ink); }
 .fl-node .sub { color: #4b5563; font-size: 12px; margin-bottom: 2px; }
@@ -835,7 +843,7 @@ body.tab-flow { padding-bottom: 0; }
 .fl-portrow { display: flex; justify-content: flex-end; align-items: center;
   gap: 5px; min-height: 20px; cursor: crosshair; }
 .fl-portrow span { font-size: 11px; font-weight: 600; color: #1f2937;
-  text-align: right; max-width: 150px; overflow: hidden;
+  text-align: right; max-width: 188px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
 .fl-portrow i { width: 12px; height: 12px; border-radius: 50%;
   background: #16a34a; border: 2px solid #fff;
@@ -2397,6 +2405,27 @@ button.linklike { background: none; border: none; padding: 0;
           (tries || 0) + 1), 200);
       }
     }
+    // Flow node faces reuse the same shared portrait renderer
+    // and session cache as the Crew cards (no second context).
+    function fillFace(face, appearance, name, tries) {
+      const v = window.CrewViewer3D;
+      if (v && v.portrait && face.isConnected) {
+        v.portrait(appearance).then((url) => {
+          if (!face.isConnected || !url || face.querySelector("img"))
+            return;
+          const img = document.createElement("img");
+          img.src = url;
+          img.alt = name;
+          face.appendChild(img);
+        }).catch(() => { /* grey placeholder stays */ });
+        return;
+      }
+      if ((tries || 0) < 150) {
+        setTimeout(() => fillFace(face, appearance, name,
+          (tries || 0) + 1), 200);
+      }
+    }
+    window.flowFaceFill = fillFace;
     async function loadRoster() {
       const list = await api.get("api/crew");
       roster.innerHTML = "";
@@ -3758,11 +3787,20 @@ button.linklike { background: none; border: none; padding: 0;
         div.style.left = p.x + "px";
         div.style.top = p.y + "px";
         div.dataset.n = n.id;
+        const isEmp = !n.pc && !n.code && n.id !== "final" &&
+          !!agentOf(n.id);
+        if (isEmp) div.className += " face";
         let inner = "";
         if (n.id !== "final")
           inner += '<span class="del" data-del="' + esc(n.id) + '">×</span>';
-        inner += "<h4>" + esc(t[0]) + "</h4>" +
-          '<div class="sub">' + esc(t[1]) + "</div>";
+        if (isEmp)
+          inner += '<div class="fl-head">' +
+            '<span class="fl-face"></span>' +
+            '<span class="fl-who"><h4>' + esc(t[0]) + "</h4>" +
+            '<div class="sub">' + esc(t[1]) + "</div></span></div>";
+        else
+          inner += "<h4>" + esc(t[0]) + "</h4>" +
+            '<div class="sub">' + esc(t[1]) + "</div>";
         if (n.temp)
           inner += '<div class="sub" title="' + esc(n.temp) + '">' +
             "temporary inputs</div>";
@@ -3808,6 +3846,12 @@ button.linklike { background: none; border: none; padding: 0;
         }
         div.innerHTML = inner;
         nodesEl.appendChild(div);
+        if (isEmp) {
+          const face = div.querySelector(".fl-face");
+          const ap = (agentOf(n.id) || {}).appearance || {};
+          if (face && window.flowFaceFill)
+            window.flowFaceFill(face, ap, t[0]);
+        }
       });
       nodesEl.querySelectorAll("[data-del]").forEach(x => {
         x.onclick = (e) => { e.stopPropagation(); delNode(x.dataset.del); };
@@ -6002,7 +6046,7 @@ function renderPortrait(appearance) {
       if (!_portraitRenderer) {
         _portraitRenderer = new THREE.WebGLRenderer(
           { antialias: true, alpha: true });
-        _portraitRenderer.setSize(144, 144, false);
+        _portraitRenderer.setSize(176, 176, false);
         _portraitRenderer.outputColorSpace = THREE.SRGBColorSpace;
       }
       const scene = new THREE.Scene();
@@ -6026,8 +6070,8 @@ function renderPortrait(appearance) {
       const ctr = bb.getCenter(new THREE.Vector3());
       const fov = 28;
       const camera = new THREE.PerspectiveCamera(fov, 1, 0.01, 20);
-      const headY = bb.min.y + size.y * 0.775;
-      const frameH = size.y * 0.65;
+      const headY = bb.min.y + size.y * 0.74;
+      const frameH = size.y * 0.72;
       const dist = (frameH / 2) /
         Math.tan((fov * Math.PI) / 360);
       camera.position.set(ctr.x, headY + size.y * 0.05,

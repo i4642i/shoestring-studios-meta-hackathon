@@ -1,12 +1,12 @@
-"""Crew portraits check, J1/J2 (one shot).
+"""Crew portraits check, J1/J2/J23 (one shot).
 
 Starts scripts/server.py on port 8765 (never 8000), drives headless
 Edge over CDP (1920x1080 then 390x844), clicks the Crew nav item, and
 asserts: 13 employee cards, 13 non-empty portraits (one shared
-offscreen renderer, so no canvas elements inside the roster), the 72px
-circle layout (56px at 390px), zero console errors. Saves
-runs/crew_1920.png and runs/crew_390.png, then ALWAYS stops the
-server + Edge (try/finally). Stdlib only.
+offscreen renderer, so no canvas elements inside the roster), the 88px
+square layout (64px at 390px), zero console errors. Saves
+runs/crew_1920.png, runs/crew_390.png and runs/crew_square_1920.png,
+then ALWAYS stops the server + Edge (try/finally). Stdlib only.
 """
 import _browser
 import base64
@@ -28,6 +28,7 @@ EDGE = (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 RUNS = os.path.join(ROOT, "runs")
 PNG1920 = os.path.join(RUNS, "crew_1920.png")
 PNG390 = os.path.join(RUNS, "crew_390.png")
+PNGSQUARE = os.path.join(RUNS, "crew_square_1920.png")
 SERVER_LOG = os.path.join(RUNS, "crew_live_server.log")
 
 fails = 0
@@ -345,10 +346,11 @@ def main():
            % out.get("full"))
         ok(out.get("canvases") == 0,
            "no canvas per card (shared renderer)")
-        ok(out.get("picW") == 72, "portrait circle 72px (got %s)"
+        ok(out.get("picW") == 88, "portrait square 88px (got %s)"
            % out.get("picW"))
-        ok(out.get("picRound") == "50%",
-           "portrait is a circle (%s)" % out.get("picRound"))
+        ok(out.get("picRound") == "6px",
+           "portrait is a square, radius 6px (%s)"
+           % out.get("picRound"))
         ok(out.get("nameLeftOfPic", -999) >= 8,
            "name sits right of the portrait (%spx)"
            % out.get("nameLeftOfPic"))
@@ -360,16 +362,21 @@ def main():
                        {"format": "png"})["data"]
         with open(PNG1920, "wb") as f:
             f.write(base64.b64decode(data))
+        with open(PNGSQUARE, "wb") as f:
+            f.write(base64.b64decode(data))
         ok(os.path.isfile(PNG1920)
            and os.path.getsize(PNG1920) > 1000,
            "screenshot saved (%s)" % PNG1920)
+        ok(os.path.isfile(PNGSQUARE)
+           and os.path.getsize(PNGSQUARE) > 1000,
+           "screenshot saved (%s)" % PNGSQUARE)
         ws.call("Emulation.setDeviceMetricsOverride",
                 {"width": 390, "height": 844,
                  "deviceScaleFactor": 1, "mobile": False})
         time.sleep(1.5)
         out2 = js_eval(ws, PROBE_JS)
-        ok(out2.get("picW") == 56,
-           "390px: portrait stays 56px (got %s)"
+        ok(out2.get("picW") == 64,
+           "390px: portrait stays 64px (got %s)"
            % out2.get("picW"))
         ok(out2.get("full") == 13, "390px: portraits kept")
         data = ws.call("Page.captureScreenshot",

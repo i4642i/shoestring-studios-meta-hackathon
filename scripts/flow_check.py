@@ -110,7 +110,12 @@ ok(all(n.get("pc") for n in dflt["nodes"]
        if n["id"] in ("pc_source", "pc_theory", "pc_article", "pc_image",
                       "pc_generated", "pc_voice")),
    "all six PCs are on the canvas")
-W, H, CW, CH = 206, 140, 3282, 900
+# J23: employee nodes are 232px wide (44px face + name/title);
+# non-employee nodes stay 184px. Uniform box must cover both.
+# Row pitch is 180px, so H must stay under it (live check
+# asserts every real employee node is <= 176). CW/CH follow
+# fitCanvas (x + 260, y + 200).
+W, H, CW, CH = 232, 176, 3316, 940
 boxes = {}
 for n in dflt["nodes"]:
     p = dflt.get("positions", {}).get(n["id"])

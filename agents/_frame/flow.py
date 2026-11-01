@@ -88,19 +88,24 @@ def load_catalog():
         if not isinstance(agent, dict):
             continue
         tint = "#9ca3af"
+        variant = ""
         try:
             with open(os.path.join(AGENTS, eid, "appearance.json"),
                       encoding="utf-8") as f:
-                raw = json.load(f).get("tint", "")
+                ap = json.load(f)
+            raw = ap.get("tint", "")
             if isinstance(raw, str) and len(raw) == 7 and raw[0] == "#" \
                     and all(c in "0123456789abcdefABCDEF"
                             for c in raw[1:]):
                 tint = raw
+            if isinstance(ap.get("variant"), str):
+                variant = ap["variant"]
         except (OSError, ValueError):
             pass
         entry = {"id": eid, "name": agent.get("name", eid),
                  "title": agent.get("title", ""), "draft": _is_draft(eid),
-                 "color": tint, "tools": agent.get("tools", [])}
+                 "color": tint, "tools": agent.get("tools", []),
+                 "appearance": {"variant": variant, "tint": tint}}
         if isinstance(agent.get("flow"), dict):
             entry["flow"] = {"inputs": agent["flow"].get("inputs", []),
                              "outputs": agent["flow"].get("outputs", [])}
