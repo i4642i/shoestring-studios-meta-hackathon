@@ -2032,74 +2032,32 @@ class Handler(BaseHTTPRequestHandler):
         if step == "start":
             code, out = self._do_chat_accept(oid, d, meta, extra)
             return self._json(code, out)
-        if step in ("keep", "ask"):
-            note = (intake.DECLINE_ACK if step == "keep"
-                    else intake.CONFIRM_AGAIN)
-            self._chat_append(d, extra, note)
-            projlog.log_event(oid, "order", "chat",
-                              "client: %s / Sam: %s" % (extra, note),
-                              file="orders/%s/chat.jsonl" % oid)
-            projlog.do_refresh(oid)
-            return self._json(200, intake.chat_reply_payload(
-                note, True, []))
-        answers = meta.get("answers", {})
-        recorded = ("; ".join("%s is %s" % (k, answers[k])
-                              for k in INTAKE_KEYS if k in answers)
-                    or "none yet")
-        context = ["[ORDER CONSULTATION for %s. Recorded answers: %s."
-                   % (oid, recorded)]
-        if ready:
-            context.append("You now have everything (all answers + source "
-                           "PDF). Reply with one short acknowledgement "
-                           "sentence only and ask no follow-up question: "
-                           "the system appends the confirmation question.")
-        else:
-            context.append("Still missing: %s. Steer the chat toward them, "
-                           "one question at a time." % ", ".join(missing))
-        context.append("Your handbook (in the prompt above) holds sales "
-                       "examples: follow their style when the client is "
-                       "vague; never present an example as the client's "
-                       "own words.")
+        if step == "keep":
+            code, out = self._sam_turn(
+                oid, d, meta, agent, system_base, msgs, ready, [],
+                "The client said not yet: they need more time before "
+                "starting. Acknowledge warmly in your own words, tell "
+                "them you'll be right here when they're ready, and ask "
+                "nothing new.")
+            return self._json(code, out)
+        if step == "ask":
+            code, out = self._sam_turn(
+                oid, d, meta, agent, system_base, msgs, ready, [],
+                "You have everything (all answers + source PDF). The "
+                "client's last message was not a clear yes or no. Ask "
+                "one natural question: shall I start production now? "
+                "Nothing else.")
+            return self._json(code, out)
+        direction = ("Still missing: %s. Steer the chat toward them, "
+                     "one question at a time." % ", ".join(missing))
         if free:
-            context.append("Free-chat mode: converse naturally like a friendly "
-                           "sales call, but still cover every missing topic "
-                           "before the client is done.")
-        system = (system_base + "\n\n" + "\n".join(context)
-                  + "\nAlways reply in English only: never Korean or any other "
-                  "language, no matter what language the user writes in. "
-                  + intake.NO_PROMISE_RULE + " "
-
-                  "Keep replies to 1-3 short sentences. "
-                  "Reply in plain conversational sentences only: never "
-                  "output JSON, code, tool calls, or anything in "
-                  "<|...|> or <function> tags.")
-        try:
-            tail = [msgs[-1]] if msgs[-1]["role"] == "user" else msgs
-            resp = runner._chat(
-                agent["model"],
-                [{"role": "system", "content": system}]
-                + self._transcript_turns(d) + tail,
-                None, timeout=120)
-            reply = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
-            if not isinstance(reply, str) or not reply.strip():
-                raise ValueError("empty reply")
-        except Exception as exc:  # noqa: BLE001 - surfaced as 502, key never leaks
-            return self._json(502, {"error": "model API error: %s" % exc})
-        raw = reply.strip()
-        text = intake.clean_chat_reply(raw)
-        if not text:
-            text = intake.CHAT_UNREADABLE
-        elif ready:
-            text = text + " " + intake.READY_QUESTION
-        self._chat_append(d, msgs[-1]["content"], text, raw=raw)
-        projlog.log_event(
-            oid, "order", "chat",
-            "client: %s / Sam: %s"
-            % (msgs[-1]["content"], text),
-            file="orders/%s/chat.jsonl" % oid)
-        projlog.do_refresh(oid)
-        return self._json(200, intake.chat_reply_payload(
-            text, ready, missing))
+            direction += (" Free-chat mode: converse naturally like a "
+                          "friendly sales call, but still cover every "
+                          "missing topic before the client is done.")
+        code, out = self._sam_turn(
+            oid, d, meta, agent, system_base, msgs, False, missing,
+            direction)
+        return self._json(code, out)
 
     @staticmethod
     def _judge_confirm(model, user_text):
@@ -2118,6 +2076,59 @@ class Handler(BaseHTTPRequestHandler):
             return intake.parse_confirm_word(word)
         except Exception:  # noqa: BLE001 - fallback keeps "ask"
             return None
+
+    def _sam_turn(self, oid, d, meta, agent, system_base, msgs,
+                  ready, missing, direction):
+        """One model-worded Sam turn. Returns (code, obj); sends nothing.
+
+        The decision (start/keep/ask/chat) is made by code before this
+        runs; only the wording comes from the model. The cleaning net
+        below stays: control/function blocks never reach the client."""
+        answers = meta.get("answers", {})
+        recorded = ("; ".join("%s is %s" % (k, answers[k])
+                              for k in INTAKE_KEYS if k in answers)
+                    or "none yet")
+        context = ["[ORDER CONSULTATION for %s. Recorded answers: %s."
+                   % (oid, recorded),
+                   "Your handbook (in the prompt above) holds sales "
+                   "examples: follow their style when the client is "
+                   "vague; never present an example as the client's "
+                   "own words.",
+                   direction]
+        system = (system_base + "\n\n" + "\n".join(context)
+                  + "\nAlways reply in English only: never Korean or any other "
+                  "language, no matter what language the user writes in. "
+                  + intake.NO_PROMISE_RULE + " "
+                  "A few sentences at most. Sound like a person, not a "
+                  "form: answer the client's actual words first and vary "
+                  "your phrasing. "
+                  "Reply in plain conversational sentences only: never "
+                  "output JSON, code, tool calls, or anything in "
+                  "<|...|> or <function> tags.")
+        try:
+            tail = [msgs[-1]] if msgs[-1]["role"] == "user" else msgs
+            resp = runner._chat(
+                agent["model"],
+                [{"role": "system", "content": system}]
+                + self._transcript_turns(d) + tail,
+                None, timeout=120)
+            reply = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
+            if not isinstance(reply, str) or not reply.strip():
+                raise ValueError("empty reply")
+        except Exception as exc:  # noqa: BLE001 - surfaced as 502, key never leaks
+            return (502, {"error": "model API error: %s" % exc})
+        raw = reply.strip()
+        text = intake.clean_chat_reply(raw)
+        if not text:
+            text = intake.CHAT_UNREADABLE
+        self._chat_append(d, msgs[-1]["content"], text, raw=raw)
+        projlog.log_event(
+            oid, "order", "chat",
+            "client: %s / Sam: %s"
+            % (msgs[-1]["content"], text),
+            file="orders/%s/chat.jsonl" % oid)
+        projlog.do_refresh(oid)
+        return (200, intake.chat_reply_payload(text, ready, missing))
 
     @staticmethod
     def _chat_append(d, user, reply, raw=None):

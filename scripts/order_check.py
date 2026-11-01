@@ -40,10 +40,6 @@ ok(intake.missing_of({"audience": "  "}, {"source": "source.pdf"})
    == ["audience", "length", "depth", "theme"],
    "blank answer counts as missing")
 
-# ---- exact server-side strings (contract with the chat UI) ----
-ok(intake.READY_QUESTION == "I have everything I need. Anything else "
-   "you'd like to add? Shall I start?",
-   "ready question is exact")
 ok(bool(intake.DECLINE_ACK.strip()) and len(intake.DECLINE_ACK) <= 200,
    "decline ack is short")
 ok("start" not in intake.DECLINE_ACK.lower()
@@ -127,6 +123,12 @@ ok("clean_chat_reply" in _srv and "CHAT_UNREADABLE" in _srv,
    "chat endpoint cleans every reply, errors when empty")
 ok('rec["raw"]' in _srv,
    "chat log keeps the raw reply for audit")
+# ---- chat wording is model-driven, decisions are code ----
+ok(_srv.count("self._sam_turn(") == 3,
+   "keep, ask and chat turns share one model-worded turn")
+ok("CONFIRM_AGAIN" not in _srv.split("def _api_order_chat")[1]
+   .split("def _sam_turn")[0],
+   "no fixed line left in the confirm turns")
 
 # ---- conversation-only start: no buttons, yes/no by text ----
 for _y in ("yes, start", "Yes, start.", "go ahead", "ok", "START", "please start",
