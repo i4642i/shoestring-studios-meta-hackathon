@@ -3437,7 +3437,8 @@ button.linklike { background: none; border: none; padding: 0;
     let approved = false;
     let approvedSnap = "";
     let serverPdf = false;
-    let serverPdfName = "";
+    let serverPdfName = "";
+    let pdfUpload = null;
     let chatMissing = [];
     const history = [];
     function readAnswers() {
@@ -3663,22 +3664,27 @@ button.linklike { background: none; border: none; padding: 0;
     }
     async function uploadPdfFile(file) {
       if (!file || !oid) return;
-      try {
-        addMsg("sys", "Attaching " + file.name + "…");
-        const fd = new FormData();
-        fd.append("file", file);
-        const r = await api.send("POST", "api/orders/" + oid + "/upload", null, fd);
-        addMsg("sys", "Attached " + file.name + " (" + r.bytes + " bytes, stored).");
-        document.getElementById("o-pdfname").textContent = file.name + " (attached in chat)";
-        msg.textContent = "PDF attached through chat: " + file.name + ".";
-        serverPdf = true;
-        serverPdfName = r.name || file.name;
-        chatMissing = Array.isArray(r.missing) ? r.missing : [];
-        checkReady();
-        if (lastSam) samSay(lastSam);
-      } catch (err) {
-        addMsg("sys", "Attach failed: " + err.message);
-      }
+      const run = (async () => {
+        try {
+          addMsg("sys", "Attaching " + file.name + "…");
+          const fd = new FormData();
+          fd.append("file", file);
+          const r = await api.send("POST", "api/orders/" + oid + "/upload", null, fd);
+          addMsg("sys", "Attached " + file.name + " (" + r.bytes + " bytes, stored).");
+          document.getElementById("o-pdfname").textContent = file.name + " (attached in chat)";
+          msg.textContent = "PDF attached through chat: " + file.name + ".";
+          serverPdf = true;
+          serverPdfName = r.name || file.name;
+          chatMissing = Array.isArray(r.missing) ? r.missing : [];
+          checkReady();
+          if (lastSam) samSay(lastSam);
+        } catch (err) {
+          addMsg("sys", "Attach failed: " + err.message);
+        }
+      })();
+      pdfUpload = run;
+      try { await run; }
+      finally { if (pdfUpload === run) pdfUpload = null; }
     }
     document.querySelectorAll("#o-modes [data-m]").forEach((b) => {
       b.onclick = () => {
@@ -3899,6 +3905,10 @@ button.linklike { background: none; border: none; padding: 0;
       input.value = "";
       addMsg("typing", "…");
       try {
+      if (pdfUpload) {
+        addMsg("sys", "Uploading your PDF… your message goes right after.");
+        try { await pdfUpload; } catch (e) { /* upload already reported */ }
+      }
         const r = await api.send("POST", "api/orders/" + oid + "/chat", { messages: history, mode: mode });
         chatMissing = Array.isArray(r.missing) ? r.missing : [];
         history.push({ role: "assistant", content: r.reply });

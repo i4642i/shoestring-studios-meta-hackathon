@@ -369,6 +369,14 @@ def main():
             print("1 FAILURES")
             return 1
         ok(True, "server answers on %d" % SERVER_PORT)
+        with urllib.request.urlopen(
+                "http://127.0.0.1:%d/" % SERVER_PORT,
+                timeout=10) as r:
+            _page = r.read().decode("utf-8", "replace")
+        ok("let pdfUpload = null;" in _page
+           and "pdfUpload = run;" in _page
+           and "await pdfUpload" in _page,
+           "chat waits for an in-flight PDF upload")
         edge, ws, profile = open_edge()
         ok(wait_for(ws, "!!document.querySelector('#o-scene canvas')"),
            "reception canvas mounted")
