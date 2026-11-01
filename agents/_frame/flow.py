@@ -876,7 +876,7 @@ def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
     except Exception as exc:  # noqa: BLE001 - agent crash aborts the flow
         return {"ok": False, "error": "%s crashed: %s" % (agent_id, exc)}
     if not isinstance(out, dict) or not out.get("ok"):
-        reason = out.get("error", "unknown") if isinstance(out, dict) \
+        reason = (out.get("reason") or out.get("error") or "unknown") if isinstance(out, dict) \
             else "bad return"
         return {"ok": False, "error": "%s failed: %s" % (agent_id, reason)}
     done = _finish_stage_run(adir, agent_id, out)
@@ -962,7 +962,7 @@ def _run_one_clone(run_dir, agent_id, order_id, order_brief,
     except Exception as exc:  # noqa: BLE001 - agent crash aborts
         return {"ok": False, "error": "%s crashed: %s" % (cid, exc)}
     if not isinstance(out, dict) or not out.get("ok"):
-        reason = out.get("error", "unknown") \
+        reason = (out.get("reason") or out.get("error") or "unknown") \
             if isinstance(out, dict) else "bad return"
         return {"ok": False, "error": "%s failed: %s" % (cid, reason)}
     done = _finish_stage_run(cdir, cid, out)

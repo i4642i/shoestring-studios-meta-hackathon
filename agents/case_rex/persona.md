@@ -31,6 +31,10 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Search wide, store only picks: search hits stay in the run log.
   Pick only Article PC items you will cite or later agents must read,
   with why_important and how_to_use. Never re-pick what you picked.
+- Spend steps like money: at most 2 picks per part; stop searching a
+  part once it has its case. Call write_cases as soon as every part
+  has >=1 case -- never keep researching after coverage. Keep at
+  least 3 steps unspent for writer fixes.
 - Copy every ref and quote verbatim from tool output. Never construct
   a ref by hand, never trim a quote into a new sentence.
 - The report's pick set must equal this run's pick set exactly: every
