@@ -1,6 +1,6 @@
 # 아침 보고 (2026-11-02)
 
-대기열 24개를 다 했습니다. 모델 호출 0번, MP4는 테스트용 8초짜리 1개 만들고 바로 지웠습니다.
+대기열 24개를 다 했습니다. 모델 호출 0번, 테스트 MP4 2개(8초 수동 + 6.4초 실제 경로) 만들고 둘 다 바로 지웠습니다.
 
 ## 1. 체크리스트 결과: 54/54 [x], 남은 [ ] 없음
 
@@ -49,12 +49,16 @@
 
 ## 4. 설치·실행이 필요한 것 (Needs owner)
 
-- 영상 도구 2개는 수동 설치가 필요합니다 (pip로는 안 됨):
-  `ffmpeg` (ffmpeg.org, PATH에) + `espeak-ng` (Kokoro 영어 폴백용)
-  나머지는 설치됨: requirements-video.txt (kokoro 0.9.4, torch 2.14.1+cpu,
-  soundfile 0.14.0, imageio-ffmpeg 0.7.0) + video/remotion/node_modules
-  확인용: powershell -ExecutionPolicy Bypass -File tools/setup_video.ps1
+- 영상 도구는 전부 설치됨 (5. 추가 작업 참고). 확인용: powershell -ExecutionPolicy Bypass -File tools/setup_video.ps1
 - Jetson 인덱스는 REBUILD INDEX를 직접 눌러 주세요 (규칙대로 안 건드림)
 - TAVILY_API_KEY가 없으면 Cleo/Rex 검색은 스텁입니다
 - 첫 실제 운영은 Flow step mode로 1단계씩 승인하면서 해주세요
 - 테스트 흔적: runs/smoke_still.png, runs/smoke_sentence.wav만 남김 (무시 목록이라 커밋 안 됨). 테스트 MP4는 지웠습니다.
+
+## 5. 추가 작업 (저녁)
+
+- 커밋: A d012019, B 143cb13 + 29fe8c7, C·체크리스트 0088308, 이 문서 커밋(아래 STOP 전)
+- B1 ffmpeg: winget Gyan.FFmpeg (ffmpeg-9.0.2-full_build.zip), PATH 폴더 WinGet\Links. B2 espeak-ng: 직접 설치함(1.52.0, espeak-ng.msi). 둘 다 새 창에서 확인됨.
+- setup_video.ps1 결과 (전부 yes): node v24.17.0, npm 11.13.0, remotion deps 있음, ffmpeg 9.0.2-full_build, espeak-ng 1.52.0, kokoro 0.9.4, imageio-ffmpeg 0.7.0. "Video toolchain ready."
+- B5 실제 경로(video.py build_assembly + run_ffmpeg): still 7.3초 / 음성 15.5초(오디오 6.4초) / MP4 0.7초. still은 헤드리스 브라우저(GPU), 음성·인코딩은 CPU. MP4 6.4초(h264 1280x720 + aac), 검증 후 삭제.
+- C 측정 (1920x1080, GPU GTX 1050, 3초): 사무실 개선 전 29.6~35.3fps·호출 565·면 48582·그림자 4096, 개선 후 rAF 58.9Hz(렌더 30fps 고정)·호출 425·면 37182·그림자 2048. Order룸 전후 동일(60fps·호출 102·면 4820). 개선 전 측정은 2596620 임시 worktree + 측정 코드만(삭제됨).
