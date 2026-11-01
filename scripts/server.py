@@ -108,8 +108,6 @@ def parse_multipart(handler):
     return fields, files
 
 
-
-
 def load_dotenv(path):
     if not os.path.exists(path):
         return
@@ -2035,157 +2033,188 @@ class Handler(BaseHTTPRequestHandler):
         if not runner.key_present(agent["model"]):
             return self._json(503, {"error": "%s missing: add it to .env"
                                     % runner.key_var(agent["model"])})
-        extra = msgs[-1]["content"] if msgs[-1]["role"] == "user" else ""
-        form = self._form_load(d, meta)
-        missing = self._form_missing(form, meta)
-        ready = not missing
-        step = intake.confirm_step(ready, extra)
-        if step == "ask" and ready:
-            judged = self._judge_confirm(agent["model"], extra, oid)
-            if judged == "yes":
-                step = "start"
-            elif judged == "no":
-                step = "keep"
-        if step == "start":
-            code, out = self._do_chat_accept(oid, d, meta, extra)
-            return self._json(code, out)
-        if step == "keep":
-            code, out = self._sam_turn(
-                oid, d, meta, agent, system_base, msgs, ready, form,
-                "The client said not yet: they need more time before "
-                "starting. Acknowledge warmly in your own words, tell "
-                "them you'll be right here when they're ready, and ask "
-                "nothing new.", path)
-            return self._json(code, out)
-        if step == "ask":
-            code, out = self._sam_turn(
-                oid, d, meta, agent, system_base, msgs, ready, form,
-                "The request form is complete and the source PDF is "
-                "attached. The client's last message was not a clear "
-                "yes or no. Ask one natural question: shall I start "
-                "production now? Nothing else.", path)
-            return self._json(code, out)
-        direction = ("Still missing: %s. Steer the chat toward them, "
-                     "one question at a time." % ", ".join(missing))
-        if free:
-            direction += (" Free-chat mode: converse naturally like a "
-                          "friendly sales call, but still cover every "
-                          "missing topic before the client is done.")
-        code, out = self._sam_turn(
-            oid, d, meta, agent, system_base, msgs, False, form,
-            direction, path)
+        code, out = self._sam_turn(oid, d, meta, agent, system_base,
+                                   msgs, path,
+                                   "free" if free else "guided")
         return self._json(code, out)
 
-    @staticmethod
-    def _judge_confirm(model, user_text, oid=""):
-        """One-word LLM verdict on an unclear ready-turn reply.
-
-        Returns "yes", "no" or None (keep asking). Keywords stay the
-        fast path; this runs only when they are unclear."""
-        try:
-            resp = runner._chat(
-                model,
-                [{"role": "system",
-                  "content": intake.JUDGE_PROMPT + user_text + "\""}],
-                None, timeout=30, caller="sales_sam:judge",
-                log_path=(os.path.join(ROOT, "orders", oid,
-                                           "llm_calls.jsonl")
-                          if oid else None))
-            word = ((resp.get("choices") or [{}])[0]
-                    .get("message", {}).get("content", ""))
-            return intake.parse_confirm_word(word)
-        except Exception:  # noqa: BLE001 - fallback keeps "ask"
-            return None
+    SAM_CHAT_STEPS = 6
+    SAM_CHAT_TOOLS = ("search_knowledge", "update_form",
+                      "finalize_and_send")
 
     def _sam_turn(self, oid, d, meta, agent, system_base, msgs,
-                  ready, form, direction, agent_dir=None):
-        """One model-worded Sam turn. Returns (code, obj); sends nothing.
+                  agent_dir=None, mode="free"):
+        """One Sam turn: the model decides by calling Sam's tools.
 
-        The decision (start/keep/ask/chat) is made by code before this
-        runs; only the wording comes from the model. Sam holds the
-        production request form: every turn he returns the complete
-        current field values in a FORM block, rewritten into clean
-        professional wording; the block never reaches the client.
-        The cleaning net below stays: control/function blocks never
-        reach the client either. When the client asks something,
-        Sam's LightRAG index answers from knowledge; a dead index
-        never breaks the turn."""
-        form = form if isinstance(form, dict) else intake.blank_form()
-        recorded = ("; ".join("%s: %s" % (k, form.get(k) or "-")
-                              for k in intake.FORM_FIELDS))
-        context = ["[ORDER CONSULTATION for %s. Request form so far: %s."
-                   % (oid, recorded),
-                   "Your handbook (in the prompt above) holds sales "
-                   "examples: follow their style when the client is "
-                   "vague; never present an example as the client's "
-                   "own words.",
-                   direction,
-                   intake.FORM_PROMPT]
-        last_user = msgs[-1]["content"] if msgs else ""
-        if agent_dir and intake.looks_like_question(last_user):
+        Every turn sends the LLM the conversation, the current form
+        and the uploaded file info, plus Sam's tools. The server only
+        does what the tool calls say: search_knowledge answers from
+        the LightRAG index, update_form saves the form, and
+        finalize_and_send writes the request and starts the parser.
+        A failed call shows Sam's failure line in the chat.
+        """
+        files = meta.get("files", {}) or {}
+        pdf_name = files.get("source") or ""
+        form = self._form_load(d, meta)
+        available = registry.get_tools(agent_dir or "")
+        names = [t for t in self.SAM_CHAT_TOOLS
+                 if t in available]
+        if pdf_name:
             try:
-                rag = graph.query(agent_dir, last_user)
-                ans = str(rag.get("answer", "")).strip()
-                if ans:
-                    context.append(
-                        "Sales knowledge (LightRAG %s index, %s chars): "
-                        "%s. Use it when it answers the client; "
-                        "otherwise ignore it."
-                        % (agent.get("id", "?"), len(ans), ans[:1500]))
-            except RuntimeError as exc:
-                print("order rag lookup skipped %s (%s)"
-                      % (oid, exc), flush=True)
-        system = (system_base + "\n\n" + "\n".join(context)
-                  + "\nAlways reply in English only: never Korean or any other "
-                  "language, no matter what language the user writes in. "
-                  + intake.NO_PROMISE_RULE + " "
-                  "A few sentences at most. Sound like a person, not a "
-                  "form: answer the client's actual words first and vary "
-                  "your phrasing. "
-                  "Reply in plain conversational sentences only: never "
-                  "output JSON, code, tool calls, or anything in "
-                  "<|...|> or <function> tags.")
-        try:
-            tail = [msgs[-1]] if msgs[-1]["role"] == "user" else msgs
-            resp = runner._chat(
-                agent["model"],
-                [{"role": "system", "content": system}]
-                + self._transcript_turns(d) + tail,
-                None, timeout=120, caller="sales_sam:chat",
-                log_path=os.path.join(d, "llm_calls.jsonl"))
-            reply = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
-            if not isinstance(reply, str) or not reply.strip():
-                raise ValueError("empty reply")
-        except Exception as exc:  # noqa: BLE001 - surfaced as 502, key never leaks
-            return (502, {"error": "model API error: %s" % exc})
-        raw = reply.strip()
-        clean, update = intake.extract_form_block(raw)
-        text = intake.clean_chat_reply(clean)
+                pdf_bytes = os.path.getsize(
+                    os.path.join(d, pdf_name))
+            except OSError:
+                pdf_bytes = files.get("bytes", 0) or 0
+            pdf_line = ("SOURCE PDF: %s (%d bytes) -- attached."
+                        % (pdf_name, pdf_bytes))
+        else:
+            pdf_line = "SOURCE PDF: none attached yet."
+        rules = ("Decide what to do by calling your tools; you may "
+                 "also just reply with text. Reply text rules: a few "
+                 "sentences at most, English only, answer the client's "
+                 "actual words first; never promise actions (starting, "
+                 "parsing, uploading, writing, running) -- only ask, "
+                 "confirm what you have, and say what happens after "
+                 "they confirm. Save everything you learn with "
+                 "update_form (clean professional third-person "
+                 "wording, never me/my/I/you). Call finalize_and_send "
+                 "only when the form is full, the PDF is attached and "
+                 "the client agrees; saying it is not enough. After it "
+                 "succeeds your job is done: say a short goodbye.")
+        if mode != "free":
+            rules += (" Guided mode: keep questions short; the client "
+                      "may also fill the form by hand.")
+        system = (system_base + "\n\n[ORDER CONSULTATION for " + oid
+                  + ".]\nCURRENT FORM: "
+                  + json.dumps({k: (form.get(k) or "") for k in
+                                intake.FORM_FIELDS},
+                               ensure_ascii=False)
+                  + "\n" + pdf_line + "\n" + rules)
+        ctx = {"producer": "sales_sam", "order_id": oid,
+               "agent_dir": agent_dir or "", "order_dir": d,
+               "run_dir": os.path.join(ROOT, "output", "runs", oid)}
+        os.makedirs(ctx["run_dir"], exist_ok=True)
+        last_user = msgs[-1]["content"] if msgs else ""
+        tail = [msgs[-1]] if msgs and msgs[-1].get("role") == "user" \
+            else msgs
+        oai = [{"type": "function",
+                "function": {"name": n, "description": available[n][1],
+                             "parameters": available[n][2]}}
+               for n in names]
+        messages = ([{"role": "system", "content": system}]
+                    + self._transcript_turns(d) + tail)
+        log_path = os.path.join(d, "llm_calls.jsonl")
+        say = ""
+        handed = False
+        for _step in range(self.SAM_CHAT_STEPS):
+            try:
+                resp = runner._chat(
+                    agent["model"], messages, oai or None,
+                    timeout=120, caller="sales_sam:chat",
+                    log_path=log_path)
+            except Exception as exc:  # noqa: BLE001 - shown in chat
+                return self._turn_failed(oid, d, form, meta,
+                                        last_user, exc)
+            msg = ((resp.get("choices") or [{}])[0]
+                   .get("message", {}) or {})
+            messages.append(msg)
+            text = msg.get("content") or ""
+            if isinstance(text, str) and text.strip():
+                say = text.strip()
+            calls = msg.get("tool_calls") or []
+            if not calls:
+                break
+            for call in calls:
+                fn = (call.get("function") or {}).get("name", "")
+                try:
+                    fargs = json.loads(
+                        (call.get("function") or {}).get("arguments")
+                        or "{}")
+                except ValueError:
+                    fargs = {}
+                if not isinstance(fargs, dict):
+                    fargs = {}
+                if fn == "finalize_and_send" and not handed:
+                    handed = True
+                    code, out = self._finalize_order(
+                        oid, d, meta, "in_production")
+                    if code == 200:
+                        return self._handover(oid, d, meta,
+                                             last_user, say, out)
+                    result = {"error": (out.get("error")
+                                        if isinstance(out, dict)
+                                        else "finalize failed")}
+                elif fn in available:
+                    try:
+                        result = available[fn][0](ctx, fargs)
+                    except Exception as exc:  # noqa: BLE001 - to model
+                        result = {"error": "%s: %s"
+                                           % (type(exc).__name__, exc)}
+                else:
+                    result = {"error": "unknown tool: %s" % fn}
+                messages.append(
+                    {"role": "tool",
+                     "tool_call_id": call.get("id", ""),
+                     "content": runner.DATA_TAG % (
+                         fn, json.dumps(result,
+                                        ensure_ascii=False)[:4000])})
+                if fn == "update_form" and isinstance(result, dict) \
+                        and result.get("changed"):
+                    projlog.log_event(
+                        oid, "order", "form",
+                        "fields updated: %s"
+                        % ", ".join(result["changed"]),
+                        file="orders/%s/form.json" % oid)
+        if not say:
+            return self._turn_failed(oid, d, form, meta, last_user,
+                                    ValueError("empty reply"))
+        text = intake.clean_chat_reply(say)
         if not text:
-            text = intake.CHAT_UNREADABLE
-        form, changed = intake.merge_form(form, update)
-        try:
-            self._form_save(d, meta, form)
-            self._order_save_meta(d, meta)
-        except OSError:
-            pass
-        if changed:
-            projlog.log_event(
-                oid, "order", "form",
-                "fields updated: %s" % ", ".join(changed),
-                file="orders/%s/form.json" % oid)
-        self._chat_append(d, msgs[-1]["content"], text, raw=raw)
+            return self._turn_failed(oid, d, form, meta, last_user,
+                                    ValueError("empty reply"))
+        self._chat_append(d, last_user, text)
         projlog.log_event(
             oid, "order", "chat",
-            "client: %s / Sam: %s"
-            % (msgs[-1]["content"], text),
+            "client: %s / Sam: %s" % (last_user, text),
             file="orders/%s/chat.jsonl" % oid)
         projlog.do_refresh(oid)
+        meta = self._order_meta(d)
+        form = self._form_load(d, meta)
         missing = self._form_missing(form, meta)
-        ready = not missing
-        return (200, intake.chat_reply_payload(text, ready, missing,
-                                              form))
+        return (200, intake.chat_reply_payload(text, not missing,
+                                              missing, form))
 
+    def _turn_failed(self, oid, d, form, meta, last_user, exc):
+        """Failed Sam turn: Sam's failure line in the chat, order open."""
+        projlog.log_event(oid, "sam", "error",
+                          "chat turn failed: %s" % exc,
+                          node="sales_sam")
+        self._chat_append(d, last_user, intake.CHAT_UNREADABLE)
+        bad = intake.chat_reply_payload(
+            intake.CHAT_UNREADABLE, False,
+            self._form_missing(form, meta), form)
+        bad["accepted"] = False
+        return self._json(200, bad)
+
+    def _handover(self, oid, d, meta, last_user, say, out):
+        """Accepted payload for a finished finalize_and_send call."""
+        reply = (say or "").strip() or intake.START_LINE
+        self._chat_append(d, last_user, reply)
+        projlog.log_event(
+            oid, "order", "chat",
+            "client: %s / Sam: %s" % (last_user, reply),
+            file="orders/%s/chat.jsonl" % oid)
+        projlog.do_refresh(oid)
+        payload = intake.chat_reply_payload(reply, False, [],
+                                           out.get("form"))
+        payload.update({"accepted": True, "handed_over": True,
+                        "answers": (out.get("intake") or {}).get(
+                            "answers"),
+                        "pdf": {"file": "source.pdf", "bytes": 0},
+                        "source": out.get("source"),
+                        "stages": out.get("stages"),
+                        "form": out.get("form")})
+        return self._json(200, payload)
     @staticmethod
     def _chat_append(d, user, reply, raw=None):
         rec = {"user": user, "reply": reply}
@@ -2302,49 +2331,6 @@ class Handler(BaseHTTPRequestHandler):
                       "reply": intake.START_LINE, "pdf": pdf,
                       "form": dict(form)})
 
-    def _do_chat_accept(self, oid, d, meta, user_text):
-        """Conversation-only accept: the yes finalizes at once (the
-        request is written from the form, the parser spawned, the
-        order handed over). No second start call."""
-        code, out = self._confirm_yes_out(oid, d, meta)
-        if code != 200:
-            err = (out.get("error") if isinstance(out, dict)
-                   else "confirm failed")
-            reply = intake.retry_line(err)
-            self._chat_append(d, user_text, reply)
-            bad = intake.chat_reply_payload(reply, True, [])
-            bad["accepted"] = False
-            return self._json(200, bad)
-        code, out = self._finalize_order(oid, d, meta, "in_production")
-        if code != 200:
-            err = (out.get("error") if isinstance(out, dict)
-                   else "finalize failed")
-            reply = intake.retry_line(err)
-            self._chat_append(d, user_text, reply)
-            bad = intake.chat_reply_payload(reply, True, [])
-            bad["accepted"] = False
-            return self._json(200, bad)
-        reply = ("Done — the request is written and handed over. "
-                 "Parsing your PDF now; progress shows below.")
-        self._chat_append(d, user_text, reply)
-        projlog.log_event(oid, "order", "chat",
-                          "client: %s / Sam: %s" % (user_text, reply),
-                          file="orders/%s/chat.jsonl" % oid)
-        projlog.do_refresh(oid)
-        payload = intake.chat_reply_payload(
-            reply, False, [], out.get("form"))
-        payload.update({"accepted": True, "handed_over": True,
-                        "answers": out.get("intake", {}).get("answers"),
-                        "pdf": {"file": "source.pdf", "bytes": 0},
-                        "source": out.get("source"),
-                        "stages": out.get("stages"),
-                        "form": out.get("form")})
-        return self._json(200, payload)
-
-    SAM_SOURCE_GRANTS = {"full": ["pd_marty"],
-                           "map": ["explain_cleo", "case_rex",
-                                   "plan_ash"]}
-
     @staticmethod
     def _form_load(d, meta):
         """Production request form (source of truth). Missing file or
@@ -2384,121 +2370,35 @@ class Handler(BaseHTTPRequestHandler):
         return missing
 
     def _finalize_order(self, oid, d, meta, final_status):
-        """Yes + complete form + PDF: one LLM call writes the final
-        request from the form, then the parser is spawned without
-        waiting and the order is handed over. The chat-filled form
-        is the source of truth; there is no separate extraction
+        """Run Sam's finalize_and_send tool (final request from the
+        form, parser spawned, order handed over). The chat-filled
+        form is the source of truth; there is no separate extraction
         call. Returns (code, obj)."""
-        form = self._form_load(d, meta)
-        missing = self._form_missing(form, meta)
-        if missing:
-            return (409, {"error": "intake incomplete",
-                          "missing": missing})
-        agent_dir = self._employee(meta["assignee"])
-        model = self._load_agent(agent_dir)["model"]
-        if not runner.key_present(model):
-            return (503, {"error": "%s missing: add it to .env"
-                                  % runner.key_var(model)})
-        pdf_name = meta["files"]["source"]
-        try:
-            pdf_bytes = os.path.getsize(os.path.join(d, pdf_name))
-        except OSError:
-            pdf_bytes = 0
-        prompt = intake.final_request_prompt(oid, form, pdf_name,
-                                             pdf_bytes)
-        try:
-            resp = runner._chat(
-                model, [{"role": "user", "content": prompt}],
-                None, timeout=300, caller="sales_sam:finalize",
-                log_path=os.path.join(d, "llm_calls.jsonl"))
-            text = ((resp.get("choices") or [{}])[0]
-                    .get("message", {}).get("content", ""))
-            obj, status = runner.parse_json_answer(text or "")
-            if status != "ok" or not isinstance(obj, dict):
-                raise ValueError("no request JSON in reply")
-            obj["order_id"] = oid
-            errs = schemas.validate_request(obj)
-            if errs:
-                raise ValueError("; ".join(errs)[:300])
-        except Exception as exc:  # noqa: BLE001 - surfaced, key never leaks
-            projlog.log_event(oid, "sam", "error",
-                              "request writing failed: %s" % exc,
-                              node="sales_sam")
-            projlog.do_refresh(oid)
-            return (502, {"error": "request writing failed: %s" % exc})
-        res = results.make_result("sales_sam", oid, "", {"request": obj})
-        try:
-            results.save_result(d, res)
-            with open(os.path.join(d, "report.md"), "w",
-                      encoding="utf-8") as f:
-                f.write(results.render_report(res))
-        except (OSError, ValueError, RuntimeError) as exc:
-            return (502, {"error": "cannot save request: %s" % exc})
-        run_dir = os.path.join(ROOT, "output", "runs", oid)
-        os.makedirs(run_dir, exist_ok=True)
-        try:
-            pout = registry.pc_send_source(
-                {"producer": "sales_sam", "order_id": oid,
-                 "run_dir": run_dir}, {"build": "async"})
-        except Exception as exc:  # noqa: BLE001 - reported, not raised
-            return (502, {"error": "parse not started: %s" % exc})
-        if not isinstance(pout, dict) or pout.get("error"):
-            err = (pout.get("error") if isinstance(pout, dict)
-                   else "bad tool result")
-            return (502, {"error": "parse not started: %s" % err})
-        try:
-            rout = registry.pc_set_recipients(
-                {"producer": "sales_sam", "order_id": oid,
-                 "agent_dir": agent_dir},
-                {"full": list(self.SAM_SOURCE_GRANTS["full"]),
-                 "map": list(self.SAM_SOURCE_GRANTS["map"]),
-                 "ref": pout["ref"]})
-        except Exception as exc:  # noqa: BLE001 - reported, not raised
-            return (502, {"error": "crew listing failed: %s" % exc})
-        if not isinstance(rout, dict) or rout.get("error"):
+        agent_dir = self._employee(meta.get("assignee", "") or "") or ""
+        rout = registry.finalize_and_send(
+            {"producer": "sales_sam", "order_id": oid,
+             "agent_dir": agent_dir,
+             "run_dir": os.path.join(ROOT, "output", "runs", oid),
+             "order_dir": d},
+            {"status": final_status})
+        if not isinstance(rout, dict) or rout.get("error") \
+                or not rout.get("ok"):
             err = (rout.get("error") if isinstance(rout, dict)
                    else "bad tool result")
-            return (502, {"error": "crew listing failed: %s" % err})
-        files = dict(meta.get("files", {}))
-        intake_rec = {"order_id": oid,
-                      "answers": dict(form, source=files.get(
-                          "source", "source.pdf")),
-                      "files": {"source": files.get("source"),
-                                "pc_ref": pout["ref"]},
-                      "source": {"ref": pout["ref"],
-                                 "title": pout.get("title", ""),
-                                 "sections": pout.get("section_count",
-                                                      "?"),
-                                 "chars": pout.get("chars", "?")}}
-        with open(os.path.join(d, "intake.json"), "w",
-                  encoding="utf-8") as f:
-            json.dump(intake_rec, f, ensure_ascii=False, indent=2)
-        meta = self._order_meta(d)
-        meta["approved"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                            "answers": dict(form),
-                            "via": "chat-form"}
-        meta["status"] = final_status
-        meta["starting"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S")}
-        meta["parse_pending"] = {"doc_id": pout["doc_id"],
-                                 "ref": pout["ref"]}
-        self._order_save_meta(d, meta)
-        with open(os.path.join(d, "report.md"), encoding="utf-8") as f:
-            md = f.read()
-        stages = [
-            "a) request form filled in chat (audience, length, depth,"
-            " theme)",
-            "b) final request written from the form "
-            "(result.json + report.md)",
-            "c) PDF sent to the Source PC, parser running: %s"
-            % pout["ref"]]
+            projlog.log_event(oid, "sam", "error", err,
+                              node="sales_sam")
+            projlog.do_refresh(oid)
+            return (502, {"error": err})
+        form = rout.get("form", {}) or {}
+        ref = rout.get("ref", "?")
         print("order %s %s (%s, parse spawned)"
               % ("start" if final_status == "in_production"
-                 else "complete", oid, pout["ref"]),
+                 else "complete", oid, ref),
               flush=True)
         projlog.log_event(
             oid, "sam", "done",
             "request written from the form; parser spawned for %s"
-            % pout["ref"],
+            % ref,
             node="sales_sam",
             file="orders/%s/report.md" % oid)
         projlog.log_event(
@@ -2508,11 +2408,21 @@ class Handler(BaseHTTPRequestHandler):
             "consultation %s; Sam's work is done" % final_status,
             file="orders/%s/intake.json" % oid)
         projlog.do_refresh(oid)
+        with open(os.path.join(d, "report.md"), encoding="utf-8") as f:
+            md = f.read()
+        stages = [
+            "a) request form filled in chat (audience, length, depth,"
+            " theme)",
+            "b) final request written from the form "
+            "(result.json + report.md)",
+            "c) PDF sent to the Source PC, parser running: %s"
+            % ref]
         return (200, {"ok": True, "handed_over": True,
-                      "intake": intake_rec, "report_md": md,
+                      "intake": rout.get("intake"), "report_md": md,
                       "files": ["intake.json", "result.json",
                                 "report.md", "form.json"],
-                      "form": dict(form), "source": intake_rec["source"],
+                      "form": dict(form), "source": (rout.get("intake")
+                                                     or {}).get("source"),
                       "stages": stages, "run_id": ""})
 
     def _maybe_parse_done(self, oid, d, meta):

@@ -20,18 +20,11 @@ YES_LINE = "Yes, start."
 NO_LINE = "No, not yet."
 ACCEPT_LINE = "Order received \u2014 preparing production."
 START_DONE = "Production started \u2014 watch it in Studio."
-CONFIRM_AGAIN = ("Just to confirm \u2014 shall I start "
-                   "production now?")
 CHAT_UNREADABLE = ("Sam's reply could not be read, "
                    "please send again.")
 START_LINE = "Great — starting production now."
 RECEIVED_LINE = "Thanks! Your order is in. The crew has started."
 
-NO_PROMISE_RULE = ("Never promise to do anything or claim anything is "
-                   "done or already underway (starting production, "
-                   "parsing, uploading, writing, running, preparing): "
-                   "only ask questions, confirm what you have so far, "
-                   "and say what happens after the client confirms.")
 
 _HEADING_RE = re.compile(r"^(\d+\.)+\s*\S")
 _CONTROL_RE = re.compile(r"<\|.*?\|>", re.DOTALL)
@@ -43,112 +36,6 @@ _FUNC_SOLO_RE = re.compile(r"<function\b[^>]*/>",
                             re.IGNORECASE)
 _WS_RE = re.compile(r"[ \t]+")
 _BLANK_RE = re.compile(r"\n{3,}")
-
-_YES = frozenset([
-    "yes", "yes start", "start", "go ahead", "go", "ok", "okay",
-    "sure", "yeah", "yep", "do it", "please start",
-    "start production",
-    "\ub124", "\uc608", "\uc751", "\uc5b4", "\uc2dc\uc791",
-    "\uc2dc\uc791\ud574", "\uc88b\uc544", "\uadf8\ub798",
-])
-_FILLERS = frozenset([
-    "okay", "ok", "yeah", "yep", "well", "sure", "fine",
-    "please", "let's", "lets",
-    "\ub124", "\uc608", "\uc751", "\uc5b4",
-])
-_CORE_YES = frozenset([
-    "start", "go", "go ahead", "do it", "start production",
-    "\uc2dc\uc791", "\uc2dc\uc791\ud574",
-])
-_CORE_NO = frozenset([
-    "no", "not yet", "nope",
-    "\uc544\ub2c8", "\uc544\ub2c8\uc694", "\uc544\uc9c1",
-])
-_NO = frozenset([
-    "no", "no not yet", "not yet", "nope", "wait", "hold on",
-    "not now", "later",
-    "\uc544\ub2c8", "\uc544\ub2c8\uc694", "\uc544\uc9c1",
-    "\uae30\ub2e4\ub824", "\uc7a0\uae50", "\ub098\uc911\uc5d0",
-])
-
-
-def _norm_confirm(text):
-    t = (text or "").strip().lower()
-    t = re.sub(r"[,\s]+", " ", t).strip()
-    return t.strip(".!?\u2026")
-
-
-def classify_confirm(text):
-    """Clear yes/no to Sam's start question, else None.
-\r\n    Strict: the whole message must be the confirmation (extra
-    words make it unclear, so Sam asks again)."""
-    t = _norm_confirm(text)
-    if not t:
-        return None
-    if t in _YES:
-        return "yes"
-    if t in _NO:
-        return "no"
-    words = t.split(" ")
-    while words and words[0] in _FILLERS:
-        words.pop(0)
-    while words and words[-1] == "please":
-        words.pop()
-    core = " ".join(words)
-    if core in _CORE_YES:
-        return "yes"
-    if core in _CORE_NO:
-        return "no"
-    return None
-
-
-JUDGE_PROMPT = (
-    'You classify a reply to "Shall I start production now?". '
-    'Reply with exactly one word: YES if they agree to start, '
-    'NO if they decline or want to wait, UNCLEAR otherwise. '
-    'No other text.\n\nClient reply: "')
-
-
-_QUESTION_WORDS = frozenset(
-    "who what when where why how which whom whose".split() + 
-    "is are was were can could do does did will would should may might".split()
-    + "have has had shall".split())
-
-
-def looks_like_question(text):
-    """True when the client asks something (for a RAG lookup)."""
-    t = (text or "").strip().lower()
-    if not t:
-        return False
-    if "?" in t:
-        return True
-    first = t.split(" ", 1)[0].strip(".,!")
-    return first in _QUESTION_WORDS
-
-
-def parse_confirm_word(text):
-    '''One-word LLM verdict to yes/no/unclear (None).'''
-    t = (text or "").strip().upper()
-    if t == "YES":
-        return "yes"
-    if t == "NO":
-        return "no"
-    return None
-
-
-def confirm_step(ready, user_text):
-    """Conversation-only start decision (no buttons).
-\r\n    Returns "chat" (normal model turn), "start" (run confirm +
-    start now), "keep" (client said no, consultation stays open)
-    or "ask" (unclear: ask once more in one sentence)."""
-    if not ready:
-        return "chat"
-    v = classify_confirm(user_text)
-    if v == "yes":
-        return "start"
-    if v == "no":
-        return "keep"
-    return "ask"
 
 
 def retry_line(reason):
@@ -278,8 +165,6 @@ FORM_FIELDS = ("audience", "length", "depth", "theme")
 FORM_LABELS = {"audience": "Audience", "length": "Target length",
                "depth": "Depth", "theme": "Theme direction"}
 
-_FORM_BLOCK_RE = re.compile(r"```form\s*(\{.*?\})\s*```", re.S)
-
 
 def blank_form():
     """Empty production request form (source of truth for finalize)."""
@@ -291,57 +176,6 @@ def form_complete(form):
     form = form if isinstance(form, dict) else {}
     return all(isinstance(form.get(k), str) and form[k].strip()
                for k in FORM_FIELDS)
-
-
-def extract_form_block(text):
-    """Split Sam's turn into (clean_text, update|None).
-
-    Sam appends one ```form {...}``` block carrying the COMPLETE
-    current field values; the block never reaches the client."""
-    text = text or ""
-    ms = list(_FORM_BLOCK_RE.finditer(text))
-    if not ms:
-        return text, None
-    try:
-        obj = json.loads(ms[-1].group(1))
-    except ValueError:
-        obj = None
-    clean = _FORM_BLOCK_RE.sub("", text)
-    return clean, obj if isinstance(obj, dict) else None
-
-
-def merge_form(form, update):
-    """Fold Sam's update into the form. Non-empty values win; a blank
-    never wipes a filled field. Returns (form, changed_keys)."""
-    form = dict(form) if isinstance(form, dict) else blank_form()
-    changed = []
-    if not isinstance(update, dict):
-        return form, changed
-    for k in FORM_FIELDS:
-        v = update.get(k)
-        if isinstance(v, str):
-            v = v.strip()[:500]
-            if v and v != form.get(k, ""):
-                form[k] = v
-                changed.append(k)
-    return form, changed
-
-
-FORM_PROMPT = (
-    "FORM RULES (follow every turn, silently): after your chat reply, "
-    "append exactly one block like this with the COMPLETE current values "
-    "of all four fields (carry over what was already known, fill in what "
-    "this turn revealed, \"\" for what is still unknown):\n"
-    "```form\n"
-    '{"audience": "...", "length": "...", '
-    '"depth": "...", "theme": "..."}\n'
-    "```\n"
-    "Rewrite the client's words into clean professional third-person "
-    "wording. Never \"me\", \"my\", \"I\" or \"you\". Example: the "
-    "client says \"for me\" and \"no background\" -> \"the client "
-    "personally, a beginner with no prior background\". One line per "
-    "value, English. The FORM block is removed before sending; the "
-    "client only ever sees your chat reply.")
 
 
 def final_request_prompt(oid, form, pdf_name, pdf_bytes):

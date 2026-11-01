@@ -1310,6 +1310,255 @@ def pc_set_recipients(ctx, args):
                             if r.get("order_id") == order_id]}
 
 
+# ---- Sam's order-chat tools (the chat LLM decides via these) ----
+
+SAM_FORM_FIELDS = ("audience", "length", "depth", "theme")
+
+SAM_SOURCE_GRANTS = {"full": ["pd_marty"],
+                     "map": ["explain_cleo", "case_rex",
+                             "plan_ash"]}
+
+
+def _order_dir(order_id):
+    d = os.path.join(pc._base(None), "orders", order_id or "")
+    return d if os.path.isdir(d) else ""
+
+
+def _load_form(odir, meta):
+    """Production request form (source of truth). Missing file or
+    keys fall back to the stored answers (old orders)."""
+    try:
+        with open(os.path.join(odir, "form.json"),
+                  encoding="utf-8") as f:
+            form = json.load(f)
+    except (OSError, ValueError):
+        form = None
+    if not isinstance(form, dict):
+        form = {}
+    for k in SAM_FORM_FIELDS:
+        if not isinstance(form.get(k), str) or not form.get(k):
+            a = ((meta or {}).get("answers", {}) or {}).get(k, "")
+            form[k] = a if isinstance(a, str) else ""
+    return form
+
+
+def _load_meta(odir):
+    try:
+        with open(os.path.join(odir, "meta.json"),
+                  encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, ValueError):
+        meta = None
+    return meta if isinstance(meta, dict) else None
+
+
+def _save_form_meta(odir, form):
+    form = {k: (form.get(k, "") or "") for k in SAM_FORM_FIELDS}
+    with open(os.path.join(odir, "form.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(form, f, ensure_ascii=False, indent=1)
+    meta = _load_meta(odir)
+    if meta is None:
+        raise OSError("no such order dir: %r" % odir)
+    meta["answers"] = dict(form)
+    with open(os.path.join(odir, "meta.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=1)
+    return form
+
+
+def final_request_prompt(oid, form, pdf_name, pdf_bytes):
+    """One-shot writer prompt: the final request from the form."""
+    vals = {k: (form.get(k) or "") for k in SAM_FORM_FIELDS}
+    return (
+        "Write the final production request as ONE JSON object, no other "
+        "text:\n"
+        '{"order_id": "...", "client_answers": {"audience": "...", '
+        '"length": "...", "depth": "...", "theme": "...", '
+        '"source": "..."}, "source_summary": "...", '
+        '"production_notes": ["...", ...], "open_questions": [...]}\n'
+        "Rules: client_answers.audience/length/depth/theme come from the "
+        "FORM below, word for word; client_answers.source is the PDF file "
+        "name. source_summary: 2-3 sentences on what the source covers "
+        "(from the file name only, never invent contents). "
+        "production_notes: 2-5 short crew instructions grounded in the "
+        "form. open_questions: [] unless something is genuinely unclear.\n"
+        "ORDER: %s\nFORM: %s\nSOURCE PDF: %s (%d bytes)"
+        % (oid, json.dumps(vals, ensure_ascii=False),
+           pdf_name, pdf_bytes))
+
+
+def search_knowledge(ctx, args):
+    """Look one question up in this employee's LightRAG index."""
+    ctx = ctx or {}
+    args = args or {}
+    q = args.get("query", "")
+    if not isinstance(q, str) or not q.strip():
+        return {"error": "give query: {query: ...}"}
+    try:
+        rag = graph.query(ctx.get("agent_dir", "") or "",
+                          q.strip()[:1000])
+        ans = str((rag or {}).get("answer", "")).strip()
+    except Exception as exc:  # noqa: BLE001 - a tool never raises
+        return {"error": "knowledge index unavailable: %s" % exc}
+    return {"answer": ans[:1500]}
+
+
+def update_form(ctx, args):
+    """Save what the turn revealed into the order's request form."""
+    ctx = ctx or {}
+    args = args or {}
+    order_id = ctx.get("order_id", "")
+    odir = ctx.get("order_dir") or _order_dir(order_id)
+    if not odir:
+        return {"error": "no such order: %r" % order_id}
+    meta = _load_meta(odir)
+    form = _load_form(odir, meta or {})
+    changed = []
+    for k in SAM_FORM_FIELDS:
+        v = args.get(k, "")
+        if isinstance(v, str):
+            v = v.strip()[:500]
+            if v and v != form.get(k, ""):
+                form[k] = v
+                changed.append(k)
+    try:
+        form = _save_form_meta(odir, form)
+    except (OSError, ValueError) as exc:
+        return {"error": "cannot save form: %s" % exc}
+    return {"ok": True, "form": dict(form), "changed": changed}
+
+
+def finalize_and_send(ctx, args):
+    """Write the final request from the order's form and send the
+    attached PDF to the Source PC (parse + map + index run async).
+    Sam's job ends here. Only Sam; needs a full form and a stored
+    PDF, else an error the model can act on."""
+    ctx = ctx or {}
+    args = args or {}
+    order_id = ctx.get("order_id", "")
+    if ctx.get("producer", "") != INTAKE_PRODUCER:
+        return {"error": "finalize_and_send is Sam's tool"}
+    odir = ctx.get("order_dir") or _order_dir(order_id)
+    if not odir:
+        return {"error": "no such order: %r" % order_id}
+    meta = _load_meta(odir)
+    meta_p = os.path.join(odir, "meta.json")
+    if meta is None:
+        return {"error": "no such order: %r" % order_id}
+    form = _load_form(odir, meta)
+    missing = [k for k in SAM_FORM_FIELDS
+               if not (form.get(k) or "").strip()]
+    if not (meta.get("files", {}) or {}).get("source"):
+        missing = missing + ["source PDF"]
+    if missing:
+        return {"error": "intake incomplete",
+                "missing": missing}
+    agent_dir = ctx.get("agent_dir", "") or ""
+    try:
+        with open(os.path.join(agent_dir, "agent.json"),
+                  encoding="utf-8") as f:
+            model = json.load(f).get("model", "")
+    except (OSError, ValueError):
+        model = ""
+    if not model:
+        return {"error": "no model for Sam"}
+    from . import runner as _runner
+    files = meta.get("files", {}) or {}
+    pdf_name = files.get("source", "source.pdf")
+    try:
+        pdf_bytes = os.path.getsize(os.path.join(odir, pdf_name))
+    except OSError:
+        pdf_bytes = files.get("bytes", 0) or 0
+    run_dir = ctx.get("run_dir") or os.path.join(
+        pc._base(None), "output", "runs", order_id)
+    os.makedirs(run_dir, exist_ok=True)
+    prompt = final_request_prompt(order_id, form, pdf_name,
+                                 pdf_bytes)
+    try:
+        resp = _runner._chat(
+            model, [{"role": "user", "content": prompt}],
+            None, timeout=300, caller="sales_sam:finalize",
+            log_path=os.path.join(run_dir, "llm_calls.jsonl"))
+        text = ((resp.get("choices") or [{}])[0]
+                .get("message", {}).get("content", ""))
+        obj, status = _runner.parse_json_answer(text or "")
+        if status != "ok" or not isinstance(obj, dict):
+            raise ValueError("no request JSON in reply")
+        obj["order_id"] = order_id
+        errs = validate_request(obj)
+        if errs:
+            raise ValueError("; ".join(errs)[:300])
+    except Exception as exc:  # noqa: BLE001 - returned, key never leaks
+        return {"error": "request writing failed: %s" % exc}
+    res = results.make_result("sales_sam", order_id, "",
+                              {"request": obj})
+    try:
+        results.save_result(odir, res)
+        with open(os.path.join(odir, "report.md"), "w",
+                  encoding="utf-8") as f:
+            f.write(results.render_report(res))
+    except (OSError, ValueError, RuntimeError) as exc:
+        return {"error": "cannot save request: %s" % exc}
+    try:
+        pout = pc_send_source(
+            {"producer": "sales_sam", "order_id": order_id,
+             "agent_dir": agent_dir, "run_dir": run_dir},
+            {"build": "async"})
+    except Exception as exc:  # noqa: BLE001 - reported, not raised
+        return {"error": "parse not started: %s" % exc}
+    if not isinstance(pout, dict) or pout.get("error"):
+        err = (pout.get("error") if isinstance(pout, dict)
+               else "bad tool result")
+        return {"error": "parse not started: %s" % err}
+    try:
+        rout = pc_set_recipients(
+            {"producer": "sales_sam", "order_id": order_id,
+             "agent_dir": agent_dir},
+            {"full": list(SAM_SOURCE_GRANTS["full"]),
+             "map": list(SAM_SOURCE_GRANTS["map"]),
+             "ref": pout["ref"]})
+    except Exception as exc:  # noqa: BLE001 - reported, not raised
+        return {"error": "crew listing failed: %s" % exc}
+    if not isinstance(rout, dict) or rout.get("error"):
+        err = (rout.get("error") if isinstance(rout, dict)
+               else "bad tool result")
+        return {"error": "crew listing failed: %s" % err}
+    final_status = args.get("status", "in_production")
+    if final_status not in ("complete", "in_production"):
+        final_status = "in_production"
+    intake_rec = {"order_id": order_id,
+                  "answers": dict(form, source=files.get(
+                      "source", "source.pdf")),
+                  "files": {"source": files.get("source"),
+                            "pc_ref": pout["ref"]},
+                  "source": {"ref": pout["ref"],
+                             "title": pout.get("title", ""),
+                             "sections": pout.get("section_count",
+                                                  "?"),
+                             "chars": pout.get("chars", "?")}}
+    try:
+        with open(os.path.join(odir, "intake.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(intake_rec, f, ensure_ascii=False, indent=2)
+        meta = (_load_meta(odir) or meta)
+        meta["approved"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                            "answers": dict(form),
+                            "via": "chat-form"}
+        meta["status"] = final_status
+        meta["starting"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        meta["parse_pending"] = {"doc_id": pout["doc_id"],
+                                 "ref": pout["ref"]}
+        with open(meta_p, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=1)
+    except (OSError, ValueError) as exc:
+        return {"error": "cannot record handover: %s" % exc}
+    return {"ok": True, "handed_over": True,
+            "intake": intake_rec,
+            "form": dict(form), "source": intake_rec["source"],
+            "ref": pout["ref"], "doc_id": pout["doc_id"]}
+
+
 # Writer tool -> run output file. The server keeps agent.json io.output
 # in sync with the employee's single write_* tool. Since the Q6 cutover
 # every run writes result.json (one envelope, categories inside).
@@ -2198,6 +2447,33 @@ TOOLS = {
                                 "items": {"type": "string"}},
                         "full": {"type": "array",
                                  "items": {"type": "string"}}},
+         "additionalProperties": False},
+    ),
+    "search_knowledge": (
+        search_knowledge,
+        "Look one question up in your LightRAG knowledge index "
+        "before answering.",
+        {"type": "object",
+         "properties": {"query": {"type": "string"}},
+         "required": ["query"], "additionalProperties": False},
+    ),
+    "update_form": (
+        update_form,
+        "Save what this turn revealed into the order's request "
+        "form (clean professional third-person wording).",
+        {"type": "object",
+         "properties": {"audience": {"type": "string"},
+                        "length": {"type": "string"},
+                        "depth": {"type": "string"},
+                        "theme": {"type": "string"}},
+         "additionalProperties": False},
+    ),
+    "finalize_and_send": (
+        finalize_and_send,
+        "When the form is full, the PDF is attached and the client "
+        "agrees: write the final request and send the PDF to the "
+        "parser. Your job ends here.",
+        {"type": "object", "properties": {},
          "additionalProperties": False},
     ),
     "open_ref": (

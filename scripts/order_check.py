@@ -5,6 +5,7 @@ confirm flow: readiness is decided by code (missing list), Sam's ready
 question is an exact server-side string, and PDF sections are built by
 rule, not by the model. No sockets, no model calls, no writes.
 """
+import json
 import os
 import shutil
 import sys
@@ -48,11 +49,6 @@ ok(bool(intake.DECLINE_ACK.strip()) and len(intake.DECLINE_ACK) <= 200,
 ok("start" not in intake.DECLINE_ACK.lower()
    or "not" in intake.DECLINE_ACK.lower(),
    "decline ack promises no start")
-ok(all(v in intake.NO_PROMISE_RULE.lower()
-       for v in ("start", "pars", "upload", "writ", "runn")),
-   "no-promise rule names every action")
-ok("never promise" in intake.NO_PROMISE_RULE.lower(),
-   "no-promise rule forbids promising")
 
 # ---- sections: numbered headings become markdown headings ----
 SAMPLE = "\n".join([
@@ -126,45 +122,27 @@ ok("clean_chat_reply" in _srv and "CHAT_UNREADABLE" in _srv,
    "chat endpoint cleans every reply, errors when empty")
 ok('rec["raw"]' in _srv,
    "chat log keeps the raw reply for audit")
-# ---- chat wording is model-driven, decisions are code ----
-ok(_srv.count("self._sam_turn(") == 3,
-   "keep, ask and chat turns share one model-worded turn")
-ok("CONFIRM_AGAIN" not in _srv.split("def _api_order_chat")[1]
-   .split("def _sam_turn")[0],
-   "no fixed line left in the confirm turns")
-
-# ---- conversation-only start: no buttons, yes/no by text ----
-for _y in ("yes, start", "Yes, start.", "go ahead", "ok", "START", "please start",
-         "ok let's start", "sure, go ahead", "start please", "let's go"):
-    ok(intake.classify_confirm(_y) == "yes",
-       "clear yes: %r" % (_y,))
-for _n in ("No, not yet.", "not yet", "wait"):
-    ok(intake.classify_confirm(_n) == "no",
-       "clear no: %r" % (_n,))
-for _u in ("", "maybe later", "yes, but change the theme", "what happens next?"):
-    ok(intake.classify_confirm(_u) is None,
-       "unclear stays unclear: %r" % (_u,))
-ok(intake.confirm_step(False, "yes, start") == "chat",
-   "not ready: normal model turn")
-ok(intake.confirm_step(True, "yes, start") == "start",
-   "ready + yes starts (ord-20261101-245 regression)")
-ok(intake.confirm_step(True, "ok let's start") == "start",
-   "ready + ok-let-start starts (ord-20261101-271 regression)")
-ok(intake.confirm_step(True, "No, not yet.") == "keep",
-   "ready + no keeps the consultation open")
-ok(intake.confirm_step(True, "hmm?") == "ask",
-   "ready + unclear asks once more")
-ok(intake.parse_confirm_word("YES") == "yes"
-   and intake.parse_confirm_word("  no\n") == "no"
-   and intake.parse_confirm_word("UNCLEAR") is None
-   and intake.parse_confirm_word("Yes, start!") is None,
-   "one-word verdict parses strictly")
-ok("_judge_confirm" in _srv and "JUDGE_PROMPT" in open(
-   os.path.join(ROOT, "scripts", "intake.py"), encoding="utf-8").read(),
-   "unclear ready turns get a one-word LLM verdict")
+# ---- one tool loop: the model decides, the server follows ----
+ok(_srv.count("self._sam_turn(") == 1,
+   "every chat turn goes through the single tool loop")
+ok("confirm_step(" not in _srv and "_judge_confirm" not in _srv
+   and "extract_form_block" not in _srv and "FORM_PROMPT" not in _srv
+   and "looks_like_question" not in _srv,
+   "no keyword path, no separate judge, no extraction, no router")
+ok(not hasattr(intake, "classify_confirm")
+   and not hasattr(intake, "confirm_step")
+   and not hasattr(intake, "looks_like_question")
+   and not hasattr(intake, "extract_form_block")
+   and not hasattr(intake, "merge_form"),
+   "no user-reading helpers left in intake")
+ok("finalize_and_send" in _srv and "update_form" in _srv
+   and "search_knowledge" in _srv and "tool_call_id" in _srv,
+   "the server only does what the tool calls say")
+ok("SAM_CHAT_TOOLS" in _srv,
+   "chat offers only the three tools, never the runner writer")
 ok("o-confirm" not in _ui and "o-yes" not in _ui and "showConfirm" not in _ui,
    "confirm buttons and their wiring are gone")
-ok("_do_chat_accept" in _srv and "handed_over" in _srv,
+ok("_handover" in _srv and "handed_over" in _srv,
    "chat-yes finalizes at once, no second start call")
 ok("start_result.json" in _srv and "starting" in _srv,
    "start clears its flag and keeps its result for reload")
@@ -198,19 +176,26 @@ ok(_pf is True and _pr == "name 'secs' is not defined",
    "failed event surfaces with its reason")
 ok(intake.progress_lines([], []) == ([], False, ""),
    "empty logs give empty progress")
-# ---- user questions are answered from the LightRAG index ----
-for _q in ("What video lengths do you support?",
-           "How long does production take?",
-           "Can I change the theme later?"):
-    ok(intake.looks_like_question(_q),
-       "question detected: %r" % (_q,))
-for _s in ("beginners", "10 minutes", "yes, start", ""):
-    ok(not intake.looks_like_question(_s),
-       "statement left alone: %r" % (_s,))
-ok("graph.query" in _srv,
-   "sam turns consult the LightRAG index on questions")
-ok("rag lookup skipped" in _srv,
-   "a dead index never breaks the turn")
+# ---- Sam looks things up by calling search_knowledge ----
+from agents._frame import tools as _tools
+_samdir = os.path.join(ROOT, "agents", "sales_sam")
+_g = _tools.get_tools(_samdir)
+ok(all(k in _g and callable(_g[k][0])
+       and isinstance(_g[k][1], str) and isinstance(_g[k][2], dict)
+       for k in ("search_knowledge", "update_form",
+                 "finalize_and_send")),
+   "the three tools load with descriptions + schemas")
+ok(json.load(open(os.path.join(_samdir, "agent.json"),
+                  encoding="utf-8"))["tools"]
+   == ["search_knowledge", "update_form", "finalize_and_send",
+       "write_request"],
+   "agent.json keeps the chat tools + the runner writer")
+ok(_tools.search_knowledge({"agent_dir": _samdir}, {})
+   .get("error", "").startswith("give query"),
+   "search_knowledge needs a query")
+_sk = _tools.search_knowledge({"agent_dir": ""}, {"query": "hi"})
+ok(isinstance(_sk, dict) and ("answer" in _sk or "error" in _sk),
+   "search_knowledge always answers as a dict")
 # ---- parse is its own stage with % progress ----
 _tl2 = [{"at": "2026-11-01 22:01:28", "source": "sam",
          "ev": "start", "summary": "x"},
@@ -243,7 +228,7 @@ def _boom(*a, **k):
 _runner._chat = _boom
 try:
     _rd = tempfile.mkdtemp(prefix="sam_timeout_")
-    _res = _runner.run(os.path.join(ROOT, "agents", "sales_sam"),
+    _res = _runner.run(os.path.join(ROOT, "agents", "pd_marty"),
                        _rd, {"order_id": "fixture-ord",
                              "answers": {}}, "# fixture inputs")
 finally:
@@ -255,33 +240,39 @@ _rfails = [e for e in _res.get("events", [])
 ok(_rfails and "timed out" in _rfails[-1].get("reason", "")
    and "kept" in _rfails[-1].get("reason", ""),
    "timeout reason says the parse results are kept")
-ok("_finalize_order" in _srv and '"async"' in _srv
+ok("_finalize_order" in _srv and "finalize_and_send" in _srv
    and "_try_fill_answers" not in _srv and "_extract_intake" not in _srv
    and "_run_parse_stage" not in _srv,
    "finalize replaces the extraction call and the blocking parse")
 # ---- the chat-filled form is the source of truth ----
-_blk = ("Hi! " + "```form {\"audience\": \"beginners\", "
-        "\"length\": \"\", \"depth\": \"key concepts\", "
-        "\"theme\": \"examples\"} ```" + " bye")
-_clean, _upd = intake.extract_form_block(_blk)
-ok(_clean.strip() == "Hi!  bye"
-   and _upd == {"audience": "beginners", "length": "",
-                "depth": "key concepts", "theme": "examples"},
-   "form block splits off the reply, client text kept")
-_fm, _ch = intake.merge_form(intake.blank_form(), _upd)
-ok(_fm["audience"] == "beginners" and _ch == ["audience", "depth",
-                                             "theme"]
-   and not intake.form_complete(_fm),
-   "form fills, blanks never count as complete")
-_fm2, _ch2 = intake.merge_form(_fm, {"audience": "",
-                                     "length": "10 minutes"})
-ok(_fm2["audience"] == "beginners" and _ch2 == ["length"],
+_td = tempfile.mkdtemp(prefix="sam_form_")
+json.dump({"id": "fixture-ord", "assignee": "sales_sam",
+           "status": "consulting", "answers": {}, "files": {}},
+          open(os.path.join(_td, "meta.json"), "w", encoding="utf-8"))
+_fx = {"producer": "sales_sam", "order_id": "fixture-ord",
+       "agent_dir": _samdir, "order_dir": _td}
+_ur = _tools.update_form(_fx, {"audience": "beginners"})
+ok(_ur.get("ok") is True and _ur.get("changed") == ["audience"]
+   and json.load(open(os.path.join(_td, "form.json"),
+                      encoding="utf-8"))["audience"] == "beginners",
+   "update_form saves what the turn revealed")
+_ur2 = _tools.update_form(_fx, {"audience": "",
+                               "length": "10 minutes"})
+ok(_ur2.get("changed") == ["length"]
+   and _tools._load_form(_td, {})["audience"] == "beginners",
    "a blank update never wipes a filled field")
+_fr = _tools.finalize_and_send(
+    {"producer": "sales_sam", "order_id": "fixture-ord",
+     "agent_dir": _samdir, "order_dir": _td}, {})
+ok(_fr.get("error") == "intake incomplete"
+   and "depth" in _fr.get("missing", []),
+   "finalize refuses an incomplete form without any model call")
+shutil.rmtree(_td, ignore_errors=True)
 ok(intake.form_complete({"audience": "a", "length": "b",
                          "depth": "c", "theme": "d"})
-   and not intake.form_complete(_fm),
+   and not intake.form_complete({"audience": "a"}),
    "completeness is decided by code, not the model")
-_pr = intake.final_request_prompt("ord-9", {"audience": "beginners",
+_pr = _tools.final_request_prompt("ord-9", {"audience": "beginners",
                                             "length": "10 min",
                                             "depth": "key", "theme": "ex"},
                                   "book.pdf", 12)
@@ -436,7 +427,7 @@ ok(_tools._agents_root(
    "recipient check falls back when agent_dir is bogus")
 ok('"agent_dir": agent_dir' in _srv,
    "server-side crew listing passes its agent dir")
-ok("self._json(200, bad)" in _srv and "retry_line" in _srv,
+ok("self._json(200, bad)" in _srv and "CHAT_UNREADABLE" in _srv,
    "a failed chat accept still answers 200 so Sam speaks + retry")
 
 

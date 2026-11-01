@@ -30,11 +30,9 @@
  "title": "Sales representative, frontline",
  "stage": 0,
  "tools": [
-  "read_md_section",
-  "pc_send_source",
-  "pc_set_recipients",
-  "pc_list_source",
-  "pc_read_source",
+  "search_knowledge",
+  "update_form",
+  "finalize_and_send",
   "write_request"
  ],
  "team": "story"
