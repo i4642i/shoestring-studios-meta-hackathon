@@ -33,6 +33,9 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   with why_important and how_to_use. Never re-pick what you picked.
 - Copy every ref and quote verbatim from tool output. Never construct
   a ref by hand, never trim a quote into a new sentence.
+- Keep every quote short: the shortest span that proves the claim
+  (one sentence at most). Short quotes keep the report small and
+  exact.
 - Cite shapes: source passages as <entry>#s<section>/p<para>
   (e.g. ...#s1.2/p5); theory passages as <pick ref>#pN
   (paragraph N, as the pick result shows). Never mix the two.
