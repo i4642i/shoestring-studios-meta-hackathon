@@ -1232,6 +1232,29 @@ def pc_send_source(ctx, args):
     return out
 
 
+def _agents_root(ctx):
+    """Folder holding the agent dirs (each with agent.json).
+
+    ctx agent_dir points at the calling agent; its parent is the
+    agents folder. A server-side call has no agent_dir: resolve
+    against the repo checkout, never the process cwd (the cwd may
+    be the repo root itself, which holds no agent.json files and
+    made crew listing fail with "unknown agents")."""
+    cands = [os.path.dirname(os.path.abspath(
+        (ctx or {}).get("agent_dir", "") or "agents"))]
+    try:
+        cands.append(os.path.join(pc._base(None), "agents"))
+    except Exception:  # noqa: BLE001 - next candidate covers it
+        pass
+    cands.append(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__))))
+    for cand in cands:
+        if os.path.isfile(os.path.join(cand, "sales_sam",
+                                       "agent.json")):
+            return cand
+    return cands[0]
+
+
 @readlog.logged()
 def pc_set_recipients(ctx, args):
     """Grant map/full rows on one entry (merged per agent). The
@@ -1266,10 +1289,7 @@ def pc_set_recipients(ctx, args):
     if pc.row_parts(mine):
         return {"error": "your row is parts-limited; granting the "
                          "whole entry would widen it"}
-    aroot = os.path.dirname(os.path.abspath(ctx.get("agent_dir", "")
-                                             or "agents"))
-    if not os.path.isdir(aroot):
-        aroot = os.path.join(pc._base(None), "agents")
+    aroot = _agents_root(ctx)
     bad = [a for a in maps + fulls
            if not os.path.isfile(os.path.join(aroot, a, "agent.json"))]
     if bad:

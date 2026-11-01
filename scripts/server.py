@@ -2310,20 +2310,20 @@ class Handler(BaseHTTPRequestHandler):
         if code != 200:
             err = (out.get("error") if isinstance(out, dict)
                    else "confirm failed")
-            reply = "Couldn't start: " + err
+            reply = intake.retry_line(err)
             self._chat_append(d, user_text, reply)
             bad = intake.chat_reply_payload(reply, True, [])
             bad["accepted"] = False
-            return self._json(code, bad)
+            return self._json(200, bad)
         code, out = self._finalize_order(oid, d, meta, "in_production")
         if code != 200:
             err = (out.get("error") if isinstance(out, dict)
                    else "finalize failed")
-            reply = "Couldn't start: " + err
+            reply = intake.retry_line(err)
             self._chat_append(d, user_text, reply)
             bad = intake.chat_reply_payload(reply, True, [])
             bad["accepted"] = False
-            return self._json(code, bad)
+            return self._json(200, bad)
         reply = ("Done — the request is written and handed over. "
                  "Parsing your PDF now; progress shows below.")
         self._chat_append(d, user_text, reply)
@@ -2448,7 +2448,8 @@ class Handler(BaseHTTPRequestHandler):
             return (502, {"error": "parse not started: %s" % err})
         try:
             rout = registry.pc_set_recipients(
-                {"producer": "sales_sam", "order_id": oid},
+                {"producer": "sales_sam", "order_id": oid,
+                 "agent_dir": agent_dir},
                 {"full": list(self.SAM_SOURCE_GRANTS["full"]),
                  "map": list(self.SAM_SOURCE_GRANTS["map"]),
                  "ref": pout["ref"]})

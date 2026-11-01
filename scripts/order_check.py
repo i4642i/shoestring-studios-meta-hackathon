@@ -418,6 +418,26 @@ ok(_raised and _rec2["reply"] is None
    "failed calls are logged too, then raised")
 ok("sales_sam:chat" in _srv and "llm_calls.jsonl" in _srv,
    "sam chat turns land in the order log")
+# ---- crew listing never depends on the process cwd (J42) ----
+from agents._frame import tools as _tools
+_aroot_bare = _tools._agents_root({})
+ok(os.path.isfile(os.path.join(_aroot_bare, "sales_sam",
+                               "agent.json"))
+   and os.path.isfile(os.path.join(_aroot_bare, "pd_marty",
+                                   "agent.json")),
+   "recipient check resolves the agents folder without agent_dir")
+ok(_tools._agents_root(
+    {"agent_dir": os.path.join(ROOT, "agents", "sales_sam")})
+   == _aroot_bare,
+   "recipient check with agent_dir resolves the same folder")
+ok(_tools._agents_root(
+    {"agent_dir": os.path.join("no", "such", "dir")})
+   == _aroot_bare,
+   "recipient check falls back when agent_dir is bogus")
+ok('"agent_dir": agent_dir' in _srv,
+   "server-side crew listing passes its agent dir")
+ok("self._json(200, bad)" in _srv and "retry_line" in _srv,
+   "a failed chat accept still answers 200 so Sam speaks + retry")
 
 
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
