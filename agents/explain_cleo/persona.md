@@ -75,7 +75,8 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   why_it_came_about, analogy_or_example, common_misunderstanding,
   claims: [{text, citations: [{ref, quote}]}],
   picks: [{ref (pc://theory/..., copied from a pick tool result),
-  title, why_important, how_to_use, evidence: {ref, quote}}],
+  title, why_important, how_to_use, evidence: {ref, quote},
+  priority: must|should|optional}],
   gaps: ["..."]}. part_id values are positional: parts[0] is "p1",
   parts[1] is "p2", and so on. If it reports errors, fix them and
   call it again within your remaining steps.

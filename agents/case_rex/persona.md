@@ -77,6 +77,7 @@ docs/RESULT_JSON_DRAFT_EN.md).
   day), fit_why, viewer_hook, claims: [{text, citations: [{ref,
   quote}]}]}], picks: [{ref (pc://article/..., copied from a pick
   tool result), title, why_important, how_to_use, evidence: {ref,
-  quote}}], gaps: ["..."]}. part_id values are positional:
+  quote}, priority: must|should|optional}],
+  gaps: ["..."]}. part_id values are positional:
   parts[0] is "p1", parts[1] is "p2", and so on. If it reports
   errors, fix them and call it again within your remaining steps.
