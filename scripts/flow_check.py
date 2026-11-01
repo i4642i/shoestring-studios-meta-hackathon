@@ -1270,6 +1270,32 @@ ok(not rr.get("ok")
            for e in rr.get("errors", [])),
    "string-wrapped render log is parsed, then shape-checked")
 shutil.rmtree(rmdir, ignore_errors=True)
+wdir = tempfile.mkdtemp()
+os.makedirs(os.path.join(wdir, "slides"))
+open(os.path.join(wdir, "slides", "s1c1.png"),
+     "w", encoding="utf-8").write("PNG")
+with open(os.path.join(wdir,
+                       "received.board_vera.slide_draft.json"),
+          "w", encoding="utf-8") as f:
+    json.dump({"sender": "board_vera", "category":
+               "slide_draft", "version": 2,
+               "data": {"cuts": [{"cut_id": "s1c1"}]}}, f)
+wctx = {"run_dir": wdir, "order_id": "o9",
+        "producer": "slide_remy"}
+good = {"cut_id": "s1c1", "slide_file": "slides/s1c1.png",
+        "renders_n": 1, "adjustments": [], "issues": []}
+rw2 = _tools.write_render_log(
+    wctx, {"render_log": {"cuts": [dict(good)]}})
+ok(rw2.get("ok"),
+   "render log with the PNG on disk passes")
+rw3 = _tools.write_render_log(
+    wctx, {"render_log": {"cuts": [dict(
+        good, slide_file="slides/gone.png")]}})
+ok(not rw3.get("ok")
+   and any("missing on disk" in e
+           for e in rw3.get("errors", [])),
+   "rendered status without a PNG fails")
+shutil.rmtree(wdir, ignore_errors=True)
 ok(_runner._exhaust_reason(
     [{"ev": "tool", "errors": ["total_s None != plan 720"]}])
    == "max_steps exhausted (last: total_s None != plan 720)",

@@ -394,8 +394,36 @@ def _resolve_view(ctx, args):
     if not full.startswith(root + os.sep):
         return None, "path must stay inside the repo"
     if not os.path.isfile(full):
+        got = slide_png(ctx, path)
+        if got is not None:
+            return got, ""
         return None, "no such file: %s" % path
     return full, ""
+
+
+def slide_png(ctx, slide_file):
+    """Existing slide PNG for a render_log slide_file: a repo
+    path as given, else the run's slides dirs (clone slides/,
+    then node slides/). None when missing."""
+    sf = slide_file.strip() if isinstance(slide_file, str) else ""
+    if not sf:
+        return None
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(os.path.dirname(here))
+    cands = [sf]
+    rd = (ctx or {}).get("run_dir", "")
+    if rd:
+        base = os.path.basename(sf)
+        cands.append(os.path.join(rd, "slides", base))
+        cands.append(os.path.join(os.path.dirname(
+            os.path.abspath(rd)), "slides", base))
+    for c in cands:
+        full = c if os.path.isabs(c) \
+            else os.path.abspath(os.path.join(root, c))
+        if full.startswith(root + os.sep) \
+                and os.path.isfile(full):
+            return full
+    return None
 
 
 def _stage_view(ctx, tool, cut_id, full):

@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -2255,6 +2256,18 @@ def write_render_log(ctx, args):
     if errors:
         return {"ok": False, "errors": errors +
                 _omitted_hints(ctx, errors)}
+    from . import media as _media
+    for i, cut in enumerate(obj["cuts"]):
+        if not isinstance(cut, dict):
+            continue
+        if cut.get("status", "rendered") != "rendered":
+            continue
+        if _media.slide_png(ctx, cut.get("slide_file")) is None:
+            errors.append("cuts[%d].slide_file %r is missing on "
+                          "disk: render it first" % (i, cut.get(
+                              "slide_file")))
+    if errors:
+        return {"ok": False, "errors": errors}
     return _save_category(ctx, "render_log", obj)
 
 
@@ -2365,6 +2378,23 @@ def _have_remotion():
     return False
 
 
+def _remotion_cmd(out, props, last_frame, sdir):
+    """Render argv: node straight into the Remotion CLI (exact
+    argv, no .cmd re-parsing, so & quotes and unicode survive).
+    Falls back to npx when node or the CLI entry is missing."""
+    args = ["still", "CutSlide", out,
+            "--props=%s" % json.dumps(props),
+            "--public-dir=%s" % sdir,
+            "--frame=%d" % last_frame]
+    cli = os.path.join(REMOTION_DIR, "node_modules", "@remotion",
+                       "cli", "remotion-cli.js")
+    node = shutil.which("node")
+    if node and os.path.isfile(cli):
+        return [node, cli] + args
+    exe = "npx.cmd" if os.name == "nt" else "npx"
+    return [exe, "remotion"] + args
+
+
 def render_slide(ctx, args):
     """Render one cut's slide PNG via the Remotion CutSlide
     composition (last frame of the cut). Max 3 renders per cut per
@@ -2415,11 +2445,7 @@ def render_slide(ctx, args):
                         "tools/setup_video.ps1 to install it"}
     out = os.path.join(sdir, "%s.png" % cut_id)
     last_frame = props["seconds"] * 30 - 1
-    exe = "npx.cmd" if os.name == "nt" else "npx"
-    cmd = [exe, "remotion", "still", "CutSlide", out,
-           "--props=%s" % json.dumps(props),
-           "--public-dir=%s" % sdir,
-           "--frame=%d" % last_frame]
+    cmd = _remotion_cmd(out, props, last_frame, sdir)
     try:
         proc = subprocess.run(cmd, cwd=REMOTION_DIR,
                               capture_output=True, text=True,

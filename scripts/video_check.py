@@ -281,6 +281,25 @@ try:
     ok(r4.get("ok") is False and "3 renders" in
        " ".join(r4.get("errors", [])),
        "fourth render refused")
+    amp = {"title": "Fish & Chips", "seconds": 20}
+    acmd = tools._remotion_cmd("o.png", amp, 599, "pub")
+    parg = next(a for a in acmd if a.startswith("--props="))
+    ok("Fish & Chips" in parg,
+       "ampersand survives in the props arg")
+    ok(acmd[0].lower().endswith("node")
+       or acmd[0].lower().endswith("node.exe")
+       or acmd[1] == "remotion",
+       "render runs node-direct or npx fallback")
+    from agents._frame import media as _media
+    mdir = wdir("slide_remy")
+    mctx = ctx_for(mdir, "slide_remy")
+    os.makedirs(os.path.join(mdir, "slides"), exist_ok=True)
+    open(os.path.join(mdir, "slides", "s9.png"),
+         "w", encoding="utf-8").write("PNG")
+    ok(_media.slide_png(mctx, "slides/s9.png")
+       .endswith(os.path.join("slides", "s9.png"))
+       and _media.slide_png(mctx, "slides/gone.png") is None,
+       "slide lookup hits clone slides, misses honestly")
 
     # ---- v8 validators ----
     ok(validate_style_guide(GUIDE) == [], "style guide accepts")
@@ -550,6 +569,10 @@ try:
        "writer refuses views over budget")
     ldir = wdir("slide_remy2")
     received(ldir, "board_vera", "slide_draft", 2, SLIDE)
+    os.makedirs(os.path.join(ldir, "slides"), exist_ok=True)
+    for _c in ("s1c1", "s1c2"):
+        open(os.path.join(ldir, "slides", _c + ".png"),
+             "w", encoding="utf-8").write("PNG")
     lout = write_render_log(ctx_for(ldir, "slide_remy"),
                             {"render_log": RL})
     ok(lout.get("ok") is True, "remy log saves")
