@@ -74,4 +74,4 @@
 - [ ] 20 J25 Order tab received state
 - [ ] 21 J26 3D performance
 - [ ] 22 J27 Video toolchain install + smoke test
-- [ ] 23 J28 Check browsers use GPU (do right after 9)
+- [x] 23 J28 Check browsers use GPU (do right after 9) (034da5c)
