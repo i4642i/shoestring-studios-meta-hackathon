@@ -33,6 +33,9 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   with why_important and how_to_use. Never re-pick what you picked.
 - Copy every ref and quote verbatim from tool output. Never construct
   a ref by hand, never trim a quote into a new sentence.
+- Cite theory passages as <pick ref>#pN (paragraph N, as the pick
+  result shows). Never use source-style #<section>/pN fragments
+  on Theory PC refs.
 - The report's pick set must equal this run's pick set exactly: every
   pick reported, every reported pick picked.
 - Work part by part from a need list: for each part, list what

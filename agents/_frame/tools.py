@@ -243,6 +243,11 @@ def _check_quote(errors, ref, quote, where):
         passage = pc.open_ref(entry, ref)
     except (ValueError, KeyError) as exc:
         errors.append("%s: cannot open %r (%s)" % (where, ref, exc))
+        if rpc in ("theory", "article"):
+            base = pc.entry_ref(rpc, rid)
+            errors.append("%s: cite %s passages as %s#pN "
+                          "(paragraph N) or %s#g1 (whole text)"
+                          % (where, rpc, base, base))
         return
     if _norm_ws(quote) not in _norm_ws(_verbatim_haystack(passage)):
         errors.append("%s: quote not found verbatim in %r" % (where, ref))
@@ -957,7 +962,10 @@ def _pc_pick(ctx, args, pcname):
     out = {"ref": r["ref"], "doc_id": r["doc_id"],
            "duplicate": r["duplicate"], "title": r["title"],
            "paras": r["paras"], "chars": r["chars"],
-           "supersedes": r["supersedes"]}
+           "supersedes": r["supersedes"],
+           "cite": "cite paragraphs as %s#p1 .. %s#p%d; "
+                   "verify each quote with open_ref before writing"
+                   % (r["ref"], r["ref"], r["paras"])}
     if rec_err:
         out["recipients_error"] = rec_err
     return out
