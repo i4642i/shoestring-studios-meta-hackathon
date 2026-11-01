@@ -352,6 +352,19 @@ def run(agent_dir, run_dir, brief, input_md):
     staged_seen = 0
     retries_left = MAX_JSON_RETRIES
     for step in range(1, agent["bounds"]["max_steps"] + 1):
+        _max = agent["bounds"]["max_steps"]
+        if step == _max:
+            messages.append({
+                "role": "user", "content":
+                "Last step: call %s now with your complete "
+                "object. No more research after this." % writer})
+        elif step >= _max - 2:
+            messages.append({
+                "role": "user", "content":
+                "%d steps left of %d. Stop researching and call "
+                "%s with your complete object now; keep the rest "
+                "for writer fixes only."
+                % (_max - step + 1, _max, writer)})
         oai = [{"type": "function",
                 "function": {"name": n, "description": d, "parameters": s}}
                for n, (_, d, s) in play.items()]

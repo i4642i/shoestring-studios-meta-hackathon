@@ -1,6 +1,6 @@
 {
  "bounds": {
-  "max_steps": 8
+  "max_steps": 12
  },
  "done": [
   "concept states theme, core question, takeaway, intent",
