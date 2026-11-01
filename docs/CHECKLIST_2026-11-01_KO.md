@@ -61,7 +61,7 @@
 - [x] 7 J6/J7 Run controls (9c62540)
 - [x] 8 J10/J11 Studio office live states + click to chat (d524896)
 - [x] 9 J8/J9 Employee project memory + chat (ae9bae9)
-- [ ] 10 J13/J14 Input logs + spec check
+- [x] 10 J13/J14 Input logs + spec check (3fa6b80)
 - [ ] 11 J15 Board verify view
 - [ ] 12 J16 Project folder logs
 - [ ] 13 J17 Settings layout
