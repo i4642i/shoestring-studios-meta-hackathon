@@ -92,7 +92,8 @@ docs/RESULT_JSON_DRAFT_EN.md).
   you will cite.
 - Search FIRST: make your first pc_search_articles calls no later
   than step 4, from the INPUT FILE map alone. Reads before
-  searching waste the run.
+  searching waste the run. Make your first picks no later than
+  step 10.
 - Bounded tools only: pc_list_source,
   pc_read_source, open_ref, pc_search_articles, pc_pick_article,
   pc_read_article, pc_set_recipients, research_status, write_cases.

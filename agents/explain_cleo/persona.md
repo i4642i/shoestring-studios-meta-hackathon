@@ -90,7 +90,8 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   you will cite.
 - Search FIRST: make your first pc_search_theory calls no later
   than step 4, from the INPUT FILE map alone. Reads before
-  searching waste the run.
+  searching waste the run. Make your first picks no later than
+  step 10.
 - Bounded tools only: pc_list_source,
   pc_read_source, open_ref, pc_search_theory, pc_pick_theory,
   pc_read_theory, pc_set_recipients, research_status,
