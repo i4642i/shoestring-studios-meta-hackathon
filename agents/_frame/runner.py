@@ -466,7 +466,21 @@ def run(agent_dir, run_dir, brief, input_md):
             emit({"ev": "run_done", "usage": total})
             return {"ok": True, "events": events, "usage": total}
     emit({"ev": "run_fail", "reason": "max_steps exhausted", "usage": total})
-    return {"ok": False, "events": events, "usage": total}
+    return {"ok": False, "events": events, "usage": total,
+            "reason": _exhaust_reason(events)}
+
+def _exhaust_reason(events):
+    """run_fail reason: the marker plus the last writer errors,
+    so the flow status names the cause instead of 'unknown'."""
+    errs = []
+    for e in events or []:
+        if isinstance(e, dict):
+            for er in (e.get("errors") or []):
+                errs.append(str(er))
+    tail = "; ".join(errs[-2:])
+    base = "max_steps exhausted"
+    return base if not tail else base + " (last: %s)" % tail
+
 
 def _write_ko_summary(agent, run_dir, emit, total):
     """Step mode: one short call asks the model to summarize the

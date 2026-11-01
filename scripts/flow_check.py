@@ -15,6 +15,7 @@ tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import flow, results
 from agents._frame import tools as _tools
 from agents._frame import pc as _pc
+from agents._frame import runner as _runner
 from agents._frame import video as _video
 _video._TRANSCRIBE_FN = lambda p: []  # never live in tests
 
@@ -1181,6 +1182,37 @@ rx = _tools._write_report({"run_dir": covdir4, "order_id": "o9",
 ok(any("invents parts" in e for e in rx.get("errors", [])),
    "invented 9th part rejected")
 shutil.rmtree(covdir4, ignore_errors=True)
+
+
+ashdir = tempfile.mkdtemp()
+with open(os.path.join(ashdir,
+                       "received.pd_marty.structure.json"),
+          "w", encoding="utf-8") as f:
+    json.dump({"sender": "pd_marty", "category": "structure",
+               "version": 3,
+               "data": _struct3([("p1", "1.1 Alpha"),
+                                 ("p2", "1.3 Gamma")], [])}, f)
+ashctx = {"run_dir": ashdir, "order_id": "o9",
+          "producer": "plan_ash"}
+ra = _tools.write_storyboard_draft(
+    ashctx, {"storyboard_draft": json.dumps({"scenes": []})})
+ok(not ra.get("ok")
+   and any("missing: total_s" in e for e in ra.get("errors", [])),
+   "string-wrapped draft is parsed, then shape-checked")
+rb2 = _tools.write_storyboard_draft(
+    ashctx, {"storyboard_draft": "{nope"})
+ok(not rb2.get("ok")
+   and any("not a JSON string" in e for e in rb2.get("errors", [])),
+   "garbage draft string still rejected with guidance")
+shutil.rmtree(ashdir, ignore_errors=True)
+
+
+ok(_runner._exhaust_reason(None) == "max_steps exhausted",
+   "exhaustion reason without events")
+ok(_runner._exhaust_reason(
+    [{"ev": "tool", "errors": ["total_s None != plan 720"]}])
+   == "max_steps exhausted (last: total_s None != plan 720)",
+   "exhaustion reason carries the last writer errors")
 
 
 def boom(agent_dir, run_dir, brief, input_md):

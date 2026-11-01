@@ -43,6 +43,31 @@ and the Penn/Wren handoff lists. Your only output is the
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_read_theory, pc_read_article, pc_list_source,
   pc_read_source, write_storyboard_draft.
-- Finish by calling write_storyboard_draft with the COMPLETE object.
-  If it reports errors, fix them and call it again within your
-  remaining steps.
+- Spend steps like money: read one part's material, then move
+  on. Call write_storyboard_draft as soon as every structure
+  part has >=1 scene -- never keep reading after coverage.
+  Call the writer with at least 4 steps unspent (no later than
+  step 10): fixes need re-reads, and the last steps cannot fit
+  them. Batch independent reads in one block: source, theory
+  and article reads for several scenes can share one step.
+  Never spend one step per scene.
+- Read total_s from the INPUT FILE structure duration plan and
+  copy it exactly (scenes run contiguous 0..total_s). Scene
+  role is hook|explain|case|recap|other; every scene runs at
+  least 10 s. handoff[].to names board_penn, voice_wren
+  and/or slide_remy only. materials[].from is
+  source|theory|article and must match the ref's PC.
+- Copy every ref and quote verbatim from tool output. Never
+  construct a ref by hand, never trim a quote into a new
+  sentence. Cite only passages you opened in this run.
+- Finish with ONE write_storyboard_draft call shaped EXACTLY
+  like this (a real object argument, never a JSON string):
+  {storyboard_draft: {total_s: <int from the duration plan>,
+  scenes: [{n (1-based position), start_s, end_s, part_id,
+  role, viewer_learns, screen_idea, narration_points:
+  [{text, citations: [{ref, quote}]}], materials: [{ref,
+  from, how_used}], handoff: [{ref, to: ["board_penn"
+  and/or "voice_wren" and/or "slide_remy"], why,
+  how_to_use}], next_link}], unused_picks: [{ref,
+  why_not_used}]}. If it reports errors, fix them and call it
+  again within your remaining steps.

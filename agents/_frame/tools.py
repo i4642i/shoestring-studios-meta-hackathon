@@ -527,16 +527,20 @@ def write_storyboard_draft(ctx, args):
     verbatim citations, readable materials, every pick used or
     explained, then the handoff lists are applied."""
     obj = (args or {}).get("storyboard_draft")
+    if isinstance(obj, str):
+        obj = _lenient_json(obj)
     if not isinstance(obj, dict):
         return {"ok": False, "errors": [
-            "call with {storyboard_draft: {...}}"]}
+            "call with {storyboard_draft: {...}} -- pass the "
+            "object itself, not a JSON string"]}
     struct = _received_data(ctx, "structure")
     if not struct:
         return {"ok": False, "errors": [
             "no structure received in this run"]}
     errors = validate_storyboard_draft(obj, struct)
     if errors:
-        return {"ok": False, "errors": errors}
+        return {"ok": False, "errors": errors +
+                _omitted_hints(ctx, errors)}
     producer = (ctx or {}).get("producer", "")
     order_id = (ctx or {}).get("order_id", "")
     for i, sc in enumerate(obj["scenes"]):
