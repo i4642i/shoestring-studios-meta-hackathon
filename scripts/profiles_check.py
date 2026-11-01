@@ -39,7 +39,7 @@ def agents():
 
 def main():
     eids = agents()
-    ok(len(eids) >= 13, "%d employees found" % len(eids))
+    ok(len(eids) == 12, "%d employees found" % len(eids))
 
     for eid in eids:
         ad = os.path.join(ROOT, "agents", eid)
@@ -91,10 +91,23 @@ def main():
     ok("concept to Cleo (explain_cleo)" in marty,
        "marty hands concept to cleo")
     ok("Source PC — read" in marty, "marty pc line")
-    iris = profiles.build_profile(
-        os.path.join(ROOT, "agents", "voice_iris"), flow, names)
-    ok("Not in the current flow." in iris, "iris flow note")
-    ok("Team: Unassigned" in iris, "iris team fallback")
+    # No teamless employee ships anymore; probe the fallbacks
+    # with a temp folder (id absent from the flow, no team key).
+    stray = tempfile.mkdtemp(prefix="noprof_")
+    try:
+        with open(os.path.join(stray, "agent.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"id": "tmp24_stray", "name": "Stray",
+                       "title": "Tester", "tools": []}, f)
+        with open(os.path.join(stray, "persona.md"), "w",
+                  encoding="utf-8") as f:
+            f.write("# Stray\n\nTest persona.\n")
+        built = profiles.build_profile(stray, flow, names)
+        ok("Not in the current flow." in built,
+           "teamless flow note")
+        ok("Team: Unassigned" in built, "teamless team fallback")
+    finally:
+        shutil.rmtree(stray, ignore_errors=True)
 
     ok(profiles.refusal_for("building")
        == "My memory of this project is still building.",

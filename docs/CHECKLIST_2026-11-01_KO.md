@@ -75,5 +75,6 @@
 - [ ] 21 J26 3D performance
 - [ ] 22 J27 Video toolchain install + smoke test
 - [x] 23 J28 Check browsers use GPU (do right after 9) (034da5c)
+- [x] 24 J29 Delete employees not in the workflow (voice_iris)
   office_live_check: gpu 32.4 s vs software 93.2 s, both ALL PASS
   flow_headless via scripts/_browser.dump_dom_args (fbde91c)

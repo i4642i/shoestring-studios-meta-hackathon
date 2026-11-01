@@ -35,7 +35,7 @@
 - `created_at`: local time `YYYY-MM-DDTHH:MM:SS`.
 - `status`: `unverified` (just written) → `checked` (payload passed
   its category schema, code check) → `reviewed` (a reviewer agent —
-  Vera for storyboard, Iris for narration — compared it with the
+  Vera for storyboard — compared it with the
   sources via `open_ref` and passed it: every citation passes the
   verbatim check and no open fix remains; otherwise it stays
   `checked` and lists the problems) → `verified` (the developer
@@ -294,7 +294,7 @@ the new categories follow once the category set is approved.
 | 7 | Photo researcher (Pia) | `storyboard` + `style_guide` + figures | `photo_picks` (§16) |
 | 7 | Image generator (Gene) | `storyboard` + `style_guide` | `gen_picks` (§16) |
 | 7 | Animation planner (Max) | `storyboard` + `style_guide` + checked tables | `anim_picks` (§16) |
-| 7 | Narration reviewer (Iris, draft) | `narration`, `storyboard` + PC rows via listing | `narration_checked` |
+| 7 | Narration reviewer (deleted 2026-11-01, not in the flow) | — | `narration_checked` (not used) |
 | 8 | Slide planner (Vera) | `narration` + `storyboard` + `style_guide` + picks | `slide_draft` (§16) |
 | 9 | Slide builder (Remy) | `slide_draft` + `style_guide` + `narration` | `render_log` (§16) |
 | code | Video production (program step) | `narration` + `render_log` + table inputs | `video` + `storyboard_table` (§16) |
@@ -315,7 +315,7 @@ New category payloads (field sketches, schemas later):
   materials.
 - `narration` (Wren): full schema in §5.5. Per scene: lines with
   citations, word count, estimated seconds that fit the scene.
-- `narration_checked`: `{pages: [...same shape, corrected...],
+- `narration_checked`: NOT USED (no reviewer in the flow). Old shape: `{pages: [...same shape, corrected...],
   fixes: [{page, was, now, why}]}` — lines fixed against source and
   materials.
 
@@ -328,20 +328,20 @@ Notes on the stage table:
   through the concept, length through the time plan.
 - Penn and Wren (stages 4, 6) both consume Ash's
   `storyboard_draft`, in parallel: Penn writes scene composition,
-  Wren writes scene lines. Iris (stage 7) also reads Penn's
-  `storyboard`, so `notes_for_wren` and the layout guide narration
-  review.
-- Vera/Iris (drafts, not in the default flow yet) receive PC
+  Wren writes scene lines. (Narration review dropped with Iris,
+  deleted 2026-11-01, not in the flow; `notes_for_wren` now guides
+  Wren's revisions only.)
+- Vera receives PC
   rows through listings like everyone else; the old `source` line
   is retired with all `source` lines (§15). Full material text
   stays in the PCs, read through PC tools.
-- `narration_checked` is the last agent result; scene/video assembly
-  from it is the post-processing page (D6). The page also writes a
-  result JSON in the same format (Q5, schema below), so every video
-  is found and traced like any other result.
+- `narration_checked` is not used (no reviewer in the flow);
+  assembly from `narration` + `render_log` (§16) is the post-processing
+  page (D6). The page also writes a result JSON in the same format
+  (Q5, schema below), so every video is found and traced.
 
 `video` category `data` schema (producer `postprocess`, a code step,
-not an agent; consumes `narration_checked`):
+not an agent; consumes `narration` + `render_log`):
 
 ```json
 {
@@ -400,7 +400,7 @@ not an agent; consumes `narration_checked`):
 ```
 
 - `file.path` follows `output/<order_id>/<run_id>/video.mp4`;
-  `built_from` is the run_id of the `narration_checked` result the
+  `built_from` is the run_id of the `narration` result the
   video was built from.
 - Every spoken line links to its sources via `citations`, carried
   over from the narration — this feeds the claim-to-source report.
@@ -795,7 +795,7 @@ the handed parts; every ref must be listed for Penn.
   pick, §8.9); `how_used` says what it becomes on screen.
 - `notes_for_wren`: what the narration must hit in this scene.
   Wren works in parallel from the draft, so these notes are read
-  by Iris at narration review (and by Wren's later revisions).
+  by Wren's later revisions (narration review dropped with Iris).
 
 ## 5.5 Wren (`voice_wren`): `narration` v1
 
@@ -864,7 +864,7 @@ every ref must be listed for Wren.
   never exceeds the scene's seconds — the lines must fit.
 - Every line with a digit carries ≥1 citation (writer-enforced);
   every citation passes the verbatim check (§9). Lines with facts
-  but no numbers are judged by Iris: every fact or number ends up
+  but no numbers carry citations too: every fact or number ends up
   cited.
 
 ## 6. Rules this draft follows (from D1–D9)

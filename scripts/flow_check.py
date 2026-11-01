@@ -33,9 +33,9 @@ def msgs(errs):
 
 # ---- catalog / load ----
 cat = flow.load_catalog()
-ok(len(cat["agents"]) >= 13, "catalog lists 13 agents")
+ok(len(cat["agents"]) == 12, "catalog lists 12 agents")
 drafts = sorted(a["id"] for a in cat["agents"] if a.get("draft"))
-ok(drafts == ["voice_iris"], "1 draft flagged")
+ok(drafts == [], "no drafts left")
 ok("sales_sam" in [a["id"] for a in cat["agents"] if a.get("flow")],
    "workers declare flow I/O")
 ok(sorted(c["name"] for c in cat["categories"])
@@ -242,14 +242,26 @@ cyc = {"nodes": [{"id": "sales_sam"},
        "positions": {}}
 ok(any(e["message"].startswith("cycle:")
        for e in flow.validate_flow(cyc)), "cycle caught")
-bad = json.loads(json.dumps(dflt))
-bad["nodes"].append({"id": "voice_iris"})
-bad["lines"].append({"id": "ld", "from": "sales_sam", "to": "voice_iris",
-                      "categories": ["request"]})
-errs = flow.validate_flow(bad)
-ok(any("is a draft" in e["message"] for e in errs)
-   and any(e.get("node") == "voice_iris" for e in errs),
-   "connected draft rejected")
+# No drafts ship anymore; probe the rule with a temp draft folder.
+# Underscore dirs stay out of the catalog, so nothing else sees it.
+probe = os.path.join(ROOT, "agents", "_draft_probe")
+os.makedirs(probe, exist_ok=True)
+with open(os.path.join(probe, "agent.json"), "w",
+          encoding="utf-8") as f:
+    json.dump({"id": "_draft_probe", "name": "Probe",
+               "tools": ["read_md_section"]}, f)
+try:
+    bad = json.loads(json.dumps(dflt))
+    bad["nodes"].append({"id": "_draft_probe"})
+    bad["lines"].append({"id": "ld", "from": "sales_sam",
+                          "to": "_draft_probe",
+                          "categories": ["request"]})
+    errs = flow.validate_flow(bad)
+    ok(any("is a draft" in e["message"] for e in errs)
+       and any(e.get("node") == "_draft_probe" for e in errs),
+       "connected draft rejected")
+finally:
+    shutil.rmtree(probe, ignore_errors=True)
 old = {"nodes": [{"id": "order"}, {"id": "sales_sam"},
                  {"id": "final"}],
        "lines": [{"id": "l1", "from": "order", "to": "sales_sam",

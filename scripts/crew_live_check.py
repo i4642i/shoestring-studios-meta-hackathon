@@ -2,15 +2,17 @@
 
 Starts scripts/server.py on port 8765 (never 8000), drives headless
 Edge over CDP (1920x1080 then 390x844), clicks the Crew nav item, and
-asserts: 13 employee cards, 13 non-empty portraits (one shared
+asserts: 12 employee cards, 12 non-empty portraits (one shared
 offscreen renderer, so no canvas elements inside the roster), the 88px
-square layout (64px at 390px), team sections (story/video/none, sorted
-by stage then id, team-colour stripes), the required Team select on
-Add employee, zero console errors. Creates a temp video employee via
-the API, checks it lands in the Video section and in the office (desk
-sharing is reported), edits its team, then deletes it. Saves
-runs/crew_1920.png, runs/crew_390.png, runs/crew_square_1920.png,
-runs/crew_teams_1920.png and runs/crew_teams_390.png, then ALWAYS
+square layout (64px at 390px), team sections (story/video, sorted
+by stage then id, team-colour stripes; the no-team section shows only
+when non-empty), every roster id in the default flow, the required
+Team select on Add employee, zero console errors. Creates a temp
+video employee via the API, checks it lands in the Video section and
+in the office (desk sharing is reported), edits its team, then
+deletes it. Saves runs/crew_1920.png, runs/crew_390.png,
+runs/crew_square_1920.png, runs/crew_teams_1920.png,
+runs/crew_teams_390.png and runs/crew_12_1920.png, then ALWAYS
 stops the server + Edge (try/finally). Stdlib only.
 """
 import _browser
@@ -36,6 +38,7 @@ PNG390 = os.path.join(RUNS, "crew_390.png")
 PNGSQUARE = os.path.join(RUNS, "crew_square_1920.png")
 PNGTEAMS1920 = os.path.join(RUNS, "crew_teams_1920.png")
 PNGTEAMS390 = os.path.join(RUNS, "crew_teams_390.png")
+PNG12 = os.path.join(RUNS, "crew_12_1920.png")
 TMP_ID = "tmp24_vid"
 SERVER_LOG = os.path.join(RUNS, "crew_live_server.log")
 
@@ -379,18 +382,18 @@ def main():
         js_eval(ws, "document.querySelector"
                     "('nav button[data-p=crew]').click()")
         ok(wait_for(ws, "document.querySelectorAll("
-                        "'#roster .idcard').length === 13",
+                        "'#roster .idcard').length === 12",
                     timeout=30),
-           "13 employee cards")
+           "12 employee cards")
         ok(wait_for(ws, "Array.from(document.querySelectorAll("
                         "'#roster .idpic img')).filter(i => "
-                        "(i.src || '').length > 1000).length === 13",
+                        "(i.src || '').length > 1000).length === 12",
                     timeout=90),
-           "13 non-empty portraits")
+           "12 non-empty portraits")
         out = js_eval(ws, PROBE_JS)
-        ok(out.get("cards") == 13, "13 cards (got %s)"
+        ok(out.get("cards") == 12, "12 cards (got %s)"
            % out.get("cards"))
-        ok(out.get("full") == 13, "13 portraits rendered (got %s)"
+        ok(out.get("full") == 12, "12 portraits rendered (got %s)"
            % out.get("full"))
         ok(out.get("canvases") == 0,
            "no canvas per card (shared renderer)")
@@ -408,9 +411,9 @@ def main():
            "graph line gone (%s)" % out.get("graph"))
         teams = js_eval(ws, TEAMS_JS)
         ok(teams.get("heads") == ["STORYBOARD TEAM (7)",
-                                  "VIDEO TEAM (5)",
-                                  "NO TEAM (1)"],
-           "sections in order with counts (%s)"
+                                  "VIDEO TEAM (5)"],
+           "sections in order with counts, no empty "
+           "no-team section (%s)"
            % teams.get("heads"))
         grids = {g["team"]: g for g in teams.get("grids", [])}
         ok(grids.get("story", {}).get("ids")
@@ -423,11 +426,19 @@ def main():
                "board_vera", "slide_remy"],
            "video sorted by stage then id (%s)"
            % grids.get("video", {}).get("ids"))
-        ok(grids.get("none", {}).get("ids") == ["voice_iris"],
-           "no-team holds only voice_iris (%s)"
-           % grids.get("none", {}).get("ids"))
-        ok(teams.get("note") == "Not in the current flow.",
-           "no-team note shown (%r)" % teams.get("note"))
+        ok("none" not in grids and teams.get("note") == "",
+           "no-team section hidden when empty")
+        with open(os.path.join(ROOT, "data", "flows",
+                               "default.json"),
+                  encoding="utf-8") as f:
+            flow_ids = {n["id"] for n in
+                        json.load(f).get("nodes", [])}
+        roster_ids = [i for g in grids.values()
+                      for i in g.get("ids", [])]
+        ok(len(roster_ids) == 12
+           and all(i in flow_ids for i in roster_ids),
+           "every roster id is in the default flow (%s)"
+           % sorted(set(roster_ids) - flow_ids))
         ok(grids.get("story", {}).get("stripe")
            == "rgb(0, 100, 224)"
            and grids.get("video", {}).get("stripe")
@@ -467,6 +478,8 @@ def main():
             f.write(base64.b64decode(data))
         with open(PNGTEAMS1920, "wb") as f:
             f.write(base64.b64decode(data))
+        with open(PNG12, "wb") as f:
+            f.write(base64.b64decode(data))
         ok(os.path.isfile(PNG1920)
            and os.path.getsize(PNG1920) > 1000,
            "screenshot saved (%s)" % PNG1920)
@@ -476,6 +489,9 @@ def main():
         ok(os.path.isfile(PNGTEAMS1920)
            and os.path.getsize(PNGTEAMS1920) > 1000,
            "screenshot saved (%s)" % PNGTEAMS1920)
+        ok(os.path.isfile(PNG12)
+           and os.path.getsize(PNG12) > 1000,
+           "screenshot saved (%s)" % PNG12)
         ws.call("Emulation.setDeviceMetricsOverride",
                 {"width": 390, "height": 844,
                  "deviceScaleFactor": 1, "mobile": False})
@@ -484,7 +500,7 @@ def main():
         ok(out2.get("picW") == 64,
            "390px: portrait stays 64px (got %s)"
            % out2.get("picW"))
-        ok(out2.get("full") == 13, "390px: portraits kept")
+        ok(out2.get("full") == 12, "390px: portraits kept")
         data = ws.call("Page.captureScreenshot",
                        {"format": "png"})["data"]
         with open(PNG390, "wb") as f:
@@ -527,9 +543,9 @@ def main():
             js_eval(ws, "document.querySelector"
                         "('nav button[data-p=crew]').click()")
             ok(wait_for(ws, "document.querySelectorAll("
-                            "'#roster .idcard').length === 14",
+                            "'#roster .idcard').length === 13",
                         timeout=30),
-               "14 cards with the temp employee")
+               "13 cards with the temp employee")
             teams2 = js_eval(ws, TEAMS_JS)
             grids2 = {g["team"]: g
                       for g in teams2.get("grids", [])}
