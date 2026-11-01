@@ -1165,6 +1165,24 @@ ok(any("non-empty why" in e
    "skipped without reason rejected")
 
 
+covdir4 = tempfile.mkdtemp()
+with open(os.path.join(covdir4, "received.pd_marty.structure.json"),
+          "w", encoding="utf-8") as f:
+    json.dump({"sender": "pd_marty", "category": "structure",
+                "version": 2,
+                "data": {"parts": [{"id": "p%d" % (i + 1)}
+                                 for i in range(8)],
+                         "links": []}}, f)
+nine = {"cases": {"parts": [_cov_case("p%d" % (i + 1))
+                              for i in range(9)]}}
+rx = _tools._write_report({"run_dir": covdir4, "order_id": "o9",
+                             "producer": "case_rex"}, nine,
+                          "cases", _tools.validate_cases)
+ok(any("invents parts" in e for e in rx.get("errors", [])),
+   "invented 9th part rejected")
+shutil.rmtree(covdir4, ignore_errors=True)
+
+
 def boom(agent_dir, run_dir, brief, input_md):
     return {"ok": False, "error": "kaput"}
 

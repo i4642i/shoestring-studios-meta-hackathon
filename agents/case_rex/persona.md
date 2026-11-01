@@ -26,6 +26,7 @@ docs/RESULT_JSON_DRAFT_EN.md).
   every claim needs a citation whose quote appears verbatim in the
   passage. Every case names a real date.
 - Attach >=1 case to every part id from the structure map, in order.
+  Write exactly those parts: no fewer, no more.
 - Say why each case fits its part and Marty's concept; a case that
   fits nowhere is cut, however good the story.
 - Search wide, store only picks: search hits stay in the run log.

@@ -729,6 +729,10 @@ def _coverage_errors(ctx, category, obj):
     got = [p.get("part_id") for p in obj.get("parts", [])
            if isinstance(p, dict)]
     missing = [i for i in want if i not in got]
+    extra = [g for g in got if g not in want]
+    if extra:
+        return ["report invents parts not in the structure: %s (write exactly %s, no fewer, no more)"
+                % (",".join(extra), ",".join(want))]
     if not missing:
         return []
     return ["structure has parts %s but the report covers %s: cover "
