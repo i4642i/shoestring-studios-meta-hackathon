@@ -400,7 +400,8 @@ try:
     sres = results.load_result(
         os.path.join(run_dir, "part_split", "result.json"))
     ok(set(sres["categories"])
-       == {"split_plan", "narration", "storyboard"}
+       == {"split_plan", "narration", "storyboard",
+           "style_guide"}
        and sres["status"] == "checked",
        "part_split result carries plan + shared inputs")
     ok(any("source" in g for g in
