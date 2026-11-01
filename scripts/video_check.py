@@ -167,6 +167,9 @@ ok(asm["total_s"] == 40.0 and len(asm["segments"]) == 2
    and asm["ffmpeg_cmd"][-1] == "video.mp4"
    and "concat=n=2:v=1:a=0[v]" in " ".join(asm["ffmpeg_cmd"]),
    "assembly plan joins in order with one ffmpeg command")
+ok("-shortest" not in asm["ffmpeg_cmd"]
+   and asm["ffmpeg_cmd"][-2] == "-t",
+   "assembly keeps the full slide length")
 ok(asm["srt"] == srt, "assembly carries the same subtitles")
 recs, rtot = video.build_cut_records(
     NARR, {"s1c1": "a.png"}, {"s1c1": "a.wav", "s1c2": "b.wav"},

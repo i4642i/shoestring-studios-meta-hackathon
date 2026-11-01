@@ -1759,6 +1759,13 @@ class Handler(BaseHTTPRequestHandler):
                    "seconds": round(time.time() - t0, 1),
                    "error": out.get("error", "")}
             mp = os.path.join(vdir, "video.mp4")
+            raw_mp = os.path.join(run_dir, "video.mp4")
+            if rec["ok"] and not os.path.isfile(mp) \
+                    and os.path.isfile(raw_mp):
+                try:
+                    os.replace(raw_mp, mp)
+                except OSError:
+                    pass
             if rec["ok"] and os.path.isfile(mp):
                 rec["bytes"] = os.path.getsize(mp)
                 try:

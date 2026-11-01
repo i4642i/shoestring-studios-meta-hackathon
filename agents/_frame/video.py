@@ -228,7 +228,8 @@ def build_assembly(narration, slide_files, audio_files,
                 "%sconcat=n=%d:v=0:a=1[a]" % (vcat, nseg, acat, nseg))
         cmd += ["-filter_complex", filt, "-map", "[v]", "-map",
                 "[a]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                "-c:a", "aac", "-shortest", out_name + ".mp4"]
+                "-c:a", "aac", "-t", str(total),
+                out_name + ".mp4"]
     return {"segments": segments, "srt": build_srt(narration),
             "ffmpeg_cmd": cmd, "total_s": total}
 
