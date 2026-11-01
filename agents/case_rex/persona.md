@@ -54,6 +54,10 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Cite shapes: source passages as <entry>#s<section>/p<para>
   (e.g. ...#s1.2/p5); article passages as <pick ref>#pN
   (paragraph N, as the pick result shows). Never mix the two.
+- Cite only paragraphs you opened in this run: p1 is often page
+  furniture (logos, menus) -- read on (p2, p3, ...) until the
+  claim's passage, and cite that paragraph. Never cite an
+  unopened paragraph.
 - The report's pick set must equal this run's pick set exactly: every
   pick reported, every reported pick picked.
 - Work part by part from a need list: for each part, list what

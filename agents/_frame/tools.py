@@ -972,6 +972,13 @@ def _pc_pick(ctx, args, pcname):
            "cite": "cite paragraphs as %s#p1 .. %s#p%d; "
                    "verify each quote with open_ref before writing"
                    % (r["ref"], r["ref"], r["paras"])}
+    try:
+        pent = pc.load_entry_by_ref(r["ref"])
+        p1t = (pent.get("paragraphs") or [{}])[0].get("text", "")
+        tail = "..." if len(p1t) > 200 else ""
+        out["p1_start"] = "p1 begins: " + p1t[:200] + tail
+    except (OSError, ValueError, KeyError):
+        pass
     if rec_err:
         out["recipients_error"] = rec_err
     return out
