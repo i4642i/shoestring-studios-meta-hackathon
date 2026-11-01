@@ -290,6 +290,9 @@ try:
        or acmd[0].lower().endswith("node.exe")
        or acmd[1] == "remotion",
        "render runs node-direct or npx fallback")
+    fe = video.ffmpeg_exe()
+    ok(isinstance(fe, str) and os.path.isfile(fe),
+       "ffmpeg resolves to a real binary")
     from agents._frame import media as _media
     mdir = wdir("slide_remy")
     mctx = ctx_for(mdir, "slide_remy")

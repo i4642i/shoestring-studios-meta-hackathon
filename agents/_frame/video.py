@@ -233,17 +233,34 @@ def build_assembly(narration, slide_files, audio_files,
             "ffmpeg_cmd": cmd, "total_s": total}
 
 
-def run_ffmpeg(cmd, timeout_s=120):
+def ffmpeg_exe():
+    """ffmpeg binary: the Remotion compositor build first (ships
+    with the repo toolchain), else PATH ffmpeg, else None."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(os.path.dirname(here))
+    bundled = os.path.join(root, "video", "remotion",
+                           "node_modules", "@remotion",
+                           "compositor-win32-x64-msvc",
+                           "ffmpeg.exe")
+    if os.path.isfile(bundled):
+        return bundled
+    return shutil.which("ffmpeg")
+
+
+def run_ffmpeg(cmd, timeout_s=120, cwd=None):
     """Run an ffmpeg command. Returns {ok, ...}; ok False with a
     clear reason when ffmpeg is missing or the run fails."""
-    if not shutil.which("ffmpeg"):
+    exe = ffmpeg_exe()
+    if not exe:
         return {"ok": False,
-                "error": "ffmpeg not on PATH (fallback: install "
-                         "ffmpeg or render via Remotion)"}
+                "error": "no ffmpeg: install ffmpeg or run "
+                         "tools/setup_video.ps1"}
+    argv = [exe] + list(cmd[1:]) if cmd and cmd[0] == "ffmpeg" \
+        else list(cmd)
     try:
         done = subprocess.run(
-            cmd, capture_output=True, text=True,
-            timeout=timeout_s)
+            argv, capture_output=True, text=True,
+            timeout=timeout_s, cwd=cwd)
     except (OSError, subprocess.SubprocessError) as exc:
         return {"ok": False, "error": "ffmpeg failed: %s" % exc}
     if done.returncode != 0:

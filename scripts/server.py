@@ -31,6 +31,7 @@ from agents._frame import memory as memstore  # noqa: E402
 from agents._frame import graph  # noqa: E402
 from agents._frame import pdfingest  # noqa: E402
 from agents._frame import runner  # noqa: E402
+from agents._frame import video as _video  # noqa: E402
 from agents._frame import tools as registry  # noqa: E402
 import validate_agent  # noqa: E402
 import intake  # noqa: E402
@@ -334,6 +335,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 5 \
                 and parts[2] == "runs" and parts[4] == "control":
             return self._api_flow_control(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "assemble":
+            return self._api_flow_assemble(parts[3])
         if parts[:2] == ["api", "flows"] and len(parts) == 6 \
                 and parts[2] == "runs" and parts[4] == "memory":
             return self._api_run_memory_retry(parts[3], parts[5])
@@ -1728,6 +1732,56 @@ class Handler(BaseHTTPRequestHandler):
                       "on": body["pause_each_stage"], "by": "owner"})
         return self._json(200, {"ok": True, "run_id": run_id,
                                 "control": ctl})
+
+    def _api_flow_assemble(self, run_id):
+        """Run the recorded ffmpeg plan into video.mp4 (thread;
+        poll assemble.log in the video_production folder)."""
+        if not self._run_id_ok(run_id):
+            return self._json(404, {"error": "no such run"})
+        run_dir = os.path.join(flows.RUNS_DIR, run_id)
+        vdir = os.path.join(run_dir, "video_production")
+        aplan = os.path.join(vdir, "assembly.json")
+        if not os.path.isfile(aplan):
+            return self._json(404, {"error": "no assembly yet"})
+        try:
+            with open(aplan, encoding="utf-8") as f:
+                cmd = json.load(f).get("ffmpeg_cmd", [])
+        except ValueError:
+            return self._json(400, {"error": "bad assembly"})
+        if not cmd:
+            return self._json(400, {"error": "empty plan"})
+
+        def _work():
+            t0 = time.time()
+            out = _video.run_ffmpeg(cmd, timeout_s=900,
+                                    cwd=run_dir)
+            rec = {"ok": bool(out.get("ok")),
+                   "seconds": round(time.time() - t0, 1),
+                   "error": out.get("error", "")}
+            mp = os.path.join(vdir, "video.mp4")
+            if rec["ok"] and os.path.isfile(mp):
+                rec["bytes"] = os.path.getsize(mp)
+                try:
+                    with open(os.path.join(
+                            vdir, "result.json"),
+                            encoding="utf-8") as f:
+                        res = json.load(f)
+                    res["categories"]["video"]["data"]["file"][
+                        "size_bytes"] = rec["bytes"]
+                    with open(os.path.join(
+                            vdir, "result.json"),
+                            "w", encoding="utf-8") as f:
+                        json.dump(res, f, ensure_ascii=False,
+                                  indent=1)
+                except (OSError, ValueError, KeyError):
+                    pass
+            with open(os.path.join(vdir, "assemble.log"),
+                      "w", encoding="utf-8") as f:
+                json.dump(rec, f, ensure_ascii=False, indent=1)
+
+        threading.Thread(target=_work, daemon=True).start()
+        return self._json(200, {"started": True,
+                               "run_id": run_id})
 
     def _api_flow_board(self, run_id):
         if not self._run_id_ok(run_id):
