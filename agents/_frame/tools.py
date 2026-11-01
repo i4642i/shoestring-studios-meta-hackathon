@@ -401,8 +401,15 @@ def _omitted_hints(ctx, errors):
 
 def _write_report(ctx, args, category, validator):
     obj = args.get(category)
+    if isinstance(obj, str):
+        try:
+            obj = json.loads(obj)
+        except ValueError:
+            obj = None
     if not isinstance(obj, dict):
-        return {"ok": False, "errors": ["call with {%s: {...}}" % category]}
+        return {"ok": False,
+                "errors": ["call with {%s: {...}} -- pass the object "
+                           "itself, not a JSON string" % category]}
     errors = validator(obj)
     if errors:
         return {"ok": False,

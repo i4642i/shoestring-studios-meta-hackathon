@@ -1041,6 +1041,30 @@ ok(_tools._nearest_para_hint(
    "hint stays silent on invented quotes")
 
 
+covdir2 = tempfile.mkdtemp()
+with open(os.path.join(covdir2, "received.pd_marty.structure.json"),
+          "w", encoding="utf-8") as f:
+    json.dump({"sender": "pd_marty", "category": "structure",
+                "version": 2,
+                "data": {"parts": [{"id": "p%d" % (i + 1)}
+                                 for i in range(8)],
+                         "links": []}}, f)
+ctxs = {"run_dir": covdir2, "order_id": "o9",
+        "producer": "case_rex"}
+four = {"cases": {"parts": [_cov_case("p%d" % (i + 1))
+                             for i in range(4)]}}
+rs = _tools._write_report(ctxs, {"cases": json.dumps(four["cases"])},
+                          "cases", _tools.validate_cases)
+ok(not rs.get("ok") and any("p5" in e for e in rs.get("errors", [])),
+   "string-wrapped object is parsed, then coverage-checked")
+rb = _tools._write_report(ctxs, {"cases": "{nope"},
+                          "cases", _tools.validate_cases)
+ok(not rb.get("ok") and any("not a JSON string" in e
+                            for e in rb.get("errors", [])),
+   "garbage string still rejected with guidance")
+shutil.rmtree(covdir2, ignore_errors=True)
+
+
 def boom(agent_dir, run_dir, brief, input_md):
     return {"ok": False, "error": "kaput"}
 
