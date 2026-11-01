@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import parts
 from . import pc
+from . import projlog
 from . import results
 
 FLOW_SETTINGS = ("parallel_parts", "openverse_per_min")
@@ -1079,6 +1080,11 @@ def _store_sam_result(order_id, adir):
         with open(os.path.join(odir, "report.md"), "w",
                   encoding="utf-8") as f:
             f.write(rep)
+        projlog.log_event(order_id, "sam", "report",
+                          "request report saved",
+                          node="sales_sam",
+                          file="orders/%s/report.md" % order_id)
+        projlog.do_refresh(order_id)
     except (OSError, ValueError):
         pass
 
@@ -1141,6 +1147,7 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
             events.append(ev)
             with open(events_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+            projlog.mirror_run_event(order_id, run_id, ev)
 
     completed = []
 
@@ -1667,6 +1674,38 @@ def log_run_event(run_dir, ev):
     with open(os.path.join(run_dir, "events.jsonl"), "a",
               encoding="utf-8") as f:
         f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+    projlog.mirror_owner_event(os.path.basename(run_dir), ev)
+
+
+def _log_owner_action(run_id, ev, node="", summary="",
+                      runs_root=None):
+    """Best-effort owner line in the project timeline."""
+    try:
+        oid = projlog.order_of_run(run_id, runs_root)
+        if not oid:
+            return
+        file = ""
+        if ev == "approve" and node:
+            base, no = projlog.split_clone(node)
+            if base:
+                file = "runs/%s/%s/result.json" % (
+                    run_id, base) if no is None else \
+                    "runs/%s/%s/p%d/result.json" % (
+                        run_id, base, no)
+        projlog.log_owner(oid, run_id, ev, node, None,
+                          summary, file)
+    except (OSError, ValueError):
+        pass
+
+
+def _refresh_order(run_id, runs_root=None):
+    """Rebuild one order's index + TIMELINE.md (best effort)."""
+    try:
+        oid = projlog.order_of_run(run_id, runs_root)
+        if oid:
+            projlog.do_refresh(oid)
+    except (OSError, ValueError):
+        pass
 
 
 def run_state(run_id, runs_root=None, live=None):
@@ -1856,6 +1895,7 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
             events.append(ev)
             with open(events_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+            projlog.mirror_run_event(order_id, run_id, ev)
 
     def fail(msg):
         st = _read_step_status(run_dir)
@@ -2067,6 +2107,8 @@ def approve_node(run_id, node, runs_root=None):
             lambda: _memory.collect_agent_docs(run_dir, base,
                                                None),
             runs_root=runs_root)
+    _log_owner_action(run_id, "approve", node,
+                        runs_root=runs_root)
     return {"ok": True, "run_id": run_id, "approved": approved}
 
 
@@ -2081,6 +2123,8 @@ def stop_run(run_id, node=None, runs_root=None):
     st.update({"state": "stopped", "stopped": node or st.get("last"),
                "approved": st.get("approved") or []})
     _write_json(_step_status_path(run_dir), st)
+    _log_owner_action(run_id, "stop", node or "",
+                      runs_root=runs_root)
     return {"ok": True, "run_id": run_id, "state": "stopped"}
 
 
@@ -2142,6 +2186,10 @@ def invalidate_node(run_id, node, runs_root=None):
                           if n not in gone]
         st["state"] = "step_paused"
         _write_json(_step_status_path(run_dir), st)
+        _log_owner_action(run_id, "rerun", node,
+                          "removed %d stages" % len(gone),
+                          runs_root=runs_root)
+        _refresh_order(run_id, runs_root)
         return {"ok": True, "run_id": run_id, "removed": gone}
     gone = []
     for nid in sorted(_downstream(flow, node)):
@@ -2154,6 +2202,10 @@ def invalidate_node(run_id, node, runs_root=None):
                       if n not in gone]
     st["state"] = "step_paused"
     _write_json(_step_status_path(run_dir), st)
+    _log_owner_action(run_id, "rerun", node,
+                      "removed %d stages" % len(gone),
+                      runs_root=runs_root)
+    _refresh_order(run_id, runs_root)
     return {"ok": True, "run_id": run_id, "removed": gone}
 
 

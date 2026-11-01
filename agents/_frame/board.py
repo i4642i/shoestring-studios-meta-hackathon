@@ -603,6 +603,7 @@ def build_board(run_id, runs_root=None, pc_root=None, running=False):
     guide = _cat_data(cats["board_penn"], "style_guide") or None
     return {"ok": True, "run_id": run_id, "run_state": run_state,
             "run_error": status.get("error", ""),
+            "order_id": status.get("order_id", ""),
             "stages": stages, "parts": parts,
             "style_guide": guide,
             "summary": _summary_of(run_dir, status, run_state)}

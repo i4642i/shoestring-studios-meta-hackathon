@@ -18,6 +18,7 @@ import traceback
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from agents._frame import graph, pc, runner  # noqa: E402
+from agents._frame import projlog  # noqa: E402
 
 LOCK_WAIT = 600
 LOCK_STALE = 1800
@@ -508,6 +509,13 @@ def main(doc_id, mode="all", pcname="source"):
     edir = pc.entry_dir(pcname, doc_id)
     with open(os.path.join(edir, "entry.json"), encoding="utf-8") as f:
         entry = json.load(f)
+    oid = entry.get("order_id", "")
+    ref = entry.get("ref", "")
+    if oid:
+        projlog.pc_event(oid, "start",
+                         "%s %s (%s)" % (pcname, doc_id,
+                                         mode),
+                         ref=ref)
     mod = graph._adapter()
     model = mod.llm_settings()["model"]
     if not runner.key_present(model):
@@ -552,6 +560,11 @@ def main(doc_id, mode="all", pcname="source"):
                                          stats["calls"]), flush=True)
     if mode in ("all", "index"):
         _run_index(mod, entry, edir, doc_id)
+    if oid:
+        projlog.pc_event(oid, "done",
+                         "%s %s (%s)" % (pcname, doc_id,
+                                         mode),
+                         ref=ref)
 
 
 def _run_index(mod, entry, edir, doc_id):
@@ -594,6 +607,19 @@ if __name__ == "__main__":
                 {"ev": "failed", "error": str(exc),
                  "traceback": detail[-1500:]})
         except OSError:
+            pass
+        try:
+            with open(os.path.join(pc.entry_dir(
+                    pcname if pcname in pc.PCS else "source",
+                    sys.argv[1]), "entry.json"),
+                      encoding="utf-8") as f:
+                failed_entry = json.load(f)
+            if failed_entry.get("order_id"):
+                projlog.pc_event(
+                    failed_entry["order_id"], "failed",
+                    str(exc),
+                    ref=failed_entry.get("ref", ""))
+        except (OSError, ValueError):
             pass
         print("worker failed: %s" % exc, flush=True)
         raise SystemExit(1)

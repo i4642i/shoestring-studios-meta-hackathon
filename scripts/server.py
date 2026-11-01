@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 from agents._frame import board  # noqa: E402
 from agents._frame import flow as flows  # noqa: E402
+from agents._frame import projlog  # noqa: E402
 from agents._frame import office as liveoffice  # noqa: E402
 from agents._frame import memory as memstore  # noqa: E402
 from agents._frame import graph  # noqa: E402
@@ -189,6 +190,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_start_prompt(parts[2])
         if parts[:2] == ["api", "orders"] and len(parts) == 3:
             return self._api_order_get(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 4 \
+                and parts[3] == "projectlog":
+            return self._api_order_projectlog(parts[2])
         if parts[:2] == ["api", "ref"] and len(parts) == 2:
             return self._api_ref()
         if parts[:2] == ["api", "pcs"] and len(parts) == 2:
@@ -742,6 +746,9 @@ class Handler(BaseHTTPRequestHandler):
             runs_root=flows.RUNS_DIR)
         if not out.get("ok"):
             return self._json(409, out)
+        oid = self._order_of_run(rid)
+        if oid:
+            projlog.log_owner(oid, rid, "memory_retry", agent)
         return self._json(202, out)
 
     def _order_of_run(self, rid):
@@ -779,6 +786,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._order_save_meta(d, meta)
         print("run %s closed (memory deleted: %s)" % (rid, gone),
               flush=True)
+        if oid:
+            projlog.log_owner(oid, rid, "close",
+                              summary="project closed",
+                              file="runs/%s/MEMORY_CLOSED.json"
+                              % rid)
+            projlog.do_refresh(oid)
         return self._json(200, {"ok": True, "run_id": rid,
                                 "order_id": oid,
                                 "memory_deleted": gone})
@@ -795,6 +808,9 @@ class Handler(BaseHTTPRequestHandler):
         self._order_save_meta(d, meta)
         print("order %s closed (%d runs)" % (oid, len(runs)),
               flush=True)
+        projlog.log_owner(oid, "", "close",
+                          summary="%d runs closed" % len(runs))
+        projlog.do_refresh(oid)
         return self._json(200, {"ok": True, "order_id": oid,
                                 "runs": runs})
 
@@ -1291,6 +1307,10 @@ class Handler(BaseHTTPRequestHandler):
                 "status": "consulting", "answers": {}, "files": {}}
         self._order_save_meta(d, meta)
         print("order create %s (%s)" % (oid, assignee), flush=True)
+        projlog.log_event(oid, "order", "created",
+                          "order opened (%s)" % assignee,
+                          file="orders/%s/meta.json" % oid)
+        projlog.do_refresh(oid)
         return self._json(201, dict(meta, created=True))
 
     def _api_order_get(self, oid):
@@ -1314,6 +1334,28 @@ class Handler(BaseHTTPRequestHandler):
         return bool(run_id) and "/" not in run_id \
             and "\\" not in run_id \
             and not run_id.startswith(".")
+
+    _PROJECTLOG_MIME = {"TIMELINE.md": "text/markdown",
+                        "timeline.jsonl": "text/plain",
+                        "LOG_INDEX.json": "application/json"}
+
+    def _api_order_projectlog(self, oid):
+        """Serve one project-log file (Board "Project log" link)."""
+        qs = unquote(self.path).split("?", 1)
+        q = dict(parse_qsl(qs[1])) if len(qs) > 1 else {}
+        full = projlog.projectlog_path(oid, q.get("name", ""))
+        if full is None:
+            return self._json(404, {"error": "no such log"})
+        with open(full, "rb") as f:
+            data = f.read()
+        if len(data) > 5242880:
+            return self._json(413, {"error": "file too large"})
+        self.send_response(200)
+        self.send_header("Content-Type",
+                         self._PROJECTLOG_MIME[q["name"]])
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def _api_flow_step(self, fid):
         try:
@@ -1363,6 +1405,9 @@ class Handler(BaseHTTPRequestHandler):
                 job["error"] = str(exc)[:1000]
 
         threading.Thread(target=_work, daemon=True).start()
+        projlog.log_owner(order_id, run_id, "step_to", target,
+                          note or "to %s" % target)
+        projlog.do_refresh(order_id)
         return self._json(200, {"started": True, "run_id": run_id})
 
     def _api_flow_approve(self, run_id):
@@ -1656,6 +1701,10 @@ class Handler(BaseHTTPRequestHandler):
         self._order_save_meta(d, meta)
         print("order upload %s/%s (%d bytes, stored; Sam parses it "
               "after Yes)" % (oid, base, len(raw)), flush=True)
+        projlog.log_event(oid, "order", "upload",
+                          "%s (%d bytes)" % (base, len(raw)),
+                          file="orders/%s/source.pdf" % oid)
+        projlog.do_refresh(oid)
         missing = intake.missing_of(meta.get("answers", {}),
                                     meta.get("files", {}))
         return self._json(200, {"ok": True, "file": "source.pdf",
@@ -1681,6 +1730,11 @@ class Handler(BaseHTTPRequestHandler):
         meta["answers"] = clean
         self._order_save_meta(d, meta)
         print("order intake %s" % oid, flush=True)
+        projlog.log_event(oid, "order", "intake",
+                          "answers saved (%d keys)"
+                          % len(clean),
+                          file="orders/%s/meta.json" % oid)
+        projlog.do_refresh(oid)
         return self._json(200, {"ok": True, "answers": clean})
 
     def _api_order_chat(self, oid):
@@ -1756,6 +1810,12 @@ class Handler(BaseHTTPRequestHandler):
         if ready:
             text = text + " " + intake.READY_QUESTION
         self._chat_append(d, msgs[-1]["content"], text)
+        projlog.log_event(
+            oid, "order", "chat",
+            "client: %s / Sam: %s"
+            % (msgs[-1]["content"], text),
+            file="orders/%s/chat.jsonl" % oid)
+        projlog.do_refresh(oid)
         return self._json(200, intake.chat_reply_payload(
             text, ready, missing))
 
@@ -1785,6 +1845,10 @@ class Handler(BaseHTTPRequestHandler):
                             "answers": dict(meta.get("answers", {}))}
         self._order_save_meta(d, meta)
         print("order approve %s" % oid, flush=True)
+        projlog.log_event(oid, "order", "approved",
+                          "answers approved",
+                          file="orders/%s/meta.json" % oid)
+        projlog.do_refresh(oid)
         return self._json(200, {"ok": True, "approved": True})
 
     def _api_order_start(self, oid):
@@ -1809,6 +1873,10 @@ class Handler(BaseHTTPRequestHandler):
         meta = self._order_meta(d)
         if body["confirm"] is False:
             self._chat_append(d, intake.NO_LINE, intake.DECLINE_ACK)
+            projlog.log_event(oid, "order", "declined",
+                              "client said not yet",
+                              file="orders/%s/chat.jsonl" % oid)
+            projlog.do_refresh(oid)
             return self._json(200, {"ok": True, "declined": True,
                                     "reply": intake.DECLINE_ACK})
         if meta.get("status") in ("complete", "in_production"):
@@ -1849,6 +1917,12 @@ class Handler(BaseHTTPRequestHandler):
         print("order confirm %s (%s)" % (oid, "legacy sections.md"
                                          if legacy else "stored PDF"),
               flush=True)
+        projlog.log_event(oid, "order", "confirmed",
+                          "client said yes (%s)"
+                          % ("legacy sections.md"
+                             if legacy else "stored PDF"),
+                          file="orders/%s/chat.jsonl" % oid)
+        projlog.do_refresh(oid)
         out = {"ok": True, "answers": meta["answers"],
                "reply": intake.START_LINE, "pdf": pdf}
         if legacy:
@@ -1910,6 +1984,10 @@ class Handler(BaseHTTPRequestHandler):
         input_md = os.path.join(run_dir, "INPUTS.md")
         with open(input_md, "w", encoding="utf-8") as f:
             f.write(self._sam_inputs_md(oid, meta))
+        projlog.log_event(oid, "sam", "start",
+                          "Sam runs the consultation report",
+                          node="sales_sam",
+                          file="output/runs/%s/INPUTS.md" % oid)
         result = runner.run(agent_dir, run_dir, brief, input_md)
         if not result.get("ok"):
             reason = "unknown"
@@ -1917,6 +1995,11 @@ class Handler(BaseHTTPRequestHandler):
                 if ev.get("ev") == "run_fail":
                     reason = ev.get("reason", reason)
                     break
+            projlog.log_event(oid, "sam", "error", reason,
+                              node="sales_sam",
+                              file="output/runs/%s/events.jsonl"
+                              % oid)
+            projlog.do_refresh(oid)
             return (502, {"error": "sales run failed: " + reason,
                           "usage": result.get("usage")})
         for fn in ("result.json", "report.md"):
@@ -1953,6 +2036,21 @@ class Handler(BaseHTTPRequestHandler):
               % ("start" if final_status == "in_production" else "complete",
                  oid, source.get("ref", "?"), result.get("usage")),
               flush=True)
+        projlog.log_event(
+            oid, "sam", "done",
+            "%s sections, %s chars -> %s"
+            % (source.get("sections", "?"),
+               source.get("chars", "?"),
+               source.get("ref", "?")),
+            node="sales_sam",
+            file="output/runs/%s/report.md" % oid)
+        projlog.log_event(
+            oid, "order",
+            "start" if final_status == "in_production"
+            else "complete",
+            "consultation %s" % final_status,
+            file="orders/%s/intake.json" % oid)
+        projlog.do_refresh(oid)
         out = {"ok": True, "intake": intake, "report_md": md,
                "files": ["intake.json", "result.json", "report.md"],
                "usage": result.get("usage"), "source": source,

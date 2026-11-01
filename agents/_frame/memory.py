@@ -15,6 +15,8 @@ import shutil
 import threading
 import time
 
+from . import projlog
+
 ROOT = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))
 RUNS_DIR = os.path.join(ROOT, "runs")
@@ -202,6 +204,10 @@ def build_memory(run_id, agent_id, docs, runs_root=None,
         _log_line(mdir, {"ev": "mem_build_start",
                          "docs": len(docs), "chars": chars,
                          "profile": profile or "active"})
+        projlog.memory_event(
+            run_id, agent_id, "start",
+            "%d docs, %d chars" % (len(docs), chars),
+            runs_root)
         if not docs:
             err = "nothing to index: no stage files yet"
             with open(os.path.join(mdir, "STATUS.json"), "w",
@@ -210,6 +216,8 @@ def build_memory(run_id, agent_id, docs, runs_root=None,
                            "agent_id": agent_id, "error": err}, f)
             _log_line(mdir, {"ev": "mem_build_failed",
                              "error": err})
+            projlog.memory_event(run_id, agent_id, "failed",
+                                 err, runs_root)
             return {"ok": False, "error": err}
         store = os.path.join(mdir, "index")
         t0 = time.time()
@@ -229,6 +237,8 @@ def build_memory(run_id, agent_id, docs, runs_root=None,
                              "error": err,
                              "seconds": round(time.time() - t0,
                                               1)})
+            projlog.memory_event(run_id, agent_id, "failed",
+                                 err, runs_root)
             return {"ok": False, "error": err}
         secs = round(time.time() - t0, 1)
         calls, pin, rout = (0, 0, 0)
@@ -258,6 +268,9 @@ def build_memory(run_id, agent_id, docs, runs_root=None,
         _log_line(mdir, {"ev": "mem_build_done", "seconds": secs,
                          "llm_calls": calls, "prompt_chars": pin,
                          "reply_chars": rout, "profile": prof})
+        projlog.memory_event(
+            run_id, agent_id, "done",
+            "%ss, %d calls" % (secs, calls), runs_root)
         return {"ok": True, "state": "ready", "seconds": secs,
                 "llm_calls": calls}
 

@@ -1485,6 +1485,11 @@ button.linklike { background: none; border: none; padding: 0;
       spec.length + "</button> \u00b7 " +
       '<a href="api/flows/runs/' + encodeURIComponent(B.run) +
       '/files" target="_blank" rel="noopener">Open run folder</a>';
+    if (B.board.order_id)
+      el.innerHTML += ' \u00b7 <a href="api/orders/' +
+        encodeURIComponent(B.board.order_id) +
+        '/projectlog?name=TIMELINE.md" target="_blank" ' +
+        'rel="noopener">Project log</a>';
     const setHl = (name, list) => {
       const key = name + JSON.stringify(list);
       B.hl = (B.hlKey === key) ? null : list;

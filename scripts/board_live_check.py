@@ -282,11 +282,13 @@ NARROW_JS = """(() => {
 
 SUMMARY_JS = """(() => {
   const s = document.getElementById('bd-sum');
-  const a = s ? s.querySelector('a') : null;
+  const links = s ? Array.from(s.querySelectorAll('a'))
+    .map(a => a.getAttribute('href')) : [];
   const t = document.querySelector(
     '#bd-table tr.bd-emptyrow td');
   return {text: s ? s.textContent : '',
-          href: a ? a.getAttribute('href') : '',
+          href: links[0] || '',
+          links: links,
           empty: t ? t.textContent : ''};
 })()"""
 
@@ -879,6 +881,12 @@ def main():
                "api/flows/runs/boardshot1/files"),
            "summary bar state/errors/spec/cost/link (%s)"
            % sm.get("text"))
+        ok(any((h or "").endswith(
+            "api/orders/ord-shot-001/projectlog"
+            "?name=TIMELINE.md")
+            for h in sm.get("links", [])),
+           "summary bar project-log link (%s)"
+           % sm.get("links"))
         ok(js_eval(ws, CLICK_HL_JS + '("bd-hl-err")') is True,
            "errors count clicked")
         time.sleep(0.5)
