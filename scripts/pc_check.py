@@ -733,6 +733,61 @@ try:
        and "Body tools here." in text4b
        and "Figures/tables/formulas" not in text,
        "marty and cleo get no media list")
+
+    # ---- reads_log.jsonl (item 10) ----
+    ndir = os.path.join(tmp2, "runs", "rlog", "explain_cleo")
+    os.makedirs(ndir)
+    cleo2 = dict(cleo, input_md=os.path.join(ndir, "INPUTS.md"))
+    nobody = {"agent_dir": cleo["agent_dir"],
+              "producer": "board_vera",
+              "order_id": "ord-20261030-009",
+              "input_md": os.path.join(ndir, "INPUTS.md")}
+    tmod.pc_read_source(cleo2, {"section": "1.1"})
+    tmod.pc_read_source(nobody, {"section": "1.1"})
+    tmod.open_ref(cleo2, {"ref": r3["ref"] + "#s1.1/p2"})
+    with open(os.path.join(ndir, "reads_log.jsonl"),
+              encoding="utf-8") as f:
+        lines = [json.loads(l) for l in f]
+    ok(len(lines) == 3
+       and all(set(l) == {"at", "tool", "pc", "ref", "section",
+                          "item", "allowed", "reason"}
+               for l in lines),
+       "reads_log lines carry the 8 keys")
+    ok(lines[0]["tool"] == "pc_read_source"
+       and lines[0]["pc"] == "source"
+       and lines[0]["allowed"] is True
+       and lines[0]["section"] == "1.1"
+       and lines[0]["reason"] == "",
+       "allowed read logged with section")
+    ok(lines[1]["allowed"] is False
+       and lines[1]["reason"] == "no access to this item",
+       "refused read logged with the reason")
+    ok(lines[2]["tool"] == "open_ref"
+       and lines[2]["pc"] == "source"
+       and lines[2]["ref"] == r3["ref"] + "#s1.1/p2"
+       and lines[2]["allowed"] is True,
+       "open_ref logged with the pc from the ref")
+    found = []
+    for base, _ds, fs in os.walk(tmp2):
+        if "reads_log.jsonl" in fs:
+            found.append(os.path.join(base, "reads_log.jsonl"))
+    ok(found == [os.path.join(ndir, "reads_log.jsonl")],
+       "tools without a node dir log nothing")
+    from agents._frame import media as _med  # noqa: E402
+    missing_wrap = [
+        n for n, m in
+        (("pc_list_source", tmod), ("pc_read_source", tmod),
+         ("open_ref", tmod), ("pc_search_theory", tmod),
+         ("pc_search_articles", tmod), ("pc_pick_theory", tmod),
+         ("pc_pick_article", tmod), ("pc_read_theory", tmod),
+         ("pc_read_article", tmod), ("pc_send_source", tmod),
+         ("pc_set_recipients", tmod), ("make_voice", tmod),
+         ("pc_search_images", _med), ("pc_pick_image", _med),
+         ("pc_generate_image", _med), ("vera_view_image", _med))
+        if not hasattr(getattr(m, n), "__wrapped__")]
+    ok(missing_wrap == [],
+       "all 16 PC tools wrapped for reads logging (%s)"
+       % (missing_wrap,))
 finally:
     pc.ROOT_OVERRIDE = None
     shutil.rmtree(tmp2, ignore_errors=True)

@@ -17,6 +17,7 @@ import urllib.request
 from collections import deque
 
 from . import pc
+from . import readlog
 
 OPENVERSE_URL = "https://api.openverse.org/v1/images/"
 OPENVERSE_LICENSES = "by,by-sa,cc0,pdm"  # minus by-nd (we crop)
@@ -205,6 +206,7 @@ def _license_ok(lic):
     return core in LICENSE_OK
 
 
+@readlog.logged("image")
 def pc_search_images(ctx, args):
     """Pia's photo search: Openverse hits into the run log (never
     stored). At most 2 queries per cut per run."""
@@ -238,6 +240,7 @@ def pc_search_images(ctx, args):
             "queries_used": n}
 
 
+@readlog.logged("image")
 def pc_pick_image(ctx, args):
     """Pia's pick: download one licensed photo into the Image PC
     (file + source URL + license + reason, always credited)."""
@@ -303,6 +306,7 @@ def _muse_image(prompt):
     return blob, model, GEN_IMAGE_COST
 
 
+@readlog.logged("generated")
 def pc_generate_image(ctx, args):
     """Gene's image call: at most 6 per run; the same prompt
     reuses the stored image without a new call."""
@@ -403,6 +407,7 @@ def _stage_view(ctx, tool, cut_id, full):
     return line
 
 
+@readlog.logged()
 def vera_view_image(ctx, args):
     """Vera opens one chosen candidate file and looks at it
     (vision). She picks from descriptions first; at most 2 files

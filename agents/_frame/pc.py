@@ -2175,7 +2175,7 @@ def prompt_chunks_for(agent_id, order_id, source_refs, runs_root,
     except Ash (map only, tools stay) and Marty (map first, then
     full text); Ash and Penn also get the Source figure/table/formula
     list. Listed parts narrow either. Returns (text, {"included",
-    "denied", "picks"})."""
+    "denied", "rows", "picks"})."""
     refs = []
     for r in source_refs or []:
         try:
@@ -2196,6 +2196,7 @@ def prompt_chunks_for(agent_id, order_id, source_refs, runs_root,
         if eref not in refs:
             refs.append(eref)
     included, denied, blocks = [], [], []
+    rows = {}
     for eref in refs:
         try:
             entry = load_entry_by_ref(eref, root=root)
@@ -2230,6 +2231,8 @@ def prompt_chunks_for(agent_id, order_id, source_refs, runs_root,
                 chunk = chunk.rstrip("\n") + "\n" + media + "\n"
         blocks.append(chunk)
         included.append(eref)
+        rows[eref] = {"kind": row_kind(row),
+                      "parts": row_parts(row)}
     lines = ["## PC input (order %s)" % (order_id or "?"),
              "You may read ONLY the %d item(s) below. Open passages "
              "with the PC read tools; cite every used passage as "
@@ -2239,6 +2242,7 @@ def prompt_chunks_for(agent_id, order_id, source_refs, runs_root,
         lines.append("(no access to %d other item(s) for this order)"
                      % len(denied))
     meta = {"included": included, "denied": denied,
+            "rows": rows,
             "picks": sum(1 for r in included if "/"
                          in r and r.split("/")[1] in ("theory",
                                                       "article"))}

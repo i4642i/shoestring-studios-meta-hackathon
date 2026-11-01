@@ -22,6 +22,7 @@ REMOTION_DIR = os.path.join(
 from . import graph
 from . import pc
 from . import pdfingest
+from . import readlog
 from . import results
 from .media import MEDIA_TOOLS
 from .schemas import (VOICE_MAX_ATTEMPTS, list_headings,
@@ -647,6 +648,7 @@ def _recipients_error(ctx, entry, ref=None):
     return None if ok else {"error": "no access to this item"}
 
 
+@readlog.logged("source")
 def pc_list_source(ctx, args):
     entry, err = _entry_for(ctx, (args or {}).get("ref"))
     if err:
@@ -664,6 +666,7 @@ def pc_list_source(ctx, args):
             "tables": len(entry.get("tables", []))}
 
 
+@readlog.logged("source")
 def pc_read_source(ctx, args):
     args = args or {}
     entry, err = _entry_for(ctx, args.get("ref"))
@@ -736,6 +739,7 @@ def _need_grant(ctx, pcname):
     return None
 
 
+@readlog.logged()
 def open_ref(ctx, args):
     """Any-PC ref reader with grant enforcement: the caller must hold
     pc_read_<pc> plus a recipient row for this order. Grants are the
@@ -860,12 +864,14 @@ def _pc_search(ctx, args, tool):
     return {"query": q, "hits": hits}
 
 
+@readlog.logged("theory")
 def pc_search_theory(ctx, args):
     """Web search for theory (Tavily basic). Hits stay in the run log;
     nothing is stored until picked."""
     return _pc_search(ctx, args, "pc_search_theory")
 
 
+@readlog.logged("article")
 def pc_search_articles(ctx, args):
     """Web search for cases/articles (Tavily basic). Hits stay in the
     run log; nothing is stored until picked."""
@@ -925,12 +931,14 @@ def _pc_pick(ctx, args, pcname):
     return out
 
 
+@readlog.logged("theory")
 def pc_pick_theory(ctx, args):
     """Pick a search hit into the Theory PC (full ingest) and get its
     ref. Pick only what will be cited or read by later agents."""
     return _pc_pick(ctx, args, "theory")
 
 
+@readlog.logged("article")
 def pc_pick_article(ctx, args):
     """Pick a search hit into the Article PC (full ingest) and get its
     ref. Pick only what will be cited or read by later agents."""
@@ -974,12 +982,14 @@ def _pc_read_web(ctx, args, pcname):
     return out
 
 
+@readlog.logged("theory")
 def pc_read_theory(ctx, args):
     """Read a Theory PC ref verbatim with provenance. Refused unless
     listed as a recipient for this order."""
     return _pc_read_web(ctx, args, "theory")
 
 
+@readlog.logged("article")
 def pc_read_article(ctx, args):
     """Read an Article PC ref verbatim with provenance. Refused unless
     listed as a recipient for this order."""
@@ -1029,6 +1039,7 @@ def _worker_reason(edir):
     return ""
 
 
+@readlog.logged("source")
 def pc_send_source(ctx, args):
     """Send this order's attached PDF to the Source PC: parse, ingest,
     build the map, index. Returns the entry ref + counts. Sam only;
@@ -1167,6 +1178,7 @@ def pc_send_source(ctx, args):
     return out
 
 
+@readlog.logged()
 def pc_set_recipients(ctx, args):
     """Grant map/full rows on one entry (merged per agent). The
     lister must hold a row on the entry for this order; only Sam
@@ -1780,6 +1792,7 @@ def _kokoro_tts(text):
     return buf.getvalue(), _wav_seconds(buf.getvalue())
 
 
+@readlog.logged("voice")
 def make_voice(ctx, args):
     """Wren's TTS: synthesize one cut's text into the Voice PC.
     Returns the real duration. Max 2 attempts per cut. engine:

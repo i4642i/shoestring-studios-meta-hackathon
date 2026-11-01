@@ -12,6 +12,7 @@ Temporary roots under tempfile; the auto-start test uses the real
 orders/, output/ and runs/ folders (all git-ignored) and removes its
 fixtures in a finally.
 """
+import hashlib
 import json
 import os
 import shutil
@@ -374,6 +375,130 @@ try:
        "t6 orphaned running run reports error")
     ok(not flow.ctl_pause("nosuch", True, runs_root=runs_root)
        .get("ok"), "t6 unknown run refused")
+
+    # ---- t8: inputs_log.json + inputs_check.json per node/part ----
+    def _load(p):
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    mlog = _load(os.path.join(r1, "pd_marty", "inputs_log.json"))
+    ok(mlog.get("node") == "pd_marty"
+       and mlog.get("run_id") == "run1"
+       and mlog.get("order_id") == "octl"
+       and isinstance(mlog.get("items"), list) and mlog["items"]
+       and isinstance(mlog.get("pc_rows"), list)
+       and isinstance(mlog.get("denied"), list),
+       "t8 marty inputs_log envelope")
+    names = [i.get("item") for i in mlog["items"]]
+    ok("brief" in names
+       and "received.sales_sam.request" in names,
+       "t8 marty log lists brief + sam request (%s)" % (names,))
+    ok(all(set(i) == {"item", "category", "from", "part",
+                      "chars", "est_tokens", "sha1", "note"}
+           for i in mlog["items"]),
+       "t8 every log item has the 8 keys")
+    first = mlog["items"][0]
+    ok(first["est_tokens"] == int(round(first["chars"] / 4)),
+       "t8 est_tokens is chars/4")
+    exp_brief = json.dumps(
+        {"order_id": "octl",
+         "answers": {"audience": "a", "length": "b",
+                     "depth": "c", "theme": "d"},
+         "source_file": "s.pdf"}, ensure_ascii=False, indent=1)
+    brief = next(i for i in mlog["items"]
+                 if i["item"] == "brief")
+    ok(brief["sha1"] == hashlib.sha1(
+        exp_brief.encode("utf-8")).hexdigest()
+       and brief["chars"] == len(exp_brief),
+       "t8 brief sha1/chars match the rendered block")
+    ok(mlog.get("pc_rows") == [] and mlog.get("denied") == [],
+       "t8 no granted rows on the fixture run")
+    clog = _load(os.path.join(r1, "photo_pia", "p1",
+                              "inputs_log.json"))
+    ok("shared" in [i.get("item") for i in clog["items"]],
+       "t8 clone log carries the shared block")
+    sh = next(i for i in clog["items"] if i["item"] == "shared")
+    ok(sh.get("part") == 1 and sh.get("from") == "part_split",
+       "t8 shared block names part 1")
+    slog = _load(os.path.join(r1, "photo_pia",
+                              "inputs_log.json"))
+    ok([i.get("item") for i in slog["items"]] == ["split"],
+       "t8 split stub logs its stub inputs")
+    chk = _load(os.path.join(r1, "pd_marty",
+                             "inputs_check.json"))
+    ok(chk.get("ok") is True and chk.get("spec") == "no spec",
+       "t8 inputs_check passes vacuously without a spec")
+    spec = {"nodes": {
+        "pd_marty": {
+            "items": [
+                {"item": "brief", "category": "brief",
+                 "from": "order"},
+                {"item": "received.sales_sam.request",
+                 "category": "request",
+                 "from": "sales_sam"},
+                {"item": "received.x.y", "optional": True}],
+            "pc_rows": [{"pc": "source", "kind": "full",
+                         "parts": []}]},
+        "photo_pia@p*": {
+            "items": [{"item": "shared", "part": 1}],
+            "pc_rows": []}}}
+    sp = os.path.join(tmp, "spec.json")
+    with open(sp, "w", encoding="utf-8") as f:
+        json.dump(spec, f)
+    base_items = [
+        {"item": "brief", "category": "brief", "from": "order",
+         "part": None},
+        {"item": "received.sales_sam.request",
+         "category": "request", "from": "sales_sam",
+         "part": None},
+        {"item": "owner_note", "category": "note",
+         "from": "owner", "part": None}]
+    base_rows = [{"pc": "source", "kind": "full", "parts": []}]
+    c0 = flow._check_inputs_spec("pd_marty", base_items,
+                                 base_rows, sp)
+    ok(c0["ok"] and c0["missing"] == [] and c0["extra"] == []
+       and c0["wrong_part"] == [] and c0["wrong_kind"] == [],
+       "t8 spec match passes (owner_note allowed)")
+    c1 = flow._check_inputs_spec("pd_marty", base_items[1:],
+                                 base_rows, sp)
+    ok(not c1["ok"] and c1["missing"] == ["brief"],
+       "t8 missing item flagged")
+    c2 = flow._check_inputs_spec(
+        "pd_marty",
+        base_items + [{"item": "zzz", "category": "z",
+                       "from": "z", "part": None}],
+        base_rows, sp)
+    ok(not c2["ok"] and c2["extra"] == ["zzz"],
+       "t8 extra item flagged")
+    c3 = flow._check_inputs_spec(
+        "photo_pia@p2", [{"item": "shared", "category": "shared",
+                          "from": "part_split", "part": 2}],
+        [], sp)
+    ok(not c3["ok"]
+       and len(c3["wrong_part"]) == 1
+       and "shared" in c3["wrong_part"][0],
+       "t8 wildcard entry checks the part")
+    c4 = flow._check_inputs_spec("pd_marty", base_items,
+                                 [{"pc": "source", "kind": "map",
+                                   "parts": []}], sp)
+    ok(not c4["ok"] and len(c4["wrong_kind"]) == 1,
+       "t8 wrong kind flagged")
+    c5 = flow._check_inputs_spec("pd_marty", base_items,
+                                 [{"pc": "source", "kind": "full",
+                                   "parts": ["pc://source/x#s1"]}],
+                                 sp)
+    ok(not c5["ok"] and len(c5["wrong_part"]) == 1
+       and "pc_row:source" in c5["wrong_part"][0],
+       "t8 wrong parts flagged")
+    c6 = flow._check_inputs_spec("nobody", base_items,
+                                 base_rows, sp)
+    ok(c6["ok"] and c6["spec"] == "no entry",
+       "t8 node without a spec entry passes vacuously")
+    with open(sp, "w", encoding="utf-8") as f:
+        f.write("{broken")
+    c7 = flow._check_inputs_spec("pd_marty", base_items,
+                                 base_rows, sp)
+    ok(c7["ok"] is False and "error" in c7,
+       "t8 broken spec fails the check, not the run")
 finally:
     flow.ORDERS_DIR = real_orders
     _pc.ROOT_OVERRIDE = None
