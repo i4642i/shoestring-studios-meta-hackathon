@@ -114,16 +114,12 @@ def _key(model=None):
 
 
 def _chat(model, messages, tools, max_tokens=None, timeout=300,
-          caller=None, log_path=None, temperature=None):
+          caller=None, log_path=None):
     # No token cap by default (user decision 2026-10-28): the caller passes
     # max_tokens only when a bound is wanted. Step/loop bounds still apply.
-    # temperature=0 for writer retries and the final steps: exact JSON
-    # emission matters more than sampling variety there.
     body = {"model": model, "messages": messages}
     if max_tokens is not None:
         body["max_tokens"] = max_tokens
-    if temperature is not None:
-        body["temperature"] = temperature
     if tools:
         body["tools"] = tools
         body["tool_choice"] = "auto"
@@ -205,8 +201,7 @@ def _retry_writer(agent, messages, ctx, play, writer, writer_arg,
     resp = _chat(agent["model"], slim, None,
                    caller=agent["id"] + ":retry",
                    log_path=os.path.join(ctx.get("run_dir", ""),
-                                         "llm_calls.jsonl"),
-                   temperature=0)
+                                         "llm_calls.jsonl"))
     usage = resp.get("usage", {})
     total["prompt"] += usage.get("prompt_tokens", 0)
     total["completion"] += usage.get("completion_tokens", 0)
@@ -377,8 +372,7 @@ def run(agent_dir, run_dir, brief, input_md):
             resp = _chat(agent["model"], messages, oai,
                          caller=agent["id"],
                          log_path=os.path.join(run_dir,
-                                               "llm_calls.jsonl"),
-                         temperature=(0 if step >= _max - 2 else None))
+                                               "llm_calls.jsonl"))
         except TimeoutError:
             emit({"ev": "run_fail",
                   "reason": "model call timed out after 300s; "
