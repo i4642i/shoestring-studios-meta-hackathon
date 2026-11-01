@@ -250,8 +250,8 @@ try:
        == "Beta body here.",
        "wren quotes inside the part")
     ok(tmod.pc_read_source(
-        w, {"ref": src["ref"] + "#s1.1/p1"}).get("error")
-       == "no access to this item",
+        w, {"ref": src["ref"] + "#s1.1/p1"}).get("error", "")
+       .startswith("outside your listed parts"),
        "wren refused outside the part")
     bad = pc.apply_handoff("ord-20261030-001",
                            {"scenes": [{"n": 3, "handoff": [

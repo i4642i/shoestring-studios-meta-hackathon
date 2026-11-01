@@ -439,7 +439,8 @@ def run(agent_dir, run_dir, brief, input_md):
                     "for this run. Finish with what you have." % (name, MAX_TOOL_FAILS)})
                 if name == writer:
                     emit({"ev": "run_fail", "reason": "writer tool closed"})
-                    return {"ok": False, "events": events, "usage": total}
+                    return {"ok": False, "events": events, "usage": total,
+                            "reason": "writer tool closed"}
             if (name == writer and not result.get("ok")
                     and "errors" in result):
                 if retries_left > 0:
@@ -454,7 +455,8 @@ def run(agent_dir, run_dir, brief, input_md):
                                     "%d retries; stopping" % MAX_JSON_RETRIES,
                           "errors": result.get("errors", []),
                           "usage": total})
-                    return {"ok": False, "events": events, "usage": total}
+                    return {"ok": False, "events": events, "usage": total,
+                            "reason": _exhaust_reason(events)}
         staged, staged_seen = _vision_drain(run_dir, staged_seen)
         if staged:
             messages.append(_vision_message(staged))

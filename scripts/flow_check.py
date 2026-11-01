@@ -1209,6 +1209,35 @@ shutil.rmtree(ashdir, ignore_errors=True)
 
 ok(_runner._exhaust_reason(None) == "max_steps exhausted",
    "exhaustion reason without events")
+wrdir = tempfile.mkdtemp()
+with open(os.path.join(wrdir,
+                       "received.plan_ash.storyboard_draft.json"),
+          "w", encoding="utf-8") as f:
+    json.dump({"sender": "plan_ash", "category":
+               "storyboard_draft", "version": 1,
+               "data": {"total_s": 600, "scenes": []}}, f)
+wrctx = {"run_dir": wrdir, "order_id": "o9",
+         "producer": "voice_wren"}
+rw = _tools.write_narration(
+    wrctx, {"narration": json.dumps({"cuts": []})})
+ok(not rw.get("ok")
+   and any("cuts must be a non-empty list" in e
+           for e in rw.get("errors", [])),
+   "string-wrapped narration is parsed, then shape-checked")
+shutil.rmtree(wrdir, ignore_errors=True)
+pent = {"recipients": [{"agent": "voice_wren",
+                          "order_id": "o9",
+                          "parts": ["pc://source/abcd#s1.2"]}]}
+pctx = {"producer": "voice_wren", "order_id": "o9"}
+ok(_tools._recipients_error(pctx, pent, "pc://source/abcd")
+   .get("error", "")
+   .startswith("outside your listed parts (pc://source/abcd#s1.2)"),
+   "parts refusal names the listed parts")
+norow = {"recipients": [{"agent": "board_penn",
+                           "order_id": "o9", "parts": []}]}
+ok(_tools._recipients_error(pctx, norow, "pc://source/abcd")
+   == {"error": "no access to this item"},
+   "rowless refusal keeps the old message")
 ok(_runner._exhaust_reason(
     [{"ev": "tool", "errors": ["total_s None != plan 720"]}])
    == "max_steps exhausted (last: total_s None != plan 720)",

@@ -1,6 +1,6 @@
 {
  "bounds": {
-  "max_steps": 10
+  "max_steps": 14
  },
  "done": [
   "cuts tile every draft scene (10-30 s each)",

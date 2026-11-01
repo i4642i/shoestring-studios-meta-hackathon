@@ -641,14 +641,16 @@ try:
     ok(tmod.pc_read_source(penn, {"ref": pcp}).get("kind") == "paragraph",
        "parts-listed member reads inside the part")
     ok(tmod.pc_read_source(
-        penn, {"ref": r3["ref"] + "#s1.1/p1"}).get("error")
-       == "no access to this item",
+        penn, {"ref": r3["ref"] + "#s1.1/p1"}).get("error", "")
+       .startswith("outside your listed parts"),
        "parts-listed member refused outside the part")
-    ok(tmod.pc_read_source(penn, {"section": "1.1"}).get("error")
-       == "no access to this item",
+    ok(tmod.pc_read_source(penn, {"section": "1.1"})
+       .get("error", "")
+       .startswith("outside your listed parts"),
        "parts-listed member refused the whole section")
-    ok(tmod.pc_read_source(penn, {"ref": r3["ref"]}).get("error")
-       == "no access to this item",
+    ok(tmod.pc_read_source(penn, {"ref": r3["ref"]})
+       .get("error", "")
+       .startswith("outside your listed parts"),
        "parts-listed member refused the whole entry")
     ok(pc.ref_within(r3["ref"] + "#s1.1/p2", r3["ref"] + "#s1.1")
        and not pc.ref_within(r3["ref"] + "#s1.1",

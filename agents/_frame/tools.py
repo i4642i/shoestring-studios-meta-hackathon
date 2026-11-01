@@ -656,15 +656,20 @@ def write_narration(ctx, args):
     citation verbatim and readable, every audio ref a stored Voice
     clip for this order."""
     obj = (args or {}).get("narration")
+    if isinstance(obj, str):
+        obj = _lenient_json(obj)
     if not isinstance(obj, dict):
-        return {"ok": False, "errors": ["call with {narration: {...}}"]}
+        return {"ok": False, "errors": [
+            "call with {narration: {...}} -- pass the object "
+            "itself, not a JSON string"]}
     draft = _received_data(ctx, "storyboard_draft")
     if not draft:
         return {"ok": False, "errors": [
             "no storyboard_draft received in this run"]}
     errors = validate_narration(obj, draft)
     if errors:
-        return {"ok": False, "errors": errors}
+        return {"ok": False, "errors": errors +
+                _omitted_hints(ctx, errors)}
     producer = (ctx or {}).get("producer", "")
     order_id = (ctx or {}).get("order_id", "")
     for i, cut in enumerate(obj["cuts"]):
@@ -763,15 +768,25 @@ def _entry_for(ctx, ref):
 
 def _recipients_error(ctx, entry, ref=None):
     """None when ctx may read (ref None: list the entry); else the
-    refusal dict. Parts-limited rows open listed parts only."""
+    refusal dict. Parts-limited rows open listed parts only; the
+    refusal then names them so the model opens a listed part
+    ref instead of the whole entry."""
+    producer = (ctx or {}).get("producer", "")
+    order_id = (ctx or {}).get("order_id", "")
     if ref is None:
-        ok = pc.may_read(entry, (ctx or {}).get("producer", ""),
-                         (ctx or {}).get("order_id", ""))
+        ok = pc.may_read(entry, producer, order_id)
     else:
-        ok = pc.entry_parts_allow(entry, (ctx or {}).get("producer",
-                                                         ""),
-                                  (ctx or {}).get("order_id", ""), ref)
-    return None if ok else {"error": "no access to this item"}
+        ok = pc.entry_parts_allow(entry, producer, order_id, ref)
+    if ok:
+        return None
+    parts = pc.row_parts(pc.entry_access(entry, producer,
+                                         order_id) or {})
+    if parts:
+        listed = ", ".join(parts[:4])
+        return {"error": "outside your listed parts (%s): open "
+                         "a listed part ref, not the whole entry"
+                % listed}
+    return {"error": "no access to this item"}
 
 
 @readlog.logged("source")
