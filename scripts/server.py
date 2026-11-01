@@ -188,6 +188,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_map(parts[2])
         if parts[:2] == ["api", "crew"] and len(parts) == 4 and parts[3] == "start-prompt":
             return self._api_start_prompt(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 2:
+            return self._api_orders_list()
         if parts[:2] == ["api", "orders"] and len(parts) == 3:
             return self._api_order_get(parts[2])
         if parts[:2] == ["api", "orders"] and len(parts) == 4 \
@@ -197,6 +199,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_ref()
         if parts[:2] == ["api", "pcs"] and len(parts) == 2:
             return self._api_pcs_list()
+        if parts[:2] == ["api", "pcs"] and len(parts) == 3 \
+                and parts[2] == "rights":
+            return self._api_pcs_rights()
         if parts[:2] == ["api", "pcs"] and len(parts) == 4 \
                 and parts[3] == "entries":
             return self._api_pc_entries(parts[2])
@@ -1318,6 +1323,41 @@ class Handler(BaseHTTPRequestHandler):
                           file="orders/%s/meta.json" % oid)
         projlog.do_refresh(oid)
         return self._json(201, dict(meta, created=True))
+
+    def _api_orders_list(self):
+        odir = os.path.join(ROOT, "orders")
+        out = []
+        try:
+            names = sorted(os.listdir(odir))
+        except OSError:
+            names = []
+        for n in names:
+            if not ORDER_ID_RE.match(n):
+                continue
+            d = os.path.join(odir, n)
+            if not os.path.isdir(d):
+                continue
+            try:
+                meta = self._order_meta(d)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(meta, dict):
+                continue
+            try:
+                mtime = os.path.getmtime(
+                    os.path.join(d, "meta.json"))
+            except OSError:
+                mtime = 0
+            out.append({"id": n,
+                        "status": meta.get("status", ""),
+                        "closed": bool(meta.get("closed")),
+                        "created": meta.get("created", ""),
+                        "mtime": mtime})
+        out.sort(key=lambda e: (e["created"], e["mtime"]),
+                 reverse=True)
+        for e in out:
+            del e["mtime"]
+        return self._json(200, {"orders": out})
 
     def _api_order_get(self, oid):
         d = self._order_dir(oid)
@@ -2518,40 +2558,6 @@ class Handler(BaseHTTPRequestHandler):
          "add": "Wren (narration writer) via make_voice",
          "tools": ["open_ref"]},
     )
-    _PC_TOOLS = {"source": {"list": "pc_list_source",
-                             "read": "pc_read_source"},
-                 "theory": {"search": "pc_search_theory",
-                            "pick": "pc_pick_theory",
-                            "read": "pc_read_theory"},
-                 "article": {"search": "pc_search_articles",
-                             "pick": "pc_pick_article",
-                             "read": "pc_read_article"},
-                 "image": {"read": "open_ref"},
-                 "generated": {"read": "open_ref"},
-                 "voice": {"read": "open_ref"}}
-
-    @staticmethod
-    def _pc_grants(pcname):
-        """Agents holding each PC tool, by name: {list, read} or {search, pick, read}."""
-        out = {k: [] for k in Handler._PC_TOOLS.get(pcname, {})}
-        adir = os.path.join(ROOT, "agents")
-        try:
-            eids = sorted(os.listdir(adir))
-        except OSError:
-            return out
-        for eid in eids:
-            jp = os.path.join(adir, eid, "agent.json")
-            try:
-                with open(jp, encoding="utf-8") as f:
-                    agent = json.load(f)
-            except (OSError, ValueError):
-                continue
-            held = agent.get("tools", []) or []
-            for kind, tool in Handler._PC_TOOLS[pcname].items():
-                if tool in held:
-                    out[kind].append(agent.get("name", eid))
-        return out
-
     @staticmethod
     def _pc_size(pcname):
         total = 0
@@ -2576,6 +2582,48 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, ValueError):
             return {"built": False, "entries": 0}
 
+    def _api_pcs_rights(self):
+        qs = unquote(self.path).split("?", 1)
+        q = dict(parse_qsl(qs[1])) if len(qs) > 1 else {}
+        oid = q.get("order", "")
+        if not self._order_dir(oid):
+            return self._json(404, {"error": "no such order"})
+        rights = pc.rights_for_order(oid)
+        names = {}
+        adir = os.path.join(ROOT, "agents")
+        try:
+            eids = sorted(os.listdir(adir))
+        except OSError:
+            eids = []
+        for eid in eids:
+            jp = os.path.join(adir, eid, "agent.json")
+            try:
+                with open(jp, encoding="utf-8") as f:
+                    agent = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if isinstance(agent, dict):
+                names[eid] = agent.get("name", eid)
+        rows = []
+        for agent in sorted(set(names) | set(rights["agents"])):
+            disp = names.get(agent, agent)
+            cells = {}
+            for pcname in pc.PCS:
+                cell = rights["cells"].get((agent, pcname))
+                if cell is None:
+                    cells[pcname] = None
+                    continue
+                cells[pcname] = {
+                    "v": pc.cell_label(cell["kind"],
+                                       cell["parts"], agent),
+                    "kind": cell["kind"],
+                    "parts": cell["parts"],
+                    "entries": cell["entries"]}
+            rows.append({"agent": agent, "name": disp,
+                         "cells": cells})
+        return self._json(200, {"order": oid, "pcs": list(pc.PCS),
+                                "rows": rows})
+
     def _api_pcs_list(self):
         try:
             prof = graph._adapter().embed_settings()["profile"]
@@ -2595,13 +2643,6 @@ class Handler(BaseHTTPRequestHandler):
             row["state"] = ("active" if n else
                             ("empty" if os.path.isdir(ed)
                              else "not built yet"))
-            row["grants"] = self._pc_grants(pid)
-            readers = row["grants"].get("read", [])
-            if info.get("media"):
-                row["read"] = "Per-entry recipients (open_ref)"
-            else:
-                row["read"] = ("Full text: " + ", ".join(readers)
-                               if readers else "Full text: —")
             row["size_bytes"] = self._pc_size(pid)
             row["profile"] = prof
             row["index"] = {p: self._pc_index_info(pid, p)

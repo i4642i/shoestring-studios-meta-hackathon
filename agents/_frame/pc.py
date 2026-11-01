@@ -1779,6 +1779,85 @@ def entry_access(entry, agent_id, order_id):
     return None
 
 
+_CLONE_RE = re.compile(r"^(.+)@p(\d+)$")
+
+
+def _frag_short(ref):
+    """'pc://source/d#s1.1' -> 's1.1' for matrix cells."""
+    frag = (ref or "").split("#", 1)
+    return frag[1] if len(frag) > 1 and frag[1] else "ref"
+
+
+def cell_label(kind, parts, agent):
+    """One matrix cell value: full / map / map·P1 / map·§frag.
+    Clone agents name their part (pia@p1 reads part 1's items);
+    listed part refs show the first fragment + a count."""
+    if kind == "full":
+        return "full"
+    m = _CLONE_RE.match(agent or "")
+    if m:
+        return "map·P%s" % m.group(2)
+    if parts:
+        first = _frag_short(parts[0])
+        if len(parts) > 1:
+            return "map·%s+%d" % (first, len(parts) - 1)
+        return "map·%s" % first
+    return "map"
+
+
+def rights_for_order(order_id, root=None):
+    """Real per-employee rights for one order, from recipient
+    rows (not tool grants): {"agents": [base and clone ids
+    holding any row], "cells": {(agent, pc): {"kind", "parts",
+    "entries": [{doc_id, ref, title}]}}}."""
+    cells, agents = {}, set()
+    base = _base(root)
+    for pcname in PCS:
+        edir = os.path.join(base, "storage", "_pc", pcname,
+                            "entries")
+        try:
+            docs = sorted(os.listdir(edir))
+        except OSError:
+            continue
+        for doc in docs:
+            ddir = os.path.join(edir, doc)
+            if not os.path.isdir(ddir):
+                continue
+            try:
+                with open(os.path.join(ddir, "entry.json"),
+                          encoding="utf-8") as f:
+                    entry = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if not isinstance(entry, dict):
+                continue
+            for row in recipients_of(entry) or []:
+                if not isinstance(row, dict) \
+                        or row.get("order_id") != order_id:
+                    continue
+                agent = row.get("agent", "")
+                if not agent:
+                    continue
+                key = (agent, pcname)
+                cell = cells.get(key)
+                if cell is None:
+                    cell = {"kind": "map", "parts": [],
+                            "entries": []}
+                    cells[key] = cell
+                    agents.add(agent)
+                if row_kind(row) == "full":
+                    cell["kind"] = "full"
+                for p in row_parts(row):
+                    if p not in cell["parts"]:
+                        cell["parts"].append(p)
+                info = {"doc_id": doc,
+                        "ref": entry.get("ref", ""),
+                        "title": entry.get("title", "")}
+                if info not in cell["entries"]:
+                    cell["entries"].append(info)
+    return {"agents": sorted(agents), "cells": cells}
+
+
 def set_recipients(pcname, doc_id, order_id, agents, set_by, kind="map",
                    parts=None, root=None):
     """Upsert recipients for one order (merge per agent; other orders'

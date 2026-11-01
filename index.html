@@ -454,13 +454,57 @@
   <div class="card" id="detail" style="display:none"></div>
 </div>
 
+<style>
+  #p-pc { max-width: none; padding: 16px 16px 16px; }
+  #p-pc > .card { width: min(1600px, 100%); margin: 0 auto; }
+  #pc-cards { display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 12px; margin: 12px 0 16px; }
+  @media (max-width: 1200px) {
+    #pc-cards { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 700px) {
+    #pc-cards { grid-template-columns: 1fr; }
+  }
+  .pc-card { border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; background: #fff;
+    border-top: 4px solid #0064e0; }
+  .pc-card.pc-video { border-top-color: #c2571b; }
+  .pc-card h3 { margin: 0 0 6px; font-size: 14px; }
+  .pc-chip { font-size: 10px; font-weight: 800; letter-spacing: 1px;
+    text-transform: uppercase; border-radius: 999px;
+    padding: 2px 8px; margin-left: 6px; }
+  .pc-on { background: #dcfce7; color: #15803d; }
+  .pc-off { background: #eef0f3; color: #6b7280; }
+  .pc-card p { margin: 4px 0; font-size: 12px; }
+  .pc-facts { color: var(--dim); }
+  .pc-tags span { display: inline-block; background: #f4f4f5;
+    border-radius: 6px; padding: 1px 7px; margin: 0 4px 2px 0;
+    font-size: 11px; }
+  .pc-open { display: inline-block; margin-top: 6px;
+    font-weight: 700; }
+  #pc-rightswrap { overflow: auto; max-height: 38vh;
+    border: 1px solid var(--line); border-radius: 8px; }
+  #pc-rights { width: 100%; border-collapse: collapse;
+    font-size: 12px; }
+  #pc-rights th, #pc-rights td { border: 1px solid var(--line);
+    padding: 5px 8px; text-align: left; }
+  #pc-rights thead th { position: sticky; top: 0; background: #fff;
+    z-index: 1; }
+  #pc-rights td.pc-pick { color: var(--dim); font-style: italic; }
+</style>
 <div class="page" id="p-pc">
   <div class="card">
     <h2>PC — COMPANY COMPUTERS</h2>
     <p class="hint">Shared stores, not agents. Employees reach PC materials through a tool, never directly.</p>
     <p id="pc-crumbs" style="display:none"><a href="#/pc">← All PCs</a> <span id="pc-here"></span></p>
     <div id="pc-overview">
+      <div class="addform"><label>Order <select id="pc-order"></select></label></div>
       <div id="pc-cards"></div>
+      <h3>ACCESS RIGHTS</h3>
+      <div id="pc-rightswrap"><table id="pc-rights">
+        <thead><tr><th>EMPLOYEE</th><th>SOURCE</th><th>THEORY</th><th>ARTICLE</th><th>IMAGE</th><th>GEN IMG</th><th>VOICE</th></tr></thead>
+        <tbody id="pc-rrows"><tr><td colspan="7">Loading…</td></tr></tbody>
+      </table></div>
     </div>
     <div id="pc-manage" style="display:none">
       <h3 id="pc-mtitle"></h3>
@@ -4930,6 +4974,7 @@ button.linklike { background: none; border: none; padding: 0;
       generated: "Generated PC", voice: "Voice PC" };
     const MEDIA_PCS = ["image", "generated", "voice"];
     let cur = { pc: "", id: "", ref: "", order: "" };
+    let pcOrder = "";
     function fail(e) { errline.textContent = "Error: " + e.message; }
     function fmtSize(n) {
       if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB";
@@ -4950,21 +4995,141 @@ button.linklike { background: none; border: none; padding: 0;
       document.getElementById("p-pc").classList.add("active");
     }
     function route() {
-      const m = (location.hash || "").match(/^#\/pc(?:\/(\w+))?$/);
+      const m = (location.hash || "").match(/^#\/pc(?:\/(\w+)(?:\/([\w-]+))?)?$/);
       if (!m) return false;
       showPcTab();
-      if (m[1] && PCS.indexOf(m[1]) >= 0) openManage(m[1]);
+      if (m[1] && PCS.indexOf(m[1]) >= 0)
+        openManage(m[1]).then(() => {
+          if (m[2]) showDetail(m[1], m[2]).catch(fail);
+        }).catch(fail);
       else openOverview();
       return true;
     }
     window.addEventListener("hashchange", () => { route(); });
 
+    const PC_TEAM = { source: "story", theory: "story",
+      article: "story", image: "video", generated: "video",
+      voice: "video" };
+    function pcCard(p) {
+      const div = document.createElement("div");
+      div.className = "pc-card pc-" + (PC_TEAM[p.id] || "story");
+      const h = document.createElement("h3");
+      h.textContent = p.name + " ";
+      const chip = document.createElement("span");
+      chip.className = "pc-chip pc-" +
+        (p.state === "active" ? "on" : "off");
+      chip.textContent = p.state;
+      h.appendChild(chip);
+      div.appendChild(h);
+      const holds = document.createElement("p");
+      holds.innerHTML = "<b>Holds</b> " + esc(p.holds || "");
+      div.appendChild(holds);
+      const add = document.createElement("p");
+      add.innerHTML = "<b>Added by</b> " + esc(p.add || "");
+      div.appendChild(add);
+      const facts = document.createElement("p");
+      facts.className = "pc-facts";
+      const ix = p.index || {};
+      const ixT = ["local", "jetson"].map(q => {
+        const v = ix[q] || {};
+        return q + " " + (v.built ? "built" : "\u2014");
+      }).join(" \u00b7 ");
+      facts.textContent = "Entries " + p.entries + " \u00b7 " +
+        fmtSize(p.size_bytes || 0) + " \u00b7 " +
+        (p.profile || "?") + " \u00b7 Index " + ixT;
+      div.appendChild(facts);
+      const tags = document.createElement("p");
+      tags.className = "pc-tags";
+      (p.tools || []).forEach(t => {
+        const s = document.createElement("span");
+        s.textContent = t;
+        tags.appendChild(s);
+      });
+      div.appendChild(tags);
+      const open = document.createElement("a");
+      open.href = "#/pc/" + p.id;
+      open.className = "pc-open";
+      open.textContent = "Open \u2192";
+      div.appendChild(open);
+      return div;
+    }
+    async function loadOrders() {
+      const sel = document.getElementById("pc-order");
+      const keep = sel.value || pcOrder;
+      let r;
+      try {
+        r = await api.get("api/orders");
+      } catch (e) {
+        sel.innerHTML = "";
+        pcOrder = "";
+        return;
+      }
+      const list = r.orders || [];
+      sel.innerHTML = '<option value="">\u2014</option>' +
+        list.map(o => '<option value="' + esc(o.id) + '">' +
+          esc(o.id) + (o.closed ? " (closed)" : "") +
+          "</option>").join("");
+      pcOrder = list.some(o => o.id === keep) ? keep
+        : (list.length ? list[0].id : "");
+      sel.value = pcOrder;
+    }
+    async function loadRights() {
+      const body = document.getElementById("pc-rrows");
+      if (!pcOrder) {
+        body.innerHTML = '<tr><td colspan="7" class="pc-pick">' +
+          "Pick an order.</td></tr>";
+        return;
+      }
+      let r;
+      try {
+        r = await api.get("api/pcs/rights?order=" +
+          encodeURIComponent(pcOrder));
+      } catch (e) {
+        body.innerHTML = '<tr><td colspan="7">Rights unavailable (' +
+          esc(e.message) + ").</td></tr>";
+        return;
+      }
+      body.innerHTML = "";
+      (r.rows || []).forEach(row => {
+        const tr = document.createElement("tr");
+        const td0 = document.createElement("td");
+        td0.textContent = row.agent;
+        td0.title = row.name || "";
+        tr.appendChild(td0);
+        (r.pcs || []).forEach(pcname => {
+          const td = document.createElement("td");
+          const c = (row.cells || {})[pcname];
+          if (!c) { td.textContent = "\u2014"; }
+          else {
+            const a = document.createElement("a");
+            const es = c.entries || [];
+            a.textContent = c.v + (es.length > 1
+              ? " \u00d7" + es.length : "");
+            a.title = es.map(e =>
+              (e.title || e.doc_id) + " " + e.ref).join("\n");
+            a.href = es.length === 1
+              ? "#/pc/" + pcname + "/" + es[0].doc_id
+              : "#/pc/" + pcname;
+            td.appendChild(a);
+          }
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+      if (!(r.rows || []).length)
+        body.innerHTML = '<tr><td colspan="7">No employees.</td></tr>';
+    }
     async function openOverview() {
       cur = { pc: "", id: "", ref: "", order: "" };
       errline.textContent = "";
       document.getElementById("pc-crumbs").style.display = "none";
       document.getElementById("pc-overview").style.display = "block";
       document.getElementById("pc-manage").style.display = "none";
+      document.getElementById("pc-order").onchange = ev => {
+        pcOrder = ev.target.value;
+        loadRights().catch(fail);
+      };
+      await loadOrders();
       const cards = document.getElementById("pc-cards");
       cards.innerHTML = "";
       let r;
@@ -4972,31 +5137,13 @@ button.linklike { background: none; border: none; padding: 0;
         r = await api.get("api/pcs");
       } catch (e) {
         cards.innerHTML = "<p>PC list unavailable (api/pcs failed: " +
-          e.message + ") — is the server running current code?</p>";
+          e.message + ") \u2014 is the server running current code?</p>";
         return;
       }
       (r.pcs || []).forEach((p) => {
-        const div = document.createElement("div");
-        const h = document.createElement("h3");
-        const a = document.createElement("a");
-        a.href = "#/pc/" + p.id;
-        a.textContent = p.name + " — " + p.state + " →";
-        h.appendChild(a);
-        div.appendChild(h);
-        const ul = document.createElement("ul");
-        [["Holds", p.holds], ["Add", p.add], ["Read", p.read],
-         ["Tools", (p.tools || []).join(", ")],
-         ["Entries", String(p.entries)],
-         ["Size", fmtSize(p.size_bytes || 0)],
-         ["Profile", p.profile || "?"],
-         ["Index", idxText(p.index)]].forEach((kv) => {
-          const li = document.createElement("li");
-          li.textContent = kv[0] + ": " + kv[1];
-          ul.appendChild(li);
-        });
-        div.appendChild(ul);
-        cards.appendChild(div);
+        cards.appendChild(pcCard(p));
       });
+      await loadRights();
     }
 
     async function openManage(pc) {

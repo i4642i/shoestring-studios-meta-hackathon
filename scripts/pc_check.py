@@ -956,5 +956,125 @@ ok(pe["latex"] == "L"
    "checked equation citable")
 
 
+# ---- rights matrix from recipient rows (J18) ----
+ok(pc.cell_label("full", [], "pd_marty") == "full",
+   "label full")
+ok(pc.cell_label("map", [], "voice_wren") == "map",
+   "label map")
+ok(pc.cell_label("map", ["pc://source/d#s1.1",
+                         "pc://source/d#s1.2"],
+                 "voice_wren") == "map·s1.1+1",
+   "label map with part refs")
+ok(pc.cell_label("map", ["pc://source/d#s1.1"],
+                 "voice_wren") == "map·s1.1",
+   "label map with one part ref")
+ok(pc.cell_label("map", [], "photo_pia@p2") == "map·P2",
+   "label clone names its part")
+ok(pc.cell_label("map", ["pc://source/d"],
+                 "voice_wren") == "map·ref",
+   "label frag-less ref")
+
+_J18 = tempfile.mkdtemp(prefix="pcrights_")
+
+
+def _j18_entry(pcname, doc, entry):
+    edir = os.path.join(_J18, "storage", "_pc", pcname,
+                        "entries", doc)
+    os.makedirs(edir, exist_ok=True)
+    with open(os.path.join(edir, "entry.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(entry, f)
+
+
+_J18_OID = "ord-20260101-001"
+_J18_OTHER = "ord-20260202-002"
+_j18_rows_s1 = [
+    {"agent": "pd_marty", "order_id": _J18_OID, "kind": "full",
+     "parts": [], "set_by": "sales_sam", "at": "t"},
+    {"agent": "voice_wren", "order_id": _J18_OID, "kind": "map",
+     "parts": ["pc://source/s1#s1.1",
+               "pc://source/s1#s1.2"],
+     "set_by": "plan_ash", "at": "t"},
+    {"agent": "photo_pia@p1", "order_id": _J18_OID,
+     "kind": "map", "parts": ["pc://source/s1#s1.1"],
+     "set_by": "part_split", "at": "t"},
+    {"agent": "pd_marty", "order_id": _J18_OTHER,
+     "kind": "full", "parts": [], "set_by": "x", "at": "t"}]
+_j18_rows_s2 = [
+    {"agent": "pd_marty", "order_id": _J18_OID, "kind": "map",
+     "parts": [], "set_by": "sales_sam", "at": "t"},
+    {"agent": "photo_pia@p1", "order_id": _J18_OID,
+     "kind": "map", "parts": [], "set_by": "part_split",
+     "at": "t"}]
+_j18_rows_i1 = [
+    {"agent": "board_vera@p1", "order_id": _J18_OID,
+     "kind": "map", "parts": [], "set_by": "photo_pia",
+     "at": "t"}]
+_j18_rows_v1 = [
+    {"agent": "pd_marty", "order_id": _J18_OTHER,
+     "kind": "map", "parts": [], "set_by": "x", "at": "t"}]
+_j18_entry("source", "s1",
+           {"pc": "source", "doc_id": "s1",
+            "ref": "pc://source/s1", "order_id": _J18_OID,
+            "title": "Doc one", "recipients": _j18_rows_s1})
+_j18_entry("source", "s2",
+           {"pc": "source", "doc_id": "s2",
+            "ref": "pc://source/s2", "order_id": _J18_OID,
+            "title": "Doc two", "recipients": _j18_rows_s2})
+_j18_entry("image", "i1",
+           {"pc": "image", "doc_id": "i1",
+            "ref": "pc://image/i1", "order_id": _J18_OID,
+            "title": "Pic one", "recipients": _j18_rows_i1})
+_j18_entry("generated", "g1",
+           {"pc": "generated", "doc_id": "g1",
+            "ref": "pc://generated/g1",
+            "order_id": _J18_OID, "title": "Gen one"})
+_j18_entry("voice", "v1",
+           {"pc": "voice", "doc_id": "v1",
+            "ref": "pc://voice/v1", "order_id": _J18_OTHER,
+            "title": "Clip", "recipients": _j18_rows_v1})
+_baddir = os.path.join(_J18, "storage", "_pc", "theory",
+                       "entries", "broken")
+os.makedirs(_baddir, exist_ok=True)
+with open(os.path.join(_baddir, "entry.json"), "w",
+          encoding="utf-8") as f:
+    f.write("{not json")
+
+jr = pc.rights_for_order(_J18_OID, root=_J18)
+ok(jr["agents"] == ["board_vera@p1", "pd_marty",
+                    "photo_pia@p1", "voice_wren"],
+   "rights agents incl clones, no foreigners")
+jm = jr["cells"].get(("pd_marty", "source"))
+ok(jm is not None and jm["kind"] == "full"
+   and len(jm["entries"]) == 2
+   and pc.cell_label(jm["kind"], jm["parts"],
+                     "pd_marty") == "full",
+   "full wins across entries")
+jw = jr["cells"].get(("voice_wren", "source"))
+ok(jw is not None and jw["kind"] == "map"
+   and len(jw["parts"]) == 2
+   and pc.cell_label(jw["kind"], jw["parts"],
+                     "voice_wren") == "map·s1.1+1",
+   "map parts merge with refs")
+jp = jr["cells"].get(("photo_pia@p1", "source"))
+ok(jp is not None and len(jp["entries"]) == 2
+   and pc.cell_label(jp["kind"], jp["parts"],
+                     "photo_pia@p1") == "map·P1",
+   "clone cell names its part")
+jv = jr["cells"].get(("board_vera@p1", "image"))
+ok(jv is not None and len(jv["entries"]) == 1
+   and jv["entries"][0]["title"] == "Pic one",
+   "media cell carries its entry")
+ok(("pd_marty", "voice") not in jr["cells"]
+   and ("pd_marty", "generated") not in jr["cells"]
+   and all(a != "pd_marty" or p == "source"
+           for a, p in jr["cells"]
+           if a == "pd_marty"),
+   "other orders, legacy and corrupt entries excluded")
+je = pc.rights_for_order("ord-20260303-003", root=_J18)
+ok(je == {"agents": [], "cells": {}},
+   "empty order gives empty rights")
+shutil.rmtree(_J18, ignore_errors=True)
+
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
 sys.exit(1 if FAILS else 0)
