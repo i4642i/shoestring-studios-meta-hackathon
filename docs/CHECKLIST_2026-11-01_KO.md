@@ -63,7 +63,7 @@
 - [x] 9 J8/J9 Employee project memory + chat (ae9bae9)
 - [x] 10 J13/J14 Input logs + spec check (3fa6b80)
 - [x] 11 J15 Board verify view (9024280)
-- [ ] 12 J16 Project folder logs
+- [x] 12 J16 Project folder logs (d3efb37)
 - [ ] 13 J17 Settings layout
 - [ ] 14 J18 PC tab layout + real rights
 - [ ] 15 J19/J20 All tabs width + Gallery
