@@ -196,6 +196,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "orders"] and len(parts) == 4 \
                 and parts[3] == "projectlog":
             return self._api_order_projectlog(parts[2])
+        if parts[:2] == ["api", "orders"] and len(parts) == 4 \
+                and parts[3] == "progress":
+            return self._api_order_progress(parts[2])
         if parts[:2] == ["api", "gallery"] and len(parts) == 2:
             return self._api_gallery_list()
         if parts[:2] == ["api", "ref"] and len(parts) == 2:
@@ -1466,6 +1469,79 @@ class Handler(BaseHTTPRequestHandler):
         cards = gallery.gallery_cards(odir, flows.RUNS_DIR)
         return self._json(200, {"cards": cards})
 
+    @staticmethod
+    def _tail_jsonl(path, n):
+        try:
+            with open(path, encoding="utf-8") as f:
+                rows = []
+                for ln in f.read().splitlines()[-n:]:
+                    try:
+                        rows.append(json.loads(ln))
+                    except ValueError:
+                        continue
+                return [r for r in rows if isinstance(r, dict)]
+        except OSError:
+            return []
+
+    @staticmethod
+    def _order_entry_log(oid):
+        try:
+            base = os.path.join(pc.pc_dir("source"), "entries")
+            cands = []
+            for doc_id in sorted(os.listdir(base)):
+                p = os.path.join(base, doc_id, "entry.json")
+                try:
+                    with open(p, encoding="utf-8") as f:
+                        e = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                if isinstance(e, dict) and e.get("order_id") == oid:
+                    cands.append((os.path.getmtime(p),
+                                  os.path.join(base, doc_id,
+                                               "log.jsonl")))
+            if not cands:
+                return []
+            cands.sort()
+            return Handler._tail_jsonl(cands[-1][1], 60)
+        except OSError:
+            return []
+
+    def _api_order_progress(self, oid):
+        """Live start progress for the Order tab card (polled)."""
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        meta = self._order_meta(d)
+        starting = meta.get("starting")
+        starting = starting if isinstance(starting, dict) else None
+        out = {"starting": bool(starting), "elapsed_s": 0,
+               "lines": [], "failed": False, "reason": "",
+               "status": meta.get("status", ""),
+               "run_id": self._latest_run_for_order(oid)}
+        if starting:
+            try:
+                t0 = time.mktime(time.strptime(
+                    starting.get("at", ""), "%Y-%m-%dT%H:%M:%S"))
+            except ValueError:
+                t0 = time.time()
+            out["elapsed_s"] = max(0, int(time.time() - t0))
+            since = starting.get("at", "").replace("T", " ")
+            tl = [r for r in self._tail_jsonl(
+                      os.path.join(d, "timeline.jsonl"), 80)
+                  if str(r.get("at", "")) >= since]
+            el = self._order_entry_log(oid)
+            lines, failed, reason = intake.progress_lines(tl, el)
+            out.update({"lines": lines, "failed": failed,
+                        "reason": reason})
+        if not starting and meta.get("status") in intake.STARTED:
+            try:
+                with open(os.path.join(d, "start_result.json"),
+                          encoding="utf-8") as f:
+                    out["start_result"] = json.load(f)
+            except (OSError, ValueError):
+                pass
+        return self._json(200, out)
+
     def _api_order_projectlog(self, oid):
         """Serve one project-log file (Board "Project log" link)."""
         qs = unquote(self.path).split("?", 1)
@@ -1948,7 +2024,7 @@ class Handler(BaseHTTPRequestHandler):
         ready = not missing
         step = intake.confirm_step(ready, extra)
         if step == "start":
-            code, out = self._do_chat_start(oid, d, meta, extra)
+            code, out = self._do_chat_accept(oid, d, meta, extra)
             return self._json(code, out)
         if step in ("keep", "ask"):
             note = (intake.DECLINE_ACK if step == "keep"
@@ -2060,8 +2136,24 @@ class Handler(BaseHTTPRequestHandler):
         meta = self._order_meta(d)
         if not meta.get("approved"):
             return self._json(409, {"error": "not approved yet"})
-        code, obj = self._do_complete(oid, d, meta, self._read_json(),
-                                      "in_production")
+        try:
+            code, obj = self._do_complete(oid, d, meta,
+                                          self._read_json(),
+                                          "in_production")
+        finally:
+            try:
+                fresh = self._order_meta(d)
+                fresh.pop("starting", None)
+                self._order_save_meta(d, fresh)
+            except (OSError, ValueError):
+                pass
+        if code == 200 and isinstance(obj, dict):
+            try:
+                with open(os.path.join(d, "start_result.json"),
+                          "w", encoding="utf-8") as f:
+                    json.dump(obj, f, ensure_ascii=False)
+            except (OSError, ValueError, TypeError):
+                pass
         return self._json(code, obj)
 
     def _api_order_confirm(self, oid):
@@ -2142,37 +2234,32 @@ class Handler(BaseHTTPRequestHandler):
             out["sections"] = legacy
         return (200, out)
 
-    def _do_chat_start(self, oid, d, meta, user_text):
-        """Conversation-only start: confirm, then start, like Yes."""
+    def _do_chat_accept(self, oid, d, meta, user_text):
+        """Conversation-only accept: confirm now, the client then
+        calls start (same confirm-then-start the Yes button ran)."""
+        meta["starting"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        self._order_save_meta(d, meta)
         code, out = self._confirm_yes_out(oid, d, meta)
         if code != 200:
+            meta.pop("starting", None)
+            self._order_save_meta(d, meta)
             err = (out.get("error") if isinstance(out, dict)
                    else "confirm failed")
             reply = "Couldn't start: " + err
             self._chat_append(d, user_text, reply)
             bad = intake.chat_reply_payload(reply, True, [])
-            bad["started"] = False
+            bad["accepted"] = False
             return self._json(code, bad)
-        code2, out2 = self._do_complete(oid, d, self._order_meta(d),
-                                        {}, "in_production")
-        if code2 != 200:
-            err = (out2.get("error") if isinstance(out2, dict)
-                   else "start failed")
-            reply = "Couldn't start: " + err
-            self._chat_append(d, user_text, reply)
-            bad = intake.chat_reply_payload(reply, False, [])
-            bad["started"] = False
-            return self._json(code2, bad)
-        reply = intake.START_LINE + " " + intake.START_DONE
+        reply = intake.ACCEPT_LINE
         self._chat_append(d, user_text, reply)
         projlog.log_event(oid, "order", "chat",
                           "client: %s / Sam: %s" % (user_text, reply),
                           file="orders/%s/chat.jsonl" % oid)
         projlog.do_refresh(oid)
         payload = intake.chat_reply_payload(reply, False, [])
-        payload.update({"started": True,
+        payload.update({"accepted": True,
                         "answers": out.get("answers"),
-                        "pdf": out.get("pdf"), "start": out2})
+                        "pdf": out.get("pdf")})
         if "sections" in out:
             payload["sections"] = out["sections"]
         return self._json(200, payload)

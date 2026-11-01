@@ -148,8 +148,41 @@ ok(intake.confirm_step(True, "hmm?") == "ask",
    "ready + unclear asks once more")
 ok("o-confirm" not in _ui and "o-yes" not in _ui and "showConfirm" not in _ui,
    "confirm buttons and their wiring are gone")
-ok("_do_chat_start" in _srv and "showChatStarted" in _ui,
-   "chat-yes runs the same confirm-then-start")
+ok("_do_chat_accept" in _srv and "accepted" in _srv,
+   "chat-yes confirms now, the client then calls start")
+ok("start_result.json" in _srv and "starting" in _srv,
+   "start clears its flag and keeps its result for reload")
+ok("/progress" in _srv or "order_progress" in _srv,
+   "progress endpoint serves the card lines")
+ok("beginStarting" in _ui and "o-startcard" in _ui,
+   "order tab dims the room with a progress card")
+ok("Say 'start' to try again." in _ui,
+   "failed start tells the client how to retry")
+ok(intake.ACCEPT_LINE.startswith("Order received"),
+   "accept line names the received state")
+ok(intake.retry_line("boom") == "Something went wrong while "
+   "starting: boom. Say 'start' to try again.",
+   "retry line carries the reason")
+_tl = [{"at": "2026-11-01 22:01:28", "source": "sam",
+        "ev": "start", "summary": "x"},
+       {"at": "2026-11-01 22:01:34", "source": "pc_worker",
+        "ev": "start", "summary": "y"},
+       {"at": "2026-11-01 22:02:18", "source": "pc_worker",
+        "ev": "failed", "summary": "name 'secs' is not defined"}]
+_el = [{"at": "2026-11-01T22:01:33", "ev": "ingested", "pages": 18},
+       {"at": "2026-11-01T22:02:10", "ev": "transcribe_call",
+        "kind": "table", "page": 8, "error": ""}]
+_pl, _pf, _pr = intake.progress_lines(_tl, _el)
+ok(_pl == ["Sam is writing the production request",
+           "Reading your PDF (18 pages)",
+           "Reading the table on page 8",
+           "Problem: name 'secs' is not defined"],
+   "progress lines read like the live order")
+ok(_pf is True and _pr == "name 'secs' is not defined",
+   "failed event surfaces with its reason")
+ok(intake.progress_lines([], []) == ([], False, ""),
+   "empty logs give empty progress")
+
 
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
 sys.exit(1 if FAILS else 0)

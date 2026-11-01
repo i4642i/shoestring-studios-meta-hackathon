@@ -17,6 +17,7 @@ DECLINE_ACK = ("Of course — take your time. Tell me anything else "
 
 YES_LINE = "Yes, start."
 NO_LINE = "No, not yet."
+ACCEPT_LINE = "Order received \u2014 preparing production."
 START_DONE = "Production started \u2014 watch it in Studio."
 CONFIRM_AGAIN = ("Just to confirm \u2014 shall I start "
                    "production now?")
@@ -90,6 +91,78 @@ def confirm_step(ready, user_text):
     if v == "no":
         return "keep"
     return "ask"
+
+
+def retry_line(reason):
+    """Chat line after a failed start (no buttons)."""
+    return ("Something went wrong while starting: %s. Say 'start' to try again." % (reason or "unknown reason"))
+
+
+def progress_lines(tl_rows, entry_rows):
+    """Plain-English start progress from raw log rows.
+
+    tl_rows: timeline.jsonl rows; entry_rows: Source PC entry
+    log.jsonl rows. Returns (lines, failed, reason): the last
+    few lines for the progress card, whether any failed event
+    was seen, and the short reason. Never raises."""
+    staged = []
+    try:
+        for r in tl_rows or []:
+            if not isinstance(r, dict):
+                continue
+            at = str(r.get("at", "")).replace("T", " ")
+            src, ev = r.get("source", ""), r.get("ev", "")
+            summ = str(r.get("summary", ""))
+            if ev in ("failed", "error"):
+                staged.append((at, "", summ[:200]))
+            elif (src, ev) == ("sam", "start"):
+                staged.append((at, "Sam is writing the production request", ""))
+            elif (src, ev) == ("sam", "done"):
+                staged.append((at, "Production request written", ""))
+            elif (src, ev) == ("pc_worker", "start"):
+                staged.append((at, "Reading your PDF", ""))
+            elif (src, ev) == ("pc_worker", "done"):
+                staged.append((at, "Search index ready", ""))
+            elif (src, ev) == ("order", "start"):
+                staged.append((at, "Starting the crew flow", ""))
+        for r in entry_rows or []:
+            if not isinstance(r, dict):
+                continue
+            at = str(r.get("at", "")).replace("T", " ")
+            ev = r.get("ev", "")
+            if ev == "ingested" and isinstance(r.get("pages"), int):
+                staged.append((at, "Reading your PDF (%d pages)"
+                                % r["pages"], ""))
+            elif ev == "transcribe_call" and not r.get("error"):
+                if r.get("kind") == "table":
+                    staged.append((at, "Reading the table on page %s"
+                                    % r.get("page", "?"), ""))
+                elif r.get("kind") == "formula":
+                    staged.append((at, "Reading formulas on page %s"
+                                    % r.get("page", "?"), ""))
+            elif ev == "transcribe_call" and r.get("error"):
+                staged.append((at, "", str(r["error"])[:120]))
+            elif ev == "index_done":
+                staged.append((at, "Building the search index", ""))
+    except (AttributeError, TypeError, ValueError):
+        return [], False, ""
+    staged.sort(key=lambda x: x[0])
+    lines, failed, reason = [], False, ""
+    for _, text, prob in staged:
+        if prob and not text:
+            failed = True
+            reason = prob
+            lines.append("Problem: " + prob)
+        elif text:
+            lines.append(text)
+    if any(l.startswith("Reading your PDF (") for l in lines):
+        lines = [l for l in lines if l != "Reading your PDF"]
+    keep, seen = [], set()
+    for l in lines:
+        if l not in seen:
+            keep.append(l)
+            seen.add(l)
+    return keep[-4:], failed, reason
 
 
 def clean_chat_reply(raw):

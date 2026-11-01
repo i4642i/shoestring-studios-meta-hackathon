@@ -347,6 +347,9 @@
   .oreceived .obtns button.primary { background: var(--ink);
     color: #fff; border-color: var(--ink); }
   .oreceived .onew { margin-top: 10px; font-size: 12px; }
+  .ostartlines { text-align: left; font-size: 13px; margin: 8px auto 0;
+    max-width: 420px; display: flex; flex-direction: column; gap: 4px; }
+  .ostartlines .prob { color: #b3261e; font-weight: 700; }
   #o-form input:disabled, #o-form button:disabled,
   #o-modes button:disabled, #order-form .q input:disabled,
   #start:disabled, #o-ok:disabled { opacity: .45;
@@ -3388,18 +3391,114 @@ button.linklike { background: none; border: none; padding: 0;
         "\nPDF: " + pdfName;
       boxEl.style.display = "block";
     }
-    function showChatStarted(r) {
-      const a = r.answers || {};
-      const prog = "Here's what I have:\n" +
-        "Audience: " + a.audience + "\nLength: " + a.length +
-        "\nDepth: " + a.depth + "\nTheme: " + a.theme +
-        "\nPDF: " + r.pdf.file + " (" + r.pdf.bytes +
-        " bytes, stored)" +
-        (r.sections ? "\nPDF sections: " + r.sections.count +
-          " (" + r.sections.file + ")" : "");
-      samSay(prog);
-      samSay(prog + "\nProduction started \u2014 watch it in Studio.");
-      showStarted(r.start);
+    let startTimer = null;
+    let startT0 = 0;
+    function renderStartLines(lines) {
+      const box = document.getElementById("o-startlines");
+      if (box) {
+        box.innerHTML = "";
+        (lines || []).forEach(t => {
+          const d = document.createElement("div");
+          if (t.indexOf("Problem: ") === 0) d.className = "prob";
+          d.textContent = t;
+          box.appendChild(d);
+        });
+      }
+      const el = document.getElementById("o-startelapsed");
+      if (el) el.textContent = Math.max(0, Math.round(
+        (Date.now() - startT0) / 1000)) + " s elapsed";
+    }
+    function stopStartingPoll() {
+      if (startTimer) { clearInterval(startTimer); startTimer = null; }
+    }
+    function beginStarting(r) {
+      stopStartingPoll();
+      const scene = document.getElementById("o-scene");
+      scene.classList.add("locked");
+      if (!scene.querySelector(".olockdim")) {
+        const dim = document.createElement("div");
+        dim.className = "olockdim";
+        scene.appendChild(dim);
+      }
+      let card = document.getElementById("o-startcard");
+      if (!card) {
+        card = document.createElement("div");
+        card.className = "oreceived ostartcard";
+        card.id = "o-startcard";
+        const h = document.createElement("h3");
+        h.textContent = "Order received \u2014 preparing production.";
+        const lines = document.createElement("div");
+        lines.className = "ostartlines";
+        lines.id = "o-startlines";
+        const sub = document.createElement("p");
+        sub.className = "osub";
+        sub.id = "o-startelapsed";
+        card.append(h, lines, sub);
+        scene.appendChild(card);
+      }
+      if (r && r.answers) {
+        const a = r.answers;
+        renderStartLines(["Audience: " + a.audience + " \u00b7 Length: " + a.length +
+          " \u00b7 Depth: " + a.depth + " \u00b7 Theme: " + a.theme]);
+      }
+      input.disabled = true;
+      form.querySelector("button").disabled = true;
+      document.querySelectorAll("#o-modes [data-m]")
+        .forEach(x => { x.disabled = true; });
+      ["o-audience", "o-length", "o-depth", "o-theme",
+        "o-pdf"].forEach(id => {
+        document.getElementById(id).disabled = true;
+      });
+      document.getElementById("o-ok").disabled = true;
+      if (window.__recepLock) window.__recepLock(true);
+      startT0 = Date.now();
+      startTimer = setInterval(pollStarting, 2000);
+      pollStarting();
+    }
+    async function pollStarting() {
+      if (!oid || !startTimer) return;
+      let p;
+      try {
+        p = await api.get("api/orders/" + oid + "/progress");
+      } catch (e) { return; }
+      if (p.starting) { renderStartLines(p.lines || []); return; }
+      stopStartingPoll();
+      if (p.status === "in_production" && p.start_result) {
+        const card = document.getElementById("o-startcard");
+        if (card) card.remove();
+        showStarted(p.start_result);
+      } else {
+        failStarting((p.failed && p.reason) ? p.reason
+          : "the start did not finish");
+      }
+    }
+    async function runStart() {
+      try {
+        const st = await api.send("POST", "api/orders/" + oid + "/start", {});
+        stopStartingPoll();
+        const card = document.getElementById("o-startcard");
+        if (card) card.remove();
+        showStarted(st);
+      } catch (e) {
+        failStarting(e.message);
+      } finally {
+        delete form.dataset.busy;
+      }
+    }
+    function failStarting(reason) {
+      stopStartingPoll();
+      const scene = document.getElementById("o-scene");
+      const h = scene.querySelector("#o-startcard h3");
+      if (h) h.textContent = "Couldn't start: " + reason;
+      setTimeout(() => {
+        unlockReceived();
+        delete form.dataset.busy;
+        const line = "Something went wrong while starting: " + reason +
+          ". Say 'start' to try again.";
+        addMsg("them", line);
+        history.push({ role: "assistant", content: line });
+        input.focus();
+      }, 4000);
     }
     const chatBelow = document.createElement("div");
     chatBelow.id = "o-chatbelow";
@@ -3589,6 +3688,7 @@ button.linklike { background: none; border: none; padding: 0;
       chatMissing = [];
       history.length = 0;
       document.getElementById("o-result").style.display = "none";
+      stopStartingPoll();
       unlockReceived();
       try {
         roster = await api.get("api/crew");
@@ -3643,6 +3743,11 @@ button.linklike { background: none; border: none; padding: 0;
               } else {
                 addMsg("them", "Hi! I'm " + m.name + ". I'll walk you through 5 quick questions, then write the production request for our crew.");
               }
+              if (o.starting) {
+                beginStarting(null);
+                msg.textContent = "Resumed " + oid + " (start in progress).";
+                return;
+              }
               addMsg("sys", "Resumed " + oid + " (" + turns.length + " turns).");
               msg.textContent = "Resumed " + oid + " (" + turns.length + " turns).";
               return;
@@ -3689,15 +3794,17 @@ button.linklike { background: none; border: none; padding: 0;
         const r = await api.send("POST", "api/orders/" + oid + "/chat", { messages: history, mode: mode });
         chatMissing = Array.isArray(r.missing) ? r.missing : [];
         history.push({ role: "assistant", content: r.reply });
-        if (r.started) showChatStarted(r);
+        if (r.accepted) { beginStarting(r); runStart(); }
         else addMsg("them", r.reply);
       } catch (err) {
         addMsg("them", lastSam);
         addMsg("sys", "Error: " + err.message);
       } finally {
-        delete form.dataset.busy;
-        btn.disabled = false;
-        input.focus();
+        if (!startTimer) {
+          delete form.dataset.busy;
+          btn.disabled = false;
+          input.focus();
+        }
       }
     });
     document.getElementById("o-pdf").onchange = (e) => {
