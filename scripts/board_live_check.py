@@ -247,8 +247,9 @@ PILLS_JS = """(() => {
     document.querySelectorAll('#bd-strip .bd-pill'));
   const pp = document.querySelectorAll(
     '#bd-strip .bd-pill .bd-pp');
-  return {pills: pills.length, pp: pp.length,
-          sample: pills[4] ? pills[4].textContent : ''};
+  const withParts = pills.map(p => p.textContent)
+    .find(t => t.indexOf("P1") >= 0) || '';
+  return {pills: pills.length, pp: pp.length, sample: withParts};
 })()"""
 
 CLICK_JS = """((col, cut) => {
@@ -479,7 +480,10 @@ FULL = [("pd_marty", {"structure": STRUCT}),
         ("anim_max", {"anim_picks": ANIM}),
         ("board_vera", {"slide_draft": SLIDE}),
         ("slide_remy", {"render_log": RLOG}),
-        ("video_production", {"video": {"file": "video.mp4"}})]
+        ("video_production", {"video": {"file": "video.mp4"}}),
+        ("sales_sam", {"request": {"order_id": "ord-shot-001"}}),
+        ("explain_cleo", {"concepts": {"parts": []}}),
+        ("case_rex", {"cases": {"parts": []}})]
 
 CLONE_NODES = ("photo_pia", "image_gene", "anim_max",
                "board_vera", "slide_remy")
@@ -749,8 +753,8 @@ def main():
                              " return 'probe-threw: ' + e; } })()")
             print("probe detail: %s" % detail, flush=True)
         ok(out.get("tabActive") is True, "board tab activates")
-        ok(out.get("pills") == 10,
-           "10 stage pills (got %s)" % out.get("pills"))
+        ok(out.get("pills") == 13,
+           "13 stage pills (got %s)" % out.get("pills"))
         ok(out.get("rows") == 3,
            "3 cut rows (got %s)" % out.get("rows"))
         ok(out.get("cols") == 12,

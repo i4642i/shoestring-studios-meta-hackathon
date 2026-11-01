@@ -18,7 +18,10 @@ VIDEO_COLUMNS = ("photo", "image", "anim", "slide_plan",
                  "slide_build")
 
 STAGES = (
+    ("sam", "sales_sam", "Sam", "story", "Request"),
     ("marty", "pd_marty", "Marty", "story", "Part"),
+    ("cleo", "explain_cleo", "Cleo", "story", "Concepts"),
+    ("rex", "case_rex", "Rex", "story", "Cases"),
     ("ash", "plan_ash", "Ash", "story", "Scene"),
     ("wren", "voice_wren", "Wren", "story", "Lines \u00b7 voice"),
     ("penn", "board_penn", "Penn", "story", "Screen"),
@@ -45,17 +48,17 @@ _KEY_NODE = {key: node for key, node, _w, _t, _l in STAGES}
 _WHO_BY_NODE = {node: who for _k, node, who, _t, _l in STAGES}
 
 _STAGE_FILES = ("report.md", "result.json", "INPUTS.md", "INPUTS.json",
-                "inputs_log.json")
+                "inputs_log.json", "llm_calls.jsonl")
 
 _VERIFY_FILES = ("report.md", "result.json", "INPUTS.md",
                  "INPUTS.json", "inputs_log.json",
                  "inputs_check.json", "reads_log.jsonl",
-                 "events.jsonl", "usage.json")
+                 "events.jsonl", "usage.json", "llm_calls.jsonl")
 
 _MAX_VERIFY_ROWS = 500
 
 _RUN_PATH_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".json",
-                  ".md", ".txt", ".srt", ".mp4", ".webm")
+                  ".jsonl", ".md", ".txt", ".srt", ".mp4", ".webm")
 
 _NODE_RE = re.compile(r"[A-Za-z0-9_\-]+")
 
@@ -77,6 +80,70 @@ def run_id_ok(run_id):
     """Same rule as the server: a plain folder name, never a path."""
     return bool(run_id) and "/" not in run_id \
         and "\\" not in run_id and not run_id.startswith(".")
+
+
+def sam_order_dir(order_id, sam_root=None):
+    """Sam's order-run folder (output/runs/<order_id>), or None.
+
+    Sam's canonical files (INPUTS.md, events.jsonl, llm_calls.jsonl,
+    result.json, report.md) live there, not under the flow run."""
+    from . import flow as _flow
+    if not order_id or not isinstance(order_id, str):
+        return None
+    if "/" in order_id or "\\" in order_id \
+            or order_id.startswith("."):
+        return None
+    root = sam_root or os.path.join(_flow.ROOT, "output", "runs")
+    d = os.path.join(root, order_id)
+    return d if os.path.isdir(d) else None
+
+
+def stage_dir(run_dir, node, order_id="", sam_root=None):
+    """Folder holding a stage's files. Sam resolves to his order-run
+    folder when it holds a finished result.json (the flow run only
+    keeps reuse copies); otherwise the run folder (live flow runs,
+    fixtures)."""
+    if node == "sales_sam" and order_id:
+        sdir = sam_order_dir(order_id, sam_root)
+        if sdir and os.path.isfile(
+                os.path.join(sdir, "result.json")):
+            return sdir
+    return os.path.join(run_dir, node)
+
+
+def sam_file(runs_root, run_id, name, sam_root=None):
+    """Sam's file for the step file endpoint (same rule)."""
+    run_dir = os.path.join(runs_root, run_id)
+    status = _load_json(os.path.join(run_dir, "STATUS.json")) or {}
+    full = os.path.join(
+        stage_dir(run_dir, "sales_sam",
+                  status.get("order_id", ""), sam_root), name)
+    return full if os.path.isfile(full) else None
+
+
+_LLM_SUM_ROWS = 2000
+_LLM_KEEP_ROWS = 25
+
+
+def _llm_section(ndir):
+    """LLM calls for the verify view: sums plus the last rows in
+    full. Sums cover at most the last _LLM_SUM_ROWS calls."""
+    if not ndir or not os.path.isfile(
+            os.path.join(ndir, "llm_calls.jsonl")):
+        return {"present": False}
+    rows = _read_jsonl(os.path.join(ndir, "llm_calls.jsonl"),
+                       cap=_LLM_SUM_ROWS)
+    pt, ct, secs = 0, 0, 0.0
+    for r in rows:
+        if type(r.get("prompt_tokens")) is int:
+            pt += r["prompt_tokens"]
+        if type(r.get("completion_tokens")) is int:
+            ct += r["completion_tokens"]
+        if type(r.get("seconds")) in (int, float):
+            secs += r["seconds"]
+    return {"present": True, "calls": len(rows),
+            "prompt_tokens": pt, "completion_tokens": ct,
+            "seconds": round(secs, 1), "rows": rows[-_LLM_KEEP_ROWS:]}
 
 
 def safe_run_path(runs_root, run_id, node, rel):
@@ -361,7 +428,8 @@ def _clone_approved(approved, node, no):
     return cid in approved or node in approved
 
 
-def build_board(run_id, runs_root=None, pc_root=None, running=False):
+def build_board(run_id, runs_root=None, pc_root=None, running=False,
+                sam_root=None):
     """Dashboard payload for one run. Never raises on partial runs."""
     from . import flow as _flow
     runs_root = runs_root or _flow.RUNS_DIR
@@ -371,6 +439,7 @@ def build_board(run_id, runs_root=None, pc_root=None, running=False):
     if not os.path.isdir(run_dir):
         return {"ok": False, "error": "no such run: %r" % (run_id,)}
     status = _load_json(os.path.join(run_dir, "STATUS.json")) or {}
+    order_id = status.get("order_id", "")
     approved = set(status.get("approved") or [])
     run_state = status.get("state", "unknown")
     started, done_ev = _events(run_dir)
@@ -380,7 +449,7 @@ def build_board(run_id, runs_root=None, pc_root=None, running=False):
             pending.append(agent)
     cats, usage, have = {}, {}, {}
     for _key, node, _who, _team, _label in STAGES:
-        ndir = os.path.join(run_dir, node)
+        ndir = stage_dir(run_dir, node, order_id, sam_root)
         cats[node] = _categories(ndir) if os.path.isdir(ndir) else {}
         have[node] = bool(cats[node])
         usage[node] = _load_json(os.path.join(ndir, "usage.json"))
@@ -445,7 +514,7 @@ def build_board(run_id, runs_root=None, pc_root=None, running=False):
             st = "run"
         else:
             st = "wait"
-        ndir = os.path.join(run_dir, node)
+        ndir = stage_dir(run_dir, node, order_id, sam_root)
         files = {}
         for name in _STAGE_FILES:
             if os.path.isfile(os.path.join(ndir, name)):
@@ -799,11 +868,12 @@ def _ev_time(row):
     return row.get("t") or row.get("at") or ""
 
 
-def build_verify(run_id, node, part=None, runs_root=None):
+def build_verify(run_id, node, part=None, runs_root=None,
+                 sam_root=None):
     """Everything the Board needs to verify one employee/part:
     inputs manifest, PC reads, spec check, merged events with
-    plain phrases, cost, and file links. Unknown nodes fail;
-    a stage that has not run yet returns empty sections."""
+    plain phrases, LLM calls, cost, and file links. Unknown nodes
+    fail; a stage that has not run yet returns empty sections."""
     from . import flow as _flow
     from . import office as _office
     runs_root = runs_root or _flow.RUNS_DIR
@@ -827,7 +897,10 @@ def build_verify(run_id, node, part=None, runs_root=None):
         return {"ok": False,
                 "error": "no such part: %r" % (part,)}
     if part is None:
-        ndir = os.path.join(run_dir, node)
+        status0 = _load_json(
+            os.path.join(run_dir, "STATUS.json")) or {}
+        ndir = stage_dir(run_dir, node,
+                         status0.get("order_id", ""), sam_root)
     else:
         ndir = os.path.join(run_dir, node, "p%d" % part)
     ndir = ndir if os.path.isdir(ndir) else None
@@ -869,6 +942,7 @@ def build_verify(run_id, node, part=None, runs_root=None):
             "part": part, "clone": label,
             "inputs": inputs if isinstance(inputs, dict)
             else {"present": False},
+            "llm": _llm_section(ndir),
             "reads": reads,
             "spec": spec if isinstance(spec, dict)
             else {"present": False},

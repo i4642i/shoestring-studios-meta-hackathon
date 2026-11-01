@@ -1222,7 +1222,8 @@ button.linklike { background: none; border: none; padding: 0;
     { id: "slide_build", stage: "remy", title: "Slide build", who: "Remy" },
     { id: "video", stage: "video", title: "Video", who: "Program" }
   ];
-  const BDNODES = { marty: "pd_marty", ash: "plan_ash", wren: "voice_wren",
+  const BDNODES = { sam: "sales_sam", marty: "pd_marty", cleo: "explain_cleo",
+    rex: "case_rex", ash: "plan_ash", wren: "voice_wren",
     penn: "board_penn", pia: "photo_pia", gene: "image_gene",
     max: "anim_max", vera: "board_vera", remy: "slide_remy",
     video: "video_production" };
@@ -1532,7 +1533,7 @@ button.linklike { background: none; border: none; padding: 0;
     const s = stageOf(key);
     const files = s.files || {};
     const order = ["report.md", "result.json", "INPUTS.md",
-      "inputs_log.json",
+      "inputs_log.json", "llm_calls.jsonl",
       "INPUTS.json"];
     const links = order.filter(n => files[n]).map(n =>
       '<a href="' + esc(files[n]) +
@@ -1736,10 +1737,14 @@ button.linklike { background: none; border: none; padding: 0;
       esc((s.who || "") + " \u00b7 " + (s.label || "")) + "</div><h3>" +
       esc((s.who || key) + " report") + "</h3>" +
       chip(s.status || "wait") + stageCard(key);
+    const node = BDNODES[key];
+    if (node)
+      h += '<div class="bd-vf">Loading verify\u2026</div>';
     const url = (s.files || {})["report.md"];
-    if (url) {
+    if (url)
       h += card("REPORT", '<div class="bd-rep">Loading\u2026</div>');
-      el.innerHTML = h;
+    el.innerHTML = h;
+    if (url) {
       api.text(url).then(t => {
         const d = el.querySelector(".bd-rep");
         if (d) d.innerHTML = "<pre>" +
@@ -1749,8 +1754,17 @@ button.linklike { background: none; border: none; padding: 0;
         const d = el.querySelector(".bd-rep");
         if (d) d.textContent = "Could not load the report.";
       });
-    } else {
-      el.innerHTML = h;
+    }
+    if (node) {
+      api.get("api/flows/runs/" + encodeURIComponent(B.run) +
+        "/verify?node=" + encodeURIComponent(node)).then(v => {
+        const box = el.querySelector(".bd-vf");
+        if (box && v && v.ok) box.innerHTML = verifyCards(v);
+        else if (box) box.remove();
+      }).catch(() => {
+        const box = el.querySelector(".bd-vf");
+        if (box) box.remove();
+      });
     }
   }
   function renderEmpty() {
@@ -1947,6 +1961,32 @@ button.linklike { background: none; border: none; padding: 0;
       const links = fileLinks(files, ["events.jsonl"]);
       if (links) b += links;
       h += card("EVENTS", b);
+    }
+    const llm = v.llm || {};
+    if (llm.present === false) {
+      h += card("LLM CALLS", "No LLM calls logged." +
+        (files["llm_calls.jsonl"] ? "<br>" +
+          fileLinks(files, ["llm_calls.jsonl"]) : ""));
+    } else {
+      let b = "Calls: <b>" + (llm.calls || 0) + "</b> \u00b7 " +
+        "Tokens: <b>" + (llm.prompt_tokens || 0) + "+" +
+        (llm.completion_tokens || 0) + "</b> \u00b7 " +
+        "Time: <b>" + (llm.seconds || 0) + "s</b>";
+      (llm.rows || []).forEach(r => {
+        b += '<details class="bd-ev"><summary>' +
+          esc(r.at || "") + " " + esc(r.caller || "") + " " +
+          esc(r.model || "") + " " +
+          (r.prompt_tokens || 0) + "+" +
+          (r.completion_tokens || 0) + " tok " +
+          (r.seconds || 0) + "s</summary>";
+        b += "<pre>" + esc(JSON.stringify({
+          messages: r.messages, tools: r.tools,
+          reply: r.reply, error: r.error
+        }, null, 1).slice(0, 20000)) + "</pre></details>";
+      });
+      const links = fileLinks(files, ["llm_calls.jsonl"]);
+      if (links) b += links;
+      h += card("LLM CALLS", b);
     }
     const u = (v.cost || {}).usage;
     let cb = "Cost: <b>" + esc(bdCost(u)) + "</b>";

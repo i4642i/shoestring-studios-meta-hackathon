@@ -1870,7 +1870,8 @@ class Handler(BaseHTTPRequestHandler):
                   "usage.json": "application/json",
                   "captions.srt": "text/plain",
                   "assembly.json": "application/json",
-                  "storyboard_table.json": "application/json"}
+                  "storyboard_table.json": "application/json",
+                  "llm_calls.jsonl": "text/plain"}
 
     def _api_flow_file(self, run_id):
         if not self._run_id_ok(run_id):
@@ -1885,8 +1886,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": "no such node"})
         if name not in self._RUN_FILES:
             return self._json(404, {"error": "no such file"})
-        full = os.path.join(flows.RUNS_DIR, run_id, sub, name)
-        if not os.path.isfile(full):
+        if node == "sales_sam":
+            full = board.sam_file(flows.RUNS_DIR, run_id, name)
+        else:
+            full = os.path.join(flows.RUNS_DIR, run_id, sub, name)
+        if full is None or not os.path.isfile(full):
             return self._json(404, {"error": "no such file"})
         with open(full, "rb") as f:
             data = f.read()

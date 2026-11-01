@@ -27,6 +27,19 @@ def ok(cond, msg):
 tmp = tempfile.mkdtemp(prefix="boardcheck_")
 RUNS = os.path.join(tmp, "runs")
 os.makedirs(RUNS)
+SAMROOT = os.path.join(tmp, "samruns")
+os.makedirs(SAMROOT)
+
+REQ = {"order_id": "ord-board-001",
+       "client_answers": {"audience": "beginners", "length": "10 min",
+                          "depth": "key concepts", "theme": "examples",
+                          "source": "book.pdf"},
+       "source_summary": "A short book.",
+       "production_notes": ["Keep it simple."],
+       "open_questions": []}
+CON = {"parts": [{"part_id": "p1", "concept_name": "Basics",
+                  "claims": []}]}
+CAS = {"parts": [{"part_id": "p1", "cases": []}]}
 
 SID = _pc.content_id("source:board-chapter")
 VID = _pc.content_id("voice:ord-board-001")
@@ -222,13 +235,57 @@ FULL = [("pd_marty", {"structure": STRUCT}),
         ("anim_max", {"anim_picks": ANIM}),
         ("board_vera", {"slide_draft": SLIDE}),
         ("slide_remy", {"render_log": RLOG}),
-        ("video_production", {"video": {"file": "video.mp4"}})]
+        ("video_production", {"video": {"file": "video.mp4"}}),
+        ("sales_sam", {"request": REQ}),
+        ("explain_cleo", {"concepts": CON}),
+        ("case_rex", {"cases": CAS})]
 
 for node, cats in FULL:
     wres("boardfull1", node, cats, report=(node == "pd_marty"))
 wstatus("boardfull1", {"run_id": "boardfull1", "flow_id": "default",
                        "order_id": "ord-board-001",
                        "state": "done", "approved": NODES})
+SORD = os.path.join(SAMROOT, "ord-board-001")
+os.makedirs(SORD, exist_ok=True)
+with open(os.path.join(SORD, "result.json"), "w",
+          encoding="utf-8") as f:
+    json.dump({"producer": "sales_sam", "format_version": 1,
+               "order_id": "ord-board-001", "run_id": "boardvrf1",
+               "created_at": "2026-01-01", "status": "unverified",
+               "categories": {"request": {"version": 1,
+                                          "data": REQ}}}, f)
+with open(os.path.join(SORD, "report.md"), "w",
+          encoding="utf-8") as f:
+    f.write("# sam report\n")
+with open(os.path.join(SORD, "INPUTS.md"), "w",
+          encoding="utf-8") as f:
+    f.write("# sam inputs\n")
+with open(os.path.join(SORD, "usage.json"), "w",
+          encoding="utf-8") as f:
+    json.dump(USAGE, f)
+with open(os.path.join(SORD, "events.jsonl"), "w",
+          encoding="utf-8") as f:
+    for _r in ({"t": "09:00:00", "ev": "run_start",
+                "agent": "sales_sam"},
+               {"t": "09:00:01", "ev": "tool", "step": 1,
+                "tool": "pc_send_source", "ok": True},
+               {"t": "09:00:02", "ev": "run_done",
+                "usage": {"prompt": 100, "completion": 20}}):
+        f.write(json.dumps(_r) + "\n")
+with open(os.path.join(SORD, "llm_calls.jsonl"), "w",
+          encoding="utf-8") as f:
+    for _r in ({"at": "2026-01-01 09:00:00",
+                "caller": "sales_sam:chat", "model": "m",
+                "seconds": 1.5, "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "messages": [{"role": "user", "content": "hi"}],
+                "tools": None, "reply": {"content": "hello"}},
+               {"at": "2026-01-01 09:00:01",
+                "caller": "sales_sam:judge", "model": "m",
+                "seconds": 0.5, "prompt_tokens": 5,
+                "completion_tokens": 1, "messages": [],
+                "tools": None, "reply": {"content": "YES"}}):
+        f.write(json.dumps(_r) + "\n")
 vdir = os.path.join(RUNS, "boardfull1", "video_production")
 with open(os.path.join(vdir, "assembly.json"), "w",
           encoding="utf-8") as f:
@@ -299,13 +356,15 @@ try:
             "s1c2": {"file": "s1c2-t2.wav", "engine": "piper"},
             "s2c1": {"file": "s2c1-t1.wav", "engine": "piper"}}})
 
-    out = board.build_board("boardfull1", runs_root=RUNS)
+    out = board.build_board("boardfull1", runs_root=RUNS,
+                            sam_root=SAMROOT)
     ok(out.get("ok") is True, "full run builds")
     ok(out.get("run_state") == "done", "full run state done")
     got_keys = [s["key"] for s in out["stages"]]
-    ok(got_keys == ["marty", "ash", "wren", "penn", "pia", "gene",
-                    "max", "vera", "remy", "video"],
-       "stage order marty..video")
+    ok(got_keys == ["sam", "marty", "cleo", "rex", "ash", "wren",
+                    "penn", "pia", "gene", "max", "vera", "remy",
+                    "video"],
+       "stage order sam..video covers every employee")
     by_key = {s["key"]: s for s in out["stages"]}
     ok(all(s["status"] == "ok" for s in out["stages"]),
        "full run: every stage ok")
@@ -611,7 +670,7 @@ try:
                           "order_id": "ord-board-001",
                           "state": "running",
                           "current": "photo_pia@p1",
-                          "approved": ["pd_marty"]})
+                          "approved": ["pd_marty", "sales_sam"]})
     wjson(os.path.join(V, "flow.json"), {"id": "default"})
     wjsonl(os.path.join(V, "events.jsonl"), [
         {"at": "09:00:01", "ev": "agent_start",
@@ -683,7 +742,8 @@ try:
         {"t": "09:00:09", "ev": "run_fail",
          "reason": "writer tool closed"}])
 
-    full = board.build_board("boardvrf1", runs_root=RUNS)
+    full = board.build_board("boardvrf1", runs_root=RUNS,
+                             sam_root=SAMROOT)
     sm = full["summary"]
     ok(sm["state"] == "running"
        and sm["current"] == "photo_pia@p1"
@@ -759,8 +819,30 @@ try:
        and wv["spec"] == {"present": False}
        and wv["events"] == [] and wv["files"] == {},
        "verify missing stage returns empty sections")
-    ok(board.build_verify("boardvrf1", "sales_sam",
-                          runs_root=RUNS).get("ok") is False
+    sv = board.build_verify("boardvrf1", "sales_sam",
+                            runs_root=RUNS, sam_root=SAMROOT)
+    ok(sv.get("ok") is True and sv["clone"] == "sales_sam"
+       and sv["llm"]["calls"] == 2
+       and sv["llm"]["prompt_tokens"] == 105
+       and sv["llm"]["completion_tokens"] == 21
+       and sv["llm"]["seconds"] == 2.0
+       and len(sv["llm"]["rows"]) == 2
+       and sv["llm"]["rows"][0]["caller"] == "sales_sam:chat"
+       and len(sv["events"]) == 3
+       and sv["files"]["INPUTS.md"].endswith(
+           "file?node=sales_sam&name=INPUTS.md")
+       and sv["files"]["llm_calls.jsonl"].endswith(
+           "name=llm_calls.jsonl"),
+       "verify sam inputs/llm/events/file links")
+    cv = board.build_verify("boardfull1", "explain_cleo",
+                            runs_root=RUNS, sam_root=SAMROOT)
+    ok(cv.get("ok") is True and cv["llm"] == {"present": False}
+       and cv["files"]["result.json"].endswith(
+           "file?node=explain_cleo&name=result.json"),
+       "verify cleo result link, no llm yet")
+    ok(board.build_verify("boardvrf1", "nosuchnode",
+                          runs_root=RUNS, sam_root=SAMROOT).get("ok")
+       is False
        and board.build_verify("boardvrf1", "pd_marty", 1,
                               runs_root=RUNS).get("ok")
        is False
