@@ -35,6 +35,13 @@ docs/RESULT_JSON_DRAFT_EN.md).
   part once it has its case. Call write_cases as soon as every part
   has >=1 case -- never keep researching after coverage. Keep at
   least 3 steps unspent for writer fixes.
+- Bound reads too: open at most 2 articles per part; a read must
+  end in a pick or a gap note. Call write_cases as soon as every
+  part has >=1 case -- never keep reading after coverage.
+- Real cases only: every case has a name, a date and a source;
+  reject anything undated or unsourced, no exceptions.
+- No Source quotes: summaries, fit_why and viewer_hook are always
+  your own words; quotes appear only inside citations, verbatim.
 - Copy every ref and quote verbatim from tool output. Never construct
   a ref by hand, never trim a quote into a new sentence.
 - The report's pick set must equal this run's pick set exactly: every

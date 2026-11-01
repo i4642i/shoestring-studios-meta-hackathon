@@ -42,7 +42,12 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
 - Spend steps like money: at most 2 picks per part; stop searching a
   part once its claims are covered. Call write_concepts as soon as
   every part is covered -- never keep researching after coverage.
-  Keep at least 3 steps unspent for writer fixes.
+  Keep at least 3 steps unspent for writer fixes.
+- Bound reads too: open at most 2 picked items per part; a read
+  must end in a claim or a gap note. Call write_concepts as soon
+  as every part is covered -- never keep reading after coverage.
+- No web addresses in your report: ideas are explained, never
+  linked; citations carry refs, never URLs.
 - Keep search hits short: default max_results, read the snippets,
   open only what the need list asks for.
 - Call research_status before writing and emit its STATUS line. A
