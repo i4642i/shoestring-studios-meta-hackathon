@@ -256,7 +256,14 @@ def _check_quote(errors, ref, quote, where):
         passage = pc.open_ref(entry, ref)
     except (ValueError, KeyError) as exc:
         errors.append("%s: cannot open %r (%s)" % (where, ref, exc))
-        if rpc in ("theory", "article"):
+        try:
+            near = _nearest_para_hint(entry, quote,
+                                      pc.entry_ref(rpc, rid))
+        except (OSError, ValueError, KeyError):
+            near = None
+        if near:
+            errors.append("%s: these words appear in %s" % (where, near))
+        elif rpc in ("theory", "article"):
             base = pc.entry_ref(rpc, rid)
             errors.append("%s: cite %s passages as %s#pN "
                           "(paragraph N) or %s#g1 (whole text)"

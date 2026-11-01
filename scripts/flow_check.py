@@ -1065,6 +1065,15 @@ ok(not rb.get("ok") and any("not a JSON string" in e
 shutil.rmtree(covdir2, ignore_errors=True)
 
 
+ok(_tools._nearest_para_hint(
+    {"paragraphs": [{"addr": "s1.1/p1", "text": "nothing here"},
+                    {"addr": "s1.1/p2",
+                     "text": "gold reserves rose sharply last year"}]},
+    "gold reserves rose sharply last year", "pc://source/ab12cd34ef56")
+   == "pc://source/ab12cd34ef56#s1.1/p2",
+   "hint works for source section addresses")
+
+
 def boom(agent_dir, run_dir, brief, input_md):
     return {"ok": False, "error": "kaput"}
 
