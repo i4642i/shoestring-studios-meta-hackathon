@@ -418,8 +418,11 @@ def slide_png(ctx, slide_file):
         cands.append(os.path.join(os.path.dirname(
             os.path.abspath(rd)), "slides", base))
     for c in cands:
-        full = c if os.path.isabs(c) \
-            else os.path.abspath(os.path.join(root, c))
+        if os.path.isabs(c):
+            if os.path.isfile(c):
+                return c
+            continue
+        full = os.path.abspath(os.path.join(root, c))
         if full.startswith(root + os.sep) \
                 and os.path.isfile(full):
             return full

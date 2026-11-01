@@ -1281,7 +1281,7 @@ with open(os.path.join(wdir,
                "slide_draft", "version": 2,
                "data": {"cuts": [{"cut_id": "s1c1"}]}}, f)
 wctx = {"run_dir": wdir, "order_id": "o9",
-        "producer": "slide_remy"}
+        "producer": "slide_remy", "run_id": "r1"}
 good = {"cut_id": "s1c1", "slide_file": "slides/s1c1.png",
         "renders_n": 1, "adjustments": [], "issues": []}
 rw2 = _tools.write_render_log(
