@@ -189,6 +189,11 @@ def _retry_writer(agent, messages, ctx, play, writer, writer_arg,
                               "and must keep exactly these top-level "
                               "keys: %s."
                               % (writer_arg, ", ".join(sorted(inner))))
+            else:
+                shape_hint = (" The object goes under the %r argument "
+                              "as a real object (not a string) with "
+                              "the same top-level keys as the "
+                              "persona's EXACT shape." % writer_arg)
             break
     ask = ("Your last %s call failed validation:\n%s\n"
            "Reply with ONLY the corrected, complete JSON object.%s "

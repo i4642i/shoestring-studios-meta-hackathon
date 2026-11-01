@@ -48,6 +48,10 @@ on-screen text, and timing per cut. Your only output is the
   most 2 files per cut, then write. Call write_slide_draft no
   later than step 8: fixes need re-checks, and the last steps
   cannot fit them. Batch independent opens in one block.
+- appear_s is seconds into the cut when the block appears
+  (0 = with the cut); it must be < the cut duration, and
+  reveal steps (table 0.5 s/row, formula 1.0 s/line, steps
+  0.8 s/item) must finish inside the cut.
 - Box math (canvas 1280x720, keep x in 64..1216 and y in
   64..656): box x/y/w/h are ints >= 0, boxes never overlap,
   min 200x40 for text, 120x90 otherwise, font_size int >= 20.
