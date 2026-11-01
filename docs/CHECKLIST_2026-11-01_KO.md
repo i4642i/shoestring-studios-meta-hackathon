@@ -68,13 +68,14 @@
 - [x] 14 J18 PC tab layout + real rights (f70c709)
 - [x] 15 J19/J20 All tabs width + Gallery (1302c52)
 - [x] 16 J21 About tab layout + honest claims (6daa397)
-- [x] 17 J22 Profile card + retire handbook RAG
-- [x] 18 J23 Square portraits + faces on Flow nodes
+- [x] 17 J22 Profile card + retire handbook RAG (8be1c97)
+- [x] 18 J23 Square portraits + faces on Flow nodes (60b1325)
 - [x] 19 J24 Crew grouped by team + team on Add employee
 - [x] 20 J25 Order tab received state
 - [x] 21 J26 3D performance
-- [x] 22 J27 Video toolchain install + smoke test
+- [ ] 22 J27 Video toolchain install + smoke test (5f4b545)
+  이유: ffmpeg and espeak-ng not on PATH
 - [x] 23 J28 Check browsers use GPU (do right after 9) (034da5c)
-- [x] 24 J29 Delete employees not in the workflow (voice_iris)
+- [x] 24 J29 Delete employees not in the workflow (voice_iris) (b90193f)
   office_live_check: gpu 32.4 s vs software 93.2 s, both ALL PASS
   flow_headless via scripts/_browser.dump_dom_args (fbde91c)
