@@ -2038,7 +2038,7 @@ class Handler(BaseHTTPRequestHandler):
                 "The client said not yet: they need more time before "
                 "starting. Acknowledge warmly in your own words, tell "
                 "them you'll be right here when they're ready, and ask "
-                "nothing new.")
+                "nothing new.", path)
             return self._json(code, out)
         if step == "ask":
             code, out = self._sam_turn(
@@ -2046,7 +2046,7 @@ class Handler(BaseHTTPRequestHandler):
                 "You have everything (all answers + source PDF). The "
                 "client's last message was not a clear yes or no. Ask "
                 "one natural question: shall I start production now? "
-                "Nothing else.")
+                "Nothing else.", path)
             return self._json(code, out)
         direction = ("Still missing: %s. Steer the chat toward them, "
                      "one question at a time." % ", ".join(missing))
@@ -2056,7 +2056,7 @@ class Handler(BaseHTTPRequestHandler):
                           "missing topic before the client is done.")
         code, out = self._sam_turn(
             oid, d, meta, agent, system_base, msgs, False, missing,
-            direction)
+            direction, path)
         return self._json(code, out)
 
     @staticmethod
@@ -2078,12 +2078,14 @@ class Handler(BaseHTTPRequestHandler):
             return None
 
     def _sam_turn(self, oid, d, meta, agent, system_base, msgs,
-                  ready, missing, direction):
+                  ready, missing, direction, agent_dir=None):
         """One model-worded Sam turn. Returns (code, obj); sends nothing.
 
         The decision (start/keep/ask/chat) is made by code before this
         runs; only the wording comes from the model. The cleaning net
-        below stays: control/function blocks never reach the client."""
+        below stays: control/function blocks never reach the client.
+        When the client asks something, Sam's LightRAG index answers
+        from knowledge; a dead index never breaks the turn."""
         answers = meta.get("answers", {})
         recorded = ("; ".join("%s is %s" % (k, answers[k])
                               for k in INTAKE_KEYS if k in answers)
@@ -2095,6 +2097,20 @@ class Handler(BaseHTTPRequestHandler):
                    "vague; never present an example as the client's "
                    "own words.",
                    direction]
+        last_user = msgs[-1]["content"] if msgs else ""
+        if agent_dir and intake.looks_like_question(last_user):
+            try:
+                rag = graph.query(agent_dir, last_user)
+                ans = str(rag.get("answer", "")).strip()
+                if ans:
+                    context.append(
+                        "Sales knowledge (LightRAG %s index, %s chars): "
+                        "%s. Use it when it answers the client; "
+                        "otherwise ignore it."
+                        % (agent.get("id", "?"), len(ans), ans[:1500]))
+            except RuntimeError as exc:
+                print("order rag lookup skipped %s (%s)"
+                      % (oid, exc), flush=True)
         system = (system_base + "\n\n" + "\n".join(context)
                   + "\nAlways reply in English only: never Korean or any other "
                   "language, no matter what language the user writes in. "

@@ -108,6 +108,23 @@ JUDGE_PROMPT = (
     'No other text.\n\nClient reply: "')
 
 
+_QUESTION_WORDS = frozenset(
+    "who what when where why how which whom whose".split() + 
+    "is are was were can could do does did will would should may might".split()
+    + "have has had shall".split())
+
+
+def looks_like_question(text):
+    """True when the client asks something (for a RAG lookup)."""
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    if "?" in t:
+        return True
+    first = t.split(" ", 1)[0].strip(".,!")
+    return first in _QUESTION_WORDS
+
+
 def parse_confirm_word(text):
     '''One-word LLM verdict to yes/no/unclear (None).'''
     t = (text or "").strip().upper()

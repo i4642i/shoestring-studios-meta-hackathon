@@ -195,6 +195,19 @@ ok(_pf is True and _pr == "name 'secs' is not defined",
    "failed event surfaces with its reason")
 ok(intake.progress_lines([], []) == ([], False, ""),
    "empty logs give empty progress")
+# ---- user questions are answered from the LightRAG index ----
+for _q in ("What video lengths do you support?",
+           "How long does production take?",
+           "Can I change the theme later?"):
+    ok(intake.looks_like_question(_q),
+       "question detected: %r" % (_q,))
+for _s in ("beginners", "10 minutes", "yes, start", ""):
+    ok(not intake.looks_like_question(_s),
+       "statement left alone: %r" % (_s,))
+ok("graph.query" in _srv,
+   "sam turns consult the LightRAG index on questions")
+ok("rag lookup skipped" in _srv,
+   "a dead index never breaks the turn")
 
 
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
