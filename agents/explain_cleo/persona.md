@@ -49,8 +49,10 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   needs an outside source (origin, example, checkable fact) before
   searching. Check needs off as claims and picks cover them;
   uncovered needs go to gaps, never to guesses.
-- Spend steps like money: at most 2 picks per part; stop searching a
-  part once its claims are covered. Call write_concepts as soon as
+- Spend steps like money: one pick per part (a second only when
+  two claims need two sources); stop searching a part once its
+  claims are covered. Keep only the claims that prove distinct
+  facts. Call write_concepts as soon as
   every part is covered -- never keep researching after coverage.
   Call the writer only when every quote is already copied from a
   passage you opened in this run: a failed write gets at most 2

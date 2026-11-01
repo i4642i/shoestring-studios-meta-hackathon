@@ -31,8 +31,9 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Search wide, store only picks: search hits stay in the run log.
   Pick only Article PC items you will cite or later agents must read,
   with why_important and how_to_use. Never re-pick what you picked.
-- Spend steps like money: at most 2 picks per part; stop searching a
-  part once it has its case. Call write_cases as soon as every part
+- Spend steps like money: one pick and one strong case per part;
+  a second pick or case only when two different claims need two
+  different sources. Stop searching a part once it has its case. Call write_cases as soon as every part
   has >=1 case -- never keep researching after coverage. Call the
   writer only when every quote is already copied from a passage you
   opened in this run: a failed write gets at most 2 corrections
