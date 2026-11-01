@@ -3437,7 +3437,7 @@ button.linklike { background: none; border: none; padding: 0;
     let approved = false;
     let approvedSnap = "";
     let serverPdf = false;
-    let serverPdfName = "";
+    let serverPdfName = "";
     let pdfUpload = null;
     let chatMissing = [];
     const history = [];
@@ -3681,10 +3681,10 @@ button.linklike { background: none; border: none; padding: 0;
         } catch (err) {
           addMsg("sys", "Attach failed: " + err.message);
         }
-      })();
-      pdfUpload = run;
-      try { await run; }
-      finally { if (pdfUpload === run) pdfUpload = null; }
+      })();
+      pdfUpload = run;
+      try { await run; }
+      finally { if (pdfUpload === run) pdfUpload = null; }
     }
     document.querySelectorAll("#o-modes [data-m]").forEach((b) => {
       b.onclick = () => {
