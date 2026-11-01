@@ -69,10 +69,17 @@ try {
 
 # 6. Kokoro TTS (pip package, needs torch)
 try {
-  $kv = (python -c "import kokoro, importlib.metadata; print(importlib.metadata.version('kokoro'))" 2>$null)
+  $kv = (python -c "import importlib.metadata; print(importlib.metadata.version('kokoro'))" 2>$null)
   if ($kv) { Add-Row "kokoro" "yes" "$kv" }
-  else { Add-Row "kokoro" "NO" "pip install kokoro>=0.9.4 (+ torch)" }
-} catch { Add-Row "kokoro" "NO" "pip install kokoro>=0.9.4 (+ torch)" }
+  else { Add-Row "kokoro" "NO" "pip install -r requirements-video.txt" }
+} catch { Add-Row "kokoro" "NO" "pip install -r requirements-video.txt" }
+
+# 7. imageio-ffmpeg (pip-provided ffmpeg binary for assembly/smoke)
+try {
+  $iv = (python -c "import importlib.metadata; print(importlib.metadata.version('imageio-ffmpeg'))" 2>$null)
+  if ($iv) { Add-Row "imageio-ffmpeg" "yes" "$iv" }
+  else { Add-Row "imageio-ffmpeg" "NO" "pip install -r requirements-video.txt" }
+} catch { Add-Row "imageio-ffmpeg" "NO" "pip install -r requirements-video.txt" }
 
 $rows | Format-Table -AutoSize | Out-String | Write-Output
 $missing = @($rows | Where-Object { $_.OK -eq "NO" })

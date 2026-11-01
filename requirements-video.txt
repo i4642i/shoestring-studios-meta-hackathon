@@ -1,0 +1,12 @@
+# Video toolchain pins (item J27 smoke 2026-11-01).
+# Install: .venv\Scripts\python -m pip install -r requirements-video.txt
+# torch on Windows MUST come from the CPU index (default wheel is ~2.5 GB CUDA).
+--extra-index-url https://download.pytorch.org/whl/cpu
+kokoro==0.9.4
+soundfile==0.14.0
+imageio-ffmpeg==0.7.0
+en-core-web-sm==3.8.0
+# torch itself is shared with the LightRAG env: torch==2.14.1+cpu (already present).
+# Kokoro downloads the Kokoro-82M weights + spacy model on first use (~400 MB).
+# Still needs a MANUAL install (not pip): espeak-ng (Kokoro English fallback)
+# and system ffmpeg (assembly fallback; imageio-ffmpeg covers pip-only use).

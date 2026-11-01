@@ -1,4 +1,4 @@
-import {Composition} from "remotion";
+import {Composition, registerRoot} from "remotion";
 import {CutSlide, CUT_FPS, CUT_W, CUT_H, CUT_MAX_S} from "./CutSlide";
 import "katex/dist/katex.min.css";
 
@@ -29,3 +29,5 @@ export const RemotionRoot = () => {
     </>
   );
 };
+
+registerRoot(RemotionRoot);
