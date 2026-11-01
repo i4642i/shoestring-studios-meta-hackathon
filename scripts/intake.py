@@ -4,6 +4,7 @@ Readiness is decided by code (the missing list), never by the model.
 Stdlib only; imported by scripts/server.py and tested by
 scripts/order_check.py (no sockets, no model calls).
 """
+import json
 import re
 
 INTAKE_KEYS = ("audience", "length", "depth", "theme")
@@ -203,6 +204,9 @@ def progress_lines(tl_rows, entry_rows):
                 staged.append((at, "", str(r["error"])[:120]))
             elif ev == "index_done":
                 staged.append((at, "Building the search index", ""))
+            elif ev == "progress" and type(r.get("pct")) is int:
+                staged.append((at, "Parsing your PDF\u2026 %d%%"
+                                % r["pct"], ""))
     except (AttributeError, TypeError, ValueError):
         return [], False, ""
     staged.sort(key=lambda x: x[0])
@@ -257,12 +261,108 @@ def missing_of(answers, files):
     return missing
 
 
-def chat_reply_payload(reply, ready, missing):
+def chat_reply_payload(reply, ready, missing, form=None):
     """Chat/upload reply envelope: the client needs the missing list
     with every reply (PDF button shows only when it is exactly
-    ["source PDF"])."""
-    return {"reply": reply, "ready": bool(ready),
-            "missing": list(missing or [])}
+    ["source PDF"]). The production request form rides along so the
+    panel next to the chat fills up as Sam learns."""
+    out = {"reply": reply, "ready": bool(ready),
+           "missing": list(missing or [])}
+    if form is not None:
+        out["form"] = {k: (form.get(k) or "") for k in FORM_FIELDS}
+        out["form_complete"] = form_complete(form)
+    return out
+
+
+FORM_FIELDS = ("audience", "length", "depth", "theme")
+FORM_LABELS = {"audience": "Audience", "length": "Target length",
+               "depth": "Depth", "theme": "Theme direction"}
+
+_FORM_BLOCK_RE = re.compile(r"```form\s*(\{.*?\})\s*```", re.S)
+
+
+def blank_form():
+    """Empty production request form (source of truth for finalize)."""
+    return {k: "" for k in FORM_FIELDS}
+
+
+def form_complete(form):
+    """Decided by code: every field holds non-blank text."""
+    form = form if isinstance(form, dict) else {}
+    return all(isinstance(form.get(k), str) and form[k].strip()
+               for k in FORM_FIELDS)
+
+
+def extract_form_block(text):
+    """Split Sam's turn into (clean_text, update|None).
+
+    Sam appends one ```form {...}``` block carrying the COMPLETE
+    current field values; the block never reaches the client."""
+    text = text or ""
+    ms = list(_FORM_BLOCK_RE.finditer(text))
+    if not ms:
+        return text, None
+    try:
+        obj = json.loads(ms[-1].group(1))
+    except ValueError:
+        obj = None
+    clean = _FORM_BLOCK_RE.sub("", text)
+    return clean, obj if isinstance(obj, dict) else None
+
+
+def merge_form(form, update):
+    """Fold Sam's update into the form. Non-empty values win; a blank
+    never wipes a filled field. Returns (form, changed_keys)."""
+    form = dict(form) if isinstance(form, dict) else blank_form()
+    changed = []
+    if not isinstance(update, dict):
+        return form, changed
+    for k in FORM_FIELDS:
+        v = update.get(k)
+        if isinstance(v, str):
+            v = v.strip()[:500]
+            if v and v != form.get(k, ""):
+                form[k] = v
+                changed.append(k)
+    return form, changed
+
+
+FORM_PROMPT = (
+    "FORM RULES (follow every turn, silently): after your chat reply, "
+    "append exactly one block like this with the COMPLETE current values "
+    "of all four fields (carry over what was already known, fill in what "
+    "this turn revealed, \"\" for what is still unknown):\n"
+    "```form\n"
+    '{"audience": "...", "length": "...", '
+    '"depth": "...", "theme": "..."}\n'
+    "```\n"
+    "Rewrite the client's words into clean professional third-person "
+    "wording. Never \"me\", \"my\", \"I\" or \"you\". Example: the "
+    "client says \"for me\" and \"no background\" -> \"the client "
+    "personally, a beginner with no prior background\". One line per "
+    "value, English. The FORM block is removed before sending; the "
+    "client only ever sees your chat reply.")
+
+
+def final_request_prompt(oid, form, pdf_name, pdf_bytes):
+    """One-shot writer prompt: the final request from the form."""
+    vals = {k: (form.get(k) or "") for k in FORM_FIELDS}
+    return (
+        "Write the final production request as ONE JSON object, no other "
+        "text:\n"
+        '{"order_id": "...", "client_answers": {"audience": "...", '
+        '"length": "...", "depth": "...", "theme": "...", '
+        '"source": "..."}, "source_summary": "...", '
+        '"production_notes": ["...", ...], "open_questions": [...]}\n'
+        "Rules: client_answers.audience/length/depth/theme come from the "
+        "FORM below, word for word; client_answers.source is the PDF file "
+        "name. source_summary: 2-3 sentences on what the source covers "
+        "(from the file name only, never invent contents). "
+        "production_notes: 2-5 short crew instructions grounded in the "
+        "form. open_questions: [] unless something is genuinely unclear.\n"
+        "ORDER: %s\nFORM: %s\nSOURCE PDF: %s (%d bytes)"
+        % (oid, json.dumps(vals, ensure_ascii=False),
+           pdf_name, pdf_bytes))
 
 
 def build_sections(parsed_md):

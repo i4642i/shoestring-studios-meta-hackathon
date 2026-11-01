@@ -1095,8 +1095,27 @@ def pc_send_source(ctx, args):
         warning = ("index skipped (%s); the map is done so the crew "
                    "can read (REBUILD INDEX when the Jetson is up)"
                    % jetson_down)
+    if (args or {}).get("build") == "async" \
+            and not (map_done and indexed) and not warning:
+        if jetson_down:
+            mode = "noindex"
+        else:
+            mode = "index" if map_done else ("noindex" if indexed
+                                             else "all")
+        try:
+            subprocess.Popen(
+                [sys.executable, os.path.join("scripts",
+                                              "pc_worker.py"),
+                 r["doc_id"], mode, "source"],
+                cwd=base, stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT)
+        except OSError as exc:
+            return {"error": "worker start failed: %s" % exc}
+        worker_note = "mode %s spawned (async; map/index pending)" \
+            % mode
     if not (map_done and indexed) and not warning \
-            and (args or {}).get("build", "all") != "skip":
+            and (args or {}).get("build", "all") != "skip" \
+            and (args or {}).get("build") != "async":
         if jetson_down:
             mode = "noindex"
         else:

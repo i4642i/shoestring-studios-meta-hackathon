@@ -264,6 +264,20 @@ GEOM_JS = """(() => {
   };
 })()"""
 
+FORM_JS = """(() => {
+  if (typeof window.__renderForm !== 'function') return {fn: false};
+  window.__renderForm({audience: 'beginners', length: '',
+    depth: 'key concepts', theme: 'examples'});
+  const rows = Array.from(
+    document.querySelectorAll('#o-formpanel .frow'));
+  const vals = rows.map(r => r.querySelector('b').textContent);
+  const filled = rows.map(r => !r.classList.contains('empty'));
+  const note = document.getElementById('o-formnote').textContent;
+  const pop = document.getElementById('o-handover');
+  return {fn: true, n: rows.length, vals: vals, filled: filled,
+    note: note, popHidden: !!pop && pop.style.display === 'none'};
+})()"""
+
 
 def open_edge():
     profile = os.path.join(tempfile.gettempdir(), "order_chat_profile")
@@ -392,6 +406,18 @@ def main():
            "input text 2x (%s)" % g.get("inFont"))
         ok(g.get("inH", 0) > 44,
            "input box grew (%s)" % g.get("inH"))
+        f = js_eval(ws, FORM_JS)
+        ok(f.get("fn") is True, "form panel renderer present")
+        ok(f.get("n") == 4, "form panel has 4 rows")
+        ok((f.get("vals") or [])[0] == "beginners"
+           and (f.get("vals") or [""])[1] == "—",
+           "filled + empty values render (%s)" % f.get("vals"))
+        ok(f.get("filled") == [True, False, True, True],
+           "filled rows marked (%s)" % f.get("filled"))
+        ok("3/4" in (f.get("note") or ""),
+           "panel counts filled fields (%s)" % f.get("note"))
+        ok(f.get("popHidden") is True,
+           "handover popup hidden until yes")
         shot(ws, PNG1920)
         ws.call("Emulation.setDeviceMetricsOverride",
                 {"width": 390, "height": 844,

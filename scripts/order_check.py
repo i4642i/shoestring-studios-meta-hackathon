@@ -164,8 +164,8 @@ ok("_judge_confirm" in _srv and "JUDGE_PROMPT" in open(
    "unclear ready turns get a one-word LLM verdict")
 ok("o-confirm" not in _ui and "o-yes" not in _ui and "showConfirm" not in _ui,
    "confirm buttons and their wiring are gone")
-ok("_do_chat_accept" in _srv and "accepted" in _srv,
-   "chat-yes confirms now, the client then calls start")
+ok("_do_chat_accept" in _srv and "handed_over" in _srv,
+   "chat-yes finalizes at once, no second start call")
 ok("start_result.json" in _srv and "starting" in _srv,
    "start clears its flag and keeps its result for reload")
 ok("/progress" in _srv or "order_progress" in _srv,
@@ -255,9 +255,50 @@ _rfails = [e for e in _res.get("events", [])
 ok(_rfails and "timed out" in _rfails[-1].get("reason", "")
    and "kept" in _rfails[-1].get("reason", ""),
    "timeout reason says the parse results are kept")
-ok("_run_parse_stage" in _srv and "on_progress" in _srv
-   and "parse failed before any model call" in _srv,
-   "parse runs as its own stage before any model call")
+ok("_finalize_order" in _srv and '"async"' in _srv
+   and "_try_fill_answers" not in _srv and "_extract_intake" not in _srv
+   and "_run_parse_stage" not in _srv,
+   "finalize replaces the extraction call and the blocking parse")
+# ---- the chat-filled form is the source of truth ----
+_blk = ("Hi! " + "```form {\"audience\": \"beginners\", "
+        "\"length\": \"\", \"depth\": \"key concepts\", "
+        "\"theme\": \"examples\"} ```" + " bye")
+_clean, _upd = intake.extract_form_block(_blk)
+ok(_clean.strip() == "Hi!  bye"
+   and _upd == {"audience": "beginners", "length": "",
+                "depth": "key concepts", "theme": "examples"},
+   "form block splits off the reply, client text kept")
+_fm, _ch = intake.merge_form(intake.blank_form(), _upd)
+ok(_fm["audience"] == "beginners" and _ch == ["audience", "depth",
+                                             "theme"]
+   and not intake.form_complete(_fm),
+   "form fills, blanks never count as complete")
+_fm2, _ch2 = intake.merge_form(_fm, {"audience": "",
+                                     "length": "10 minutes"})
+ok(_fm2["audience"] == "beginners" and _ch2 == ["length"],
+   "a blank update never wipes a filled field")
+ok(intake.form_complete({"audience": "a", "length": "b",
+                         "depth": "c", "theme": "d"})
+   and not intake.form_complete(_fm),
+   "completeness is decided by code, not the model")
+_pr = intake.final_request_prompt("ord-9", {"audience": "beginners",
+                                            "length": "10 min",
+                                            "depth": "key", "theme": "ex"},
+                                  "book.pdf", 12)
+ok("ord-9" in _pr and "beginners" in _pr and "book.pdf" in _pr,
+   "final request is written from the form")
+_pay = intake.chat_reply_payload("hi", True, [],
+                                 {"audience": "a", "length": "b",
+                                  "depth": "c", "theme": "d"})
+ok(_pay["form"] == {"audience": "a", "length": "b", "depth": "c",
+                     "theme": "d"}
+   and _pay["form_complete"] is True,
+   "every reply carries the form for the panel")
+_el2 = [{"at": "2026-11-01T22:04:01", "ev": "progress", "pct": 12},
+        {"at": "2026-11-01T22:04:40", "ev": "progress", "pct": 45}]
+_pl3, _, _ = intake.progress_lines([], _el2)
+ok(_pl3 == ["Parsing your PDF\u2026 45%"],
+   "worker % rows collapse into the latest line")
 # ---- every LLM call is logged in full, keys never ----
 import json as _json
 import urllib.request as _urlreq

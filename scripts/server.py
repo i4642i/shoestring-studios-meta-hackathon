@@ -35,6 +35,8 @@ from agents._frame import tools as registry  # noqa: E402
 import validate_agent  # noqa: E402
 import intake  # noqa: E402
 from agents._frame import pc  # noqa: E402
+from agents._frame import results  # noqa: E402
+from agents._frame import schemas  # noqa: E402
 from agents._frame import gallery  # noqa: E402
 from agents._frame import profiles  # noqa: E402
 
@@ -1454,6 +1456,7 @@ class Handler(BaseHTTPRequestHandler):
         meta["missing"] = intake.missing_of(meta.get("answers", {}),
                                             meta.get("files", {}))
         meta["run_id"] = self._latest_run_for_order(oid)
+        meta["form"] = self._form_load(d, meta)
         return self._json(200, meta)
 
     @staticmethod
@@ -1515,6 +1518,11 @@ class Handler(BaseHTTPRequestHandler):
         if not d:
             return self._json(404, {"error": "no such order"})
         meta = self._order_meta(d)
+        try:
+            self._maybe_parse_done(oid, d, meta)
+            meta = self._order_meta(d)
+        except (OSError, ValueError, RuntimeError):
+            pass
         starting = meta.get("starting")
         starting = starting if isinstance(starting, dict) else None
         out = {"starting": bool(starting), "elapsed_s": 0,
@@ -1987,15 +1995,21 @@ class Handler(BaseHTTPRequestHandler):
                     "answers.%s must be 1-500 chars" % k})
             clean[k] = v.strip()
         meta = self._order_meta(d)
-        meta["answers"] = clean
+        form = self._form_load(d, meta)
+        form.update(clean)
+        try:
+            self._form_save(d, meta, form)
+        except OSError as exc:
+            return (500, {"error": "cannot save form: %s" % exc})
         self._order_save_meta(d, meta)
         print("order intake %s" % oid, flush=True)
         projlog.log_event(oid, "order", "intake",
-                          "answers saved (%d keys)"
+                          "form saved (%d keys)"
                           % len(clean),
-                          file="orders/%s/meta.json" % oid)
+                          file="orders/%s/form.json" % oid)
         projlog.do_refresh(oid)
-        return self._json(200, {"ok": True, "answers": clean})
+        return self._json(200, {"ok": True, "answers": clean,
+                                "form": dict(form)})
 
     def _api_order_chat(self, oid):
         d = self._order_dir(oid)
@@ -2021,13 +2035,9 @@ class Handler(BaseHTTPRequestHandler):
         if not runner.key_present(agent["model"]):
             return self._json(503, {"error": "%s missing: add it to .env"
                                     % runner.key_var(agent["model"])})
-        try:
-            extra = msgs[-1]["content"] if msgs[-1]["role"] == "user" else ""
-            self._try_fill_answers(d, meta, extra)
-        except RuntimeError:
-            pass  # extraction failed: readiness stays false, chat goes on
-        missing = intake.missing_of(meta.get("answers", {}),
-                                    meta.get("files", {}))
+        extra = msgs[-1]["content"] if msgs[-1]["role"] == "user" else ""
+        form = self._form_load(d, meta)
+        missing = self._form_missing(form, meta)
         ready = not missing
         step = intake.confirm_step(ready, extra)
         if step == "ask" and ready:
@@ -2041,7 +2051,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(code, out)
         if step == "keep":
             code, out = self._sam_turn(
-                oid, d, meta, agent, system_base, msgs, ready, [],
+                oid, d, meta, agent, system_base, msgs, ready, form,
                 "The client said not yet: they need more time before "
                 "starting. Acknowledge warmly in your own words, tell "
                 "them you'll be right here when they're ready, and ask "
@@ -2049,11 +2059,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(code, out)
         if step == "ask":
             code, out = self._sam_turn(
-                oid, d, meta, agent, system_base, msgs, ready, [],
-                "You have everything (all answers + source PDF). The "
-                "client's last message was not a clear yes or no. Ask "
-                "one natural question: shall I start production now? "
-                "Nothing else.", path)
+                oid, d, meta, agent, system_base, msgs, ready, form,
+                "The request form is complete and the source PDF is "
+                "attached. The client's last message was not a clear "
+                "yes or no. Ask one natural question: shall I start "
+                "production now? Nothing else.", path)
             return self._json(code, out)
         direction = ("Still missing: %s. Steer the chat toward them, "
                      "one question at a time." % ", ".join(missing))
@@ -2062,7 +2072,7 @@ class Handler(BaseHTTPRequestHandler):
                           "friendly sales call, but still cover every "
                           "missing topic before the client is done.")
         code, out = self._sam_turn(
-            oid, d, meta, agent, system_base, msgs, False, missing,
+            oid, d, meta, agent, system_base, msgs, False, form,
             direction, path)
         return self._json(code, out)
 
@@ -2088,25 +2098,29 @@ class Handler(BaseHTTPRequestHandler):
             return None
 
     def _sam_turn(self, oid, d, meta, agent, system_base, msgs,
-                  ready, missing, direction, agent_dir=None):
+                  ready, form, direction, agent_dir=None):
         """One model-worded Sam turn. Returns (code, obj); sends nothing.
 
         The decision (start/keep/ask/chat) is made by code before this
-        runs; only the wording comes from the model. The cleaning net
-        below stays: control/function blocks never reach the client.
-        When the client asks something, Sam's LightRAG index answers
-        from knowledge; a dead index never breaks the turn."""
-        answers = meta.get("answers", {})
-        recorded = ("; ".join("%s is %s" % (k, answers[k])
-                              for k in INTAKE_KEYS if k in answers)
-                    or "none yet")
-        context = ["[ORDER CONSULTATION for %s. Recorded answers: %s."
+        runs; only the wording comes from the model. Sam holds the
+        production request form: every turn he returns the complete
+        current field values in a FORM block, rewritten into clean
+        professional wording; the block never reaches the client.
+        The cleaning net below stays: control/function blocks never
+        reach the client either. When the client asks something,
+        Sam's LightRAG index answers from knowledge; a dead index
+        never breaks the turn."""
+        form = form if isinstance(form, dict) else intake.blank_form()
+        recorded = ("; ".join("%s: %s" % (k, form.get(k) or "-")
+                              for k in intake.FORM_FIELDS))
+        context = ["[ORDER CONSULTATION for %s. Request form so far: %s."
                    % (oid, recorded),
                    "Your handbook (in the prompt above) holds sales "
                    "examples: follow their style when the client is "
                    "vague; never present an example as the client's "
                    "own words.",
-                   direction]
+                   direction,
+                   intake.FORM_PROMPT]
         last_user = msgs[-1]["content"] if msgs else ""
         if agent_dir and intake.looks_like_question(last_user):
             try:
@@ -2145,9 +2159,21 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001 - surfaced as 502, key never leaks
             return (502, {"error": "model API error: %s" % exc})
         raw = reply.strip()
-        text = intake.clean_chat_reply(raw)
+        clean, update = intake.extract_form_block(raw)
+        text = intake.clean_chat_reply(clean)
         if not text:
             text = intake.CHAT_UNREADABLE
+        form, changed = intake.merge_form(form, update)
+        try:
+            self._form_save(d, meta, form)
+            self._order_save_meta(d, meta)
+        except OSError:
+            pass
+        if changed:
+            projlog.log_event(
+                oid, "order", "form",
+                "fields updated: %s" % ", ".join(changed),
+                file="orders/%s/form.json" % oid)
         self._chat_append(d, msgs[-1]["content"], text, raw=raw)
         projlog.log_event(
             oid, "order", "chat",
@@ -2155,7 +2181,10 @@ class Handler(BaseHTTPRequestHandler):
             % (msgs[-1]["content"], text),
             file="orders/%s/chat.jsonl" % oid)
         projlog.do_refresh(oid)
-        return (200, intake.chat_reply_payload(text, ready, missing))
+        missing = self._form_missing(form, meta)
+        ready = not missing
+        return (200, intake.chat_reply_payload(text, ready, missing,
+                                              form))
 
     @staticmethod
     def _chat_append(d, user, reply, raw=None):
@@ -2198,17 +2227,19 @@ class Handler(BaseHTTPRequestHandler):
         meta = self._order_meta(d)
         if not meta.get("approved"):
             return self._json(409, {"error": "not approved yet"})
+        code = 500
         try:
             code, obj = self._do_complete(oid, d, meta,
                                           self._read_json(),
                                           "in_production")
         finally:
-            try:
-                fresh = self._order_meta(d)
-                fresh.pop("starting", None)
-                self._order_save_meta(d, fresh)
-            except (OSError, ValueError):
-                pass
+            if code != 200:
+                try:
+                    fresh = self._order_meta(d)
+                    fresh.pop("starting", None)
+                    self._order_save_meta(d, fresh)
+                except (OSError, ValueError):
+                    pass
         if code == 200 and isinstance(obj, dict):
             try:
                 with open(os.path.join(d, "start_result.json"),
@@ -2238,73 +2269,45 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "declined": True,
                                     "reply": intake.DECLINE_ACK})
         code, out = self._confirm_yes_out(oid, d, meta)
+        if code != 200:
+            return self._json(code, out)
+        code, out = self._finalize_order(oid, d, meta, "in_production")
         if code == 200:
             self._chat_append(d, intake.YES_LINE, intake.START_LINE)
         return self._json(code, out)
 
     def _confirm_yes_out(self, oid, d, meta):
-        """Shared approve step (confirm:true and a clear yes in chat).
-
-        Returns (code, obj); sends nothing. The caller appends the
-        chat line with its own user text."""
+        """Shared readiness check (confirm:true and a clear yes in
+        chat). Decided by code from the chat-filled form; no
+        extraction call. Returns (code, obj); sends nothing. The
+        caller appends the chat line with its own user text."""
         if meta.get("status") in ("complete", "in_production"):
             return (409, {"error": "already started"})
-        try:
-            self._try_fill_answers(d, meta)
-        except RuntimeError as exc:
-            return (502, {"error": str(exc)})
-        missing = intake.missing_of(meta.get("answers", {}),
-                                    meta.get("files", {}))
+        form = self._form_load(d, meta)
+        missing = self._form_missing(form, meta)
         if missing:
             return (409, {"error": "intake incomplete",
                           "missing": missing})
-        legacy = None
-        parsed_p = os.path.join(d, "parsed.md")
-        if os.path.isfile(parsed_p):
-            with open(parsed_p, encoding="utf-8") as f:
-                text = f.read()
-            md, heads = intake.build_sections(text)
-            with open(os.path.join(d, "sections.md"), "w",
-                      encoding="utf-8") as f:
-                f.write(md)
-            files = dict(meta.get("files", {}))
-            files["sections"] = "sections.md"
-            files["section_count"] = len(heads)
-            meta["files"] = files
-            legacy = {"file": "sections.md", "count": len(heads),
-                      "headings": heads[:20]}
         pdf_p = os.path.join(d, "source.pdf")
         pdf = {"file": "source.pdf",
                "bytes": os.path.getsize(pdf_p)
                if os.path.isfile(pdf_p) else 0}
-        meta["approved"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                            "answers": dict(meta.get("answers", {})),
-                            "via": "chat"}
-        self._order_save_meta(d, meta)
-        print("order confirm %s (%s)" % (oid, "legacy sections.md"
-                                         if legacy else "stored PDF"),
-              flush=True)
+        print("order confirm %s (form complete, stored PDF)"
+              % oid, flush=True)
         projlog.log_event(oid, "order", "confirmed",
-                          "client said yes (%s)"
-                          % ("legacy sections.md"
-                             if legacy else "stored PDF"),
+                          "client said yes (form complete)",
                           file="orders/%s/chat.jsonl" % oid)
         projlog.do_refresh(oid)
-        out = {"ok": True, "answers": meta["answers"],
-               "reply": intake.START_LINE, "pdf": pdf}
-        if legacy:
-            out["sections"] = legacy
-        return (200, out)
+        return (200, {"ok": True, "answers": dict(form),
+                      "reply": intake.START_LINE, "pdf": pdf,
+                      "form": dict(form)})
 
     def _do_chat_accept(self, oid, d, meta, user_text):
-        """Conversation-only accept: confirm now, the client then
-        calls start (same confirm-then-start the Yes button ran)."""
-        meta["starting"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S")}
-        self._order_save_meta(d, meta)
+        """Conversation-only accept: the yes finalizes at once (the
+        request is written from the form, the parser spawned, the
+        order handed over). No second start call."""
         code, out = self._confirm_yes_out(oid, d, meta)
         if code != 200:
-            meta.pop("starting", None)
-            self._order_save_meta(d, meta)
             err = (out.get("error") if isinstance(out, dict)
                    else "confirm failed")
             reply = "Couldn't start: " + err
@@ -2312,80 +2315,250 @@ class Handler(BaseHTTPRequestHandler):
             bad = intake.chat_reply_payload(reply, True, [])
             bad["accepted"] = False
             return self._json(code, bad)
-        reply = intake.ACCEPT_LINE
+        code, out = self._finalize_order(oid, d, meta, "in_production")
+        if code != 200:
+            err = (out.get("error") if isinstance(out, dict)
+                   else "finalize failed")
+            reply = "Couldn't start: " + err
+            self._chat_append(d, user_text, reply)
+            bad = intake.chat_reply_payload(reply, True, [])
+            bad["accepted"] = False
+            return self._json(code, bad)
+        reply = ("Done — the request is written and handed over. "
+                 "Parsing your PDF now; progress shows below.")
         self._chat_append(d, user_text, reply)
         projlog.log_event(oid, "order", "chat",
                           "client: %s / Sam: %s" % (user_text, reply),
                           file="orders/%s/chat.jsonl" % oid)
         projlog.do_refresh(oid)
-        payload = intake.chat_reply_payload(reply, False, [])
-        payload.update({"accepted": True,
-                        "answers": out.get("answers"),
-                        "pdf": out.get("pdf")})
-        if "sections" in out:
-            payload["sections"] = out["sections"]
+        payload = intake.chat_reply_payload(
+            reply, False, [], out.get("form"))
+        payload.update({"accepted": True, "handed_over": True,
+                        "answers": out.get("intake", {}).get("answers"),
+                        "pdf": {"file": "source.pdf", "bytes": 0},
+                        "source": out.get("source"),
+                        "stages": out.get("stages"),
+                        "form": out.get("form")})
         return self._json(200, payload)
 
+    SAM_SOURCE_GRANTS = {"full": ["pd_marty"],
+                           "map": ["explain_cleo", "case_rex",
+                                   "plan_ash"]}
+
     @staticmethod
-    def _sam_inputs_md(oid, meta):
-        """Sam's run input: the order answers + the attached PDF facts.
-        The send/sequence instructions live in Sam's persona."""
-        files = meta.get("files", {}) or {}
-        pdf = os.path.join(ROOT, "orders", oid, "source.pdf")
-        nbytes = os.path.getsize(pdf) if os.path.isfile(pdf) else 0
-        return "\n".join([
-            "# Inputs for sales_sam", "",
-            "## Order brief (order %s)" % oid,
-            json.dumps({"order_id": oid,
-                        "answers": meta.get("answers", {}),
-                        "source_file": files.get("source", "source.pdf")},
-                       ensure_ascii=False, indent=1), "",
-            "## Attached source",
-            "%s (%d bytes, uploaded as %s). Stored, not parsed yet."
-            % (files.get("source", "source.pdf"), nbytes,
-               files.get("upload_name", "?")), ""])
-
-    def _run_parse_stage(self, oid, run_dir):
-        """Parse the attached PDF as its own stage, outside any
-        model-call timeout. Forwards worker % to the timeline.
-        Returns an error string ("" when done)."""
-        last = [0]
-
-        def cb(pct, stage):
-            try:
-                pct = int(pct)
-            except (TypeError, ValueError):
-                return
-            if pct < last[0] + 5 and pct < 100:
-                return
-            last[0] = pct
-            projlog.log_event(
-                oid, "sam", "parse",
-                "Parsing your PDF… %d%%" % pct, node="sales_sam")
-
+    def _form_load(d, meta):
+        """Production request form (source of truth). Missing file or
+        keys fall back to the stored answers (old orders)."""
         try:
-            out = registry.pc_send_source(
-                {"producer": "sales_sam", "order_id": oid,
-                 "run_dir": run_dir, "on_progress": cb},
-                {"build": "all"})
-        except Exception as exc:  # noqa: BLE001 - reported, not raised
-            return "parse failed: %s" % exc
-        if not isinstance(out, dict):
-            return "parse failed: bad tool result"
-        if out.get("error"):
-            return str(out["error"])[:300]
-        if out.get("warning"):
-            projlog.log_event(oid, "sam", "parse",
-                              str(out["warning"])[:200],
+            with open(os.path.join(d, "form.json"), encoding="utf-8") as f:
+                form = json.load(f)
+        except (OSError, ValueError):
+            form = None
+        if not isinstance(form, dict):
+            form = {}
+        for k in intake.FORM_FIELDS:
+            if not isinstance(form.get(k), str):
+                a = (meta.get("answers", {}) or {}).get(k, "")
+                form[k] = a if isinstance(a, str) else ""
+        return form
+
+    @staticmethod
+    def _form_save(d, meta, form):
+        """Write form.json and sync meta answers (downstream readers
+        keep working unchanged)."""
+        form = {k: (form.get(k, "") or "")
+                for k in intake.FORM_FIELDS}
+        with open(os.path.join(d, "form.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(form, f, ensure_ascii=False, indent=1)
+        meta["answers"] = dict(form)
+        return form
+
+    @staticmethod
+    def _form_missing(form, meta):
+        """Readiness decided by code: complete form + attached PDF."""
+        missing = [k for k in intake.FORM_FIELDS
+                   if not (form.get(k) or "").strip()]
+        if not (meta.get("files", {}) or {}).get("source"):
+            missing = missing + ["source PDF"]
+        return missing
+
+    def _finalize_order(self, oid, d, meta, final_status):
+        """Yes + complete form + PDF: one LLM call writes the final
+        request from the form, then the parser is spawned without
+        waiting and the order is handed over. The chat-filled form
+        is the source of truth; there is no separate extraction
+        call. Returns (code, obj)."""
+        form = self._form_load(d, meta)
+        missing = self._form_missing(form, meta)
+        if missing:
+            return (409, {"error": "intake incomplete",
+                          "missing": missing})
+        agent_dir = self._employee(meta["assignee"])
+        model = self._load_agent(agent_dir)["model"]
+        if not runner.key_present(model):
+            return (503, {"error": "%s missing: add it to .env"
+                                  % runner.key_var(model)})
+        pdf_name = meta["files"]["source"]
+        try:
+            pdf_bytes = os.path.getsize(os.path.join(d, pdf_name))
+        except OSError:
+            pdf_bytes = 0
+        prompt = intake.final_request_prompt(oid, form, pdf_name,
+                                             pdf_bytes)
+        try:
+            resp = runner._chat(
+                model, [{"role": "user", "content": prompt}],
+                None, timeout=300, caller="sales_sam:finalize",
+                log_path=os.path.join(d, "llm_calls.jsonl"))
+            text = ((resp.get("choices") or [{}])[0]
+                    .get("message", {}).get("content", ""))
+            obj, status = runner.parse_json_answer(text or "")
+            if status != "ok" or not isinstance(obj, dict):
+                raise ValueError("no request JSON in reply")
+            obj["order_id"] = oid
+            errs = schemas.validate_request(obj)
+            if errs:
+                raise ValueError("; ".join(errs)[:300])
+        except Exception as exc:  # noqa: BLE001 - surfaced, key never leaks
+            projlog.log_event(oid, "sam", "error",
+                              "request writing failed: %s" % exc,
                               node="sales_sam")
-        else:
-            cb(100, "done")
-        return ""
+            projlog.do_refresh(oid)
+            return (502, {"error": "request writing failed: %s" % exc})
+        res = results.make_result("sales_sam", oid, "", {"request": obj})
+        try:
+            results.save_result(d, res)
+            with open(os.path.join(d, "report.md"), "w",
+                      encoding="utf-8") as f:
+                f.write(results.render_report(res))
+        except (OSError, ValueError, RuntimeError) as exc:
+            return (502, {"error": "cannot save request: %s" % exc})
+        run_dir = os.path.join(ROOT, "output", "runs", oid)
+        os.makedirs(run_dir, exist_ok=True)
+        try:
+            pout = registry.pc_send_source(
+                {"producer": "sales_sam", "order_id": oid,
+                 "run_dir": run_dir}, {"build": "async"})
+        except Exception as exc:  # noqa: BLE001 - reported, not raised
+            return (502, {"error": "parse not started: %s" % exc})
+        if not isinstance(pout, dict) or pout.get("error"):
+            err = (pout.get("error") if isinstance(pout, dict)
+                   else "bad tool result")
+            return (502, {"error": "parse not started: %s" % err})
+        try:
+            rout = registry.pc_set_recipients(
+                {"producer": "sales_sam", "order_id": oid},
+                {"full": list(self.SAM_SOURCE_GRANTS["full"]),
+                 "map": list(self.SAM_SOURCE_GRANTS["map"]),
+                 "ref": pout["ref"]})
+        except Exception as exc:  # noqa: BLE001 - reported, not raised
+            return (502, {"error": "crew listing failed: %s" % exc})
+        if not isinstance(rout, dict) or rout.get("error"):
+            err = (rout.get("error") if isinstance(rout, dict)
+                   else "bad tool result")
+            return (502, {"error": "crew listing failed: %s" % err})
+        files = dict(meta.get("files", {}))
+        intake_rec = {"order_id": oid,
+                      "answers": dict(form, source=files.get(
+                          "source", "source.pdf")),
+                      "files": {"source": files.get("source"),
+                                "pc_ref": pout["ref"]},
+                      "source": {"ref": pout["ref"],
+                                 "title": pout.get("title", ""),
+                                 "sections": pout.get("section_count",
+                                                      "?"),
+                                 "chars": pout.get("chars", "?")}}
+        with open(os.path.join(d, "intake.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump(intake_rec, f, ensure_ascii=False, indent=2)
+        meta = self._order_meta(d)
+        meta["approved"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                            "answers": dict(form),
+                            "via": "chat-form"}
+        meta["status"] = final_status
+        meta["starting"] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        meta["parse_pending"] = {"doc_id": pout["doc_id"],
+                                 "ref": pout["ref"]}
+        self._order_save_meta(d, meta)
+        with open(os.path.join(d, "report.md"), encoding="utf-8") as f:
+            md = f.read()
+        stages = [
+            "a) request form filled in chat (audience, length, depth,"
+            " theme)",
+            "b) final request written from the form "
+            "(result.json + report.md)",
+            "c) PDF sent to the Source PC, parser running: %s"
+            % pout["ref"]]
+        print("order %s %s (%s, parse spawned)"
+              % ("start" if final_status == "in_production"
+                 else "complete", oid, pout["ref"]),
+              flush=True)
+        projlog.log_event(
+            oid, "sam", "done",
+            "request written from the form; parser spawned for %s"
+            % pout["ref"],
+            node="sales_sam",
+            file="orders/%s/report.md" % oid)
+        projlog.log_event(
+            oid, "order",
+            "start" if final_status == "in_production"
+            else "complete",
+            "consultation %s; Sam's work is done" % final_status,
+            file="orders/%s/intake.json" % oid)
+        projlog.do_refresh(oid)
+        return (200, {"ok": True, "handed_over": True,
+                      "intake": intake_rec, "report_md": md,
+                      "files": ["intake.json", "result.json",
+                                "report.md", "form.json"],
+                      "form": dict(form), "source": intake_rec["source"],
+                      "stages": stages, "run_id": ""})
+
+    def _maybe_parse_done(self, oid, d, meta):
+        """Progress-poll hook: forward new worker % to the timeline,
+        and auto-start the flow once the map is done. The parser is
+        never waited on; Sam's job already ended at handover."""
+        pp = meta.get("parse_pending") or {}
+        ref, doc_id = pp.get("ref", ""), pp.get("doc_id", "")
+        if not ref or not doc_id:
+            return
+        try:
+            mp = pc.load_map_by_ref(ref)
+        except (OSError, ValueError, KeyError):
+            return
+        if not isinstance(mp, dict) or mp.get("status") != "done":
+            return
+        try:
+            job = _PC_JOBS.get(doc_id)
+            if job is not None and job.poll() is None:
+                return  # worker still writing: wait for it to exit
+        except (OSError, ValueError):
+            pass
+        self._pc_reap_finished()
+        meta.pop("parse_pending", None)
+        meta.pop("starting", None)
+        self._order_save_meta(d, meta)
+        projlog.log_event(oid, "order", "parse_done",
+                          "Source PC map ready (%s)" % ref,
+                          file="orders/%s/intake.json" % oid)
+        run_id, auto_err = self._auto_start_flow(oid)
+        if auto_err:
+            projlog.log_event(oid, "order", "error",
+                              "flow auto-start failed: %s" % auto_err)
+        elif run_id and memstore._INDEXER is not None:
+            try:
+                memstore.queue_build(
+                    run_id, "sales_sam",
+                    lambda: memstore.collect_sam_docs(
+                        d, self._order_meta(d)))
+            except (OSError, ValueError, RuntimeError):
+                pass
+        projlog.do_refresh(oid)
 
     def _do_complete(self, oid, d, meta, body, final_status):
-        """Shared consultation pipeline: run Sam live (he sends the
-        PDF to the Source PC, sets recipients, writes request +
-        source). Returns (code, obj)."""
+        """Shared consultation pipeline: the chat-filled form is the
+        source of truth; finalize writes the request, spawns the
+        parser without waiting, and hands over. Returns (code, obj)."""
         if meta.get("status") in ("complete", "in_production"):
             with open(os.path.join(d, "report.md"), encoding="utf-8") as f:
                 md = f.read()
@@ -2396,117 +2569,7 @@ class Handler(BaseHTTPRequestHandler):
                           "files": ["intake.json", "result.json",
                                     "report.md"],
                           "run_id": self._latest_run_for_order(oid)})
-        if isinstance(body, dict) and body.get("extract"):
-            problem = self._extract_intake(d, meta)
-            if problem:
-                return problem
-        missing = [k for k in INTAKE_KEYS if k not in meta.get("answers", {})]
-        if missing:
-            return (409, {"error": "intake incomplete", "missing": missing})
-        if not os.path.isfile(os.path.join(d, "source.pdf")):
-            return (409, {"error": "no attached PDF yet"})
-        agent_dir = self._employee(meta["assignee"])
-        run_model = self._load_agent(agent_dir)["model"]
-        if not runner.key_present(run_model):
-            return (503, {"error": "%s missing: add it to .env"
-                          % runner.key_var(run_model)})
-        brief = {"order_id": oid, "answers": meta["answers"],
-                 "source_file": meta.get("files", {}).get("source",
-                                                          "source.pdf")}
-        run_dir = os.path.join(ROOT, "output", "runs", oid)
-        os.makedirs(run_dir, exist_ok=True)
-        parse_err = self._run_parse_stage(oid, run_dir)
-        if parse_err:
-            projlog.log_event(oid, "sam", "error", parse_err[:200],
-                              node="sales_sam")
-            projlog.do_refresh(oid)
-            return (502, {"error": "parse failed before any model call: "
-                                   + parse_err})
-        input_md = os.path.join(run_dir, "INPUTS.md")
-        with open(input_md, "w", encoding="utf-8") as f:
-            f.write(self._sam_inputs_md(oid, meta))
-        projlog.log_event(oid, "sam", "start",
-                          "Sam runs the consultation report",
-                          node="sales_sam",
-                          file="output/runs/%s/INPUTS.md" % oid)
-        result = runner.run(agent_dir, run_dir, brief, input_md)
-        if not result.get("ok"):
-            reason = "unknown"
-            for ev in reversed(result.get("events", [])):
-                if ev.get("ev") == "run_fail":
-                    reason = ev.get("reason", reason)
-                    break
-            projlog.log_event(oid, "sam", "error", reason,
-                              node="sales_sam",
-                              file="output/runs/%s/events.jsonl"
-                              % oid)
-            projlog.do_refresh(oid)
-            return (502, {"error": "sales run failed: " + reason,
-                          "usage": result.get("usage")})
-        for fn in ("result.json", "report.md"):
-            shutil.copyfile(os.path.join(run_dir, fn), os.path.join(d, fn))
-        with open(os.path.join(d, "result.json"), encoding="utf-8") as f:
-            res = json.load(f)
-        cats = res.get("categories", {}) or {}
-        mfresh = (self._order_meta(d).get("files", {}) or {})
-        source = {"ref": mfresh.get("pc_ref", ""),
-                  "title": mfresh.get("pc_title", ""),
-                  "sections": mfresh.get("pc_sections", "?"),
-                  "chars": mfresh.get("pc_chars", "?")}
-        files = dict(meta.get("files", {}))
-        intake = {"order_id": oid,
-                  "answers": dict(meta["answers"],
-                                  source=files.get("source", "source.pdf")),
-                  "files": {"source": files.get("source"),
-                            "pc_ref": source.get("ref", "")},
-                  "source": source}
-        with open(os.path.join(d, "intake.json"), "w", encoding="utf-8") as f:
-            json.dump(intake, f, ensure_ascii=False, indent=2)
-        meta = self._order_meta(d)
-        meta["status"] = final_status
-        self._order_save_meta(d, meta)
-        with open(os.path.join(d, "report.md"), encoding="utf-8") as f:
-            md = f.read()
-        stages = [
-            "a) answers saved (audience, length, depth, theme)",
-            "b) PDF sent to the Source PC: %s (%s sections, %s chars)"
-            % (source.get("ref", "?"), source.get("sections", "?"),
-               source.get("chars", "?")),
-            "c) production request written (result.json + report.md)"]
-        print("order %s %s (%s, %s)"
-              % ("start" if final_status == "in_production" else "complete",
-                 oid, source.get("ref", "?"), result.get("usage")),
-              flush=True)
-        projlog.log_event(
-            oid, "sam", "done",
-            "%s sections, %s chars -> %s"
-            % (source.get("sections", "?"),
-               source.get("chars", "?"),
-               source.get("ref", "?")),
-            node="sales_sam",
-            file="output/runs/%s/report.md" % oid)
-        projlog.log_event(
-            oid, "order",
-            "start" if final_status == "in_production"
-            else "complete",
-            "consultation %s" % final_status,
-            file="orders/%s/intake.json" % oid)
-        projlog.do_refresh(oid)
-        out = {"ok": True, "intake": intake, "report_md": md,
-               "files": ["intake.json", "result.json", "report.md"],
-               "usage": result.get("usage"), "source": source,
-               "stages": stages, "run_id": ""}
-        if final_status == "in_production":
-            run_id, auto_err = self._auto_start_flow(oid)
-            out["run_id"] = run_id
-            if auto_err:
-                out["auto_run_error"] = auto_err
-            elif run_id and memstore._INDEXER is not None:
-                memstore.queue_build(
-                    run_id, "sales_sam",
-                    lambda: memstore.collect_sam_docs(
-                        d, self._order_meta(d)))
-        return (200, out)
+        return self._finalize_order(oid, d, meta, final_status)
 
     def _latest_run_for_order(self, oid):
         """Newest run dir whose STATUS names this order ("" if none)."""
@@ -2548,78 +2611,6 @@ class Handler(BaseHTTPRequestHandler):
         print("order %s auto-started run %s" % (oid, run_id),
               flush=True)
         return run_id, ""
-
-    def _try_fill_answers(self, d, meta, extra=""):
-        """Best-effort fill of meta["answers"] from the chat, one LLM call.
-
-        Returns (missing_keys, client_lines). Raises RuntimeError when the
-        extraction call itself fails (missing key, bad reply)."""
-        missing = [k for k in INTAKE_KEYS
-                   if k not in meta.get("answers", {})]
-        if not missing:
-            return [], 0
-        lines = []
-        chat = os.path.join(d, "chat.jsonl")
-        if os.path.isfile(chat):
-            with open(chat, encoding="utf-8") as f:
-                for ln in f.read().splitlines():
-                    try:
-                        turn = json.loads(ln)
-                    except ValueError:
-                        continue
-                    if turn.get("user"):
-                        lines.append("Client: " + turn["user"])
-        if extra:
-            lines.append("Client: " + extra)
-        if not lines:
-            return missing, 0
-        agent = self._load_agent(self._employee(meta["assignee"]))
-        if not runner.key_present(agent["model"]):
-            raise RuntimeError("%s missing: add it to .env"
-                               % runner.key_var(agent["model"]))
-        prompt = ("Extract the client's video-order answers from this sales "
-                  "consultation. Reply with ONLY a JSON object, no other text:\n"
-                  '{"audience": "..."|null, "length": "..."|null, '
-                  '"depth": "..."|null, "theme": "..."|null}\n'
-                  "Use null for anything the client never stated. "
-                  "English values, one line each.\n\nTRANSCRIPT:\n"
-                  + "\n".join(lines))
-        try:
-            resp = runner._chat(agent["model"],
-                                [{"role": "user", "content": prompt}],
-                                None, timeout=120)
-            text = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
-            obj, status = runner.parse_json_answer(text or "")
-            if status != "ok" or not isinstance(obj, dict):
-                raise ValueError("no JSON in extraction reply")
-        except Exception as exc:  # noqa: BLE001 - surfaced, key never leaks
-            raise RuntimeError("answer extraction failed: %s" % exc)
-        answers = dict(meta.get("answers", {}))
-        for k in INTAKE_KEYS:
-            v = obj.get(k)
-            if isinstance(v, str) and v.strip():
-                answers[k] = v.strip()[:500]
-        meta["answers"] = answers
-        self._order_save_meta(d, meta)
-        missing = [k for k in INTAKE_KEYS if k not in answers]
-        return missing, len(lines)
-
-    def _extract_intake(self, d, meta):
-        """Complete/start path: fill answers, else (code, obj) to send."""
-        try:
-            missing, nlines = self._try_fill_answers(d, meta)
-        except RuntimeError as exc:
-            msg = str(exc)
-            if msg.endswith("add it to .env"):
-                return (503, {"error": msg})
-            return (502, {"error": msg})
-        if missing:
-            tip = ("chat first: no conversation to extract from"
-                   if not nlines else
-                   "keep chatting about: " + ", ".join(missing))
-            return (409, {"error": "intake incomplete", "missing": missing,
-                          "tip": tip})
-        return None
 
     # ---- Source PC ----
     def _pc_maybe_build(self, doc_id, force=False, mode="all",

@@ -318,6 +318,31 @@
   #o-bubbles .bub-sam { max-width: 40%; }
   #o-form input { font-size: 28px; padding: 14px 16px; }
   #o-chatbelow:empty { display: none; }
+  #o-side { flex: 0 0 300px; display: flex; flex-direction: column;
+    gap: 12px; min-width: 0; }
+  #o-formpanel { background: #fff; border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 16px; }
+  #o-formpanel h3 { margin: 0 0 8px; font-size: 14px; }
+  #o-formpanel .frow { display: flex; gap: 8px; font-size: 13px;
+    padding: 5px 0; border-top: 1px solid #f0f0f0; }
+  #o-formpanel .frow:first-of-type { border-top: 0; }
+  #o-formpanel .frow span { flex: 0 0 110px; color: var(--dim);
+    font-weight: 700; }
+  #o-formpanel .frow b { font-weight: 400; }
+  #o-formpanel .frow.empty b { color: #b0b0b0; }
+  #o-formpanel .fnote { font-size: 12px; color: var(--dim);
+    margin: 8px 0 0; }
+  #o-handover { background: #fff; border: 2px solid #111;
+    border-radius: 12px; padding: 14px 16px; }
+  #o-handover h3 { margin: 0 0 6px; font-size: 15px; }
+  #o-handover p { margin: 4px 0; font-size: 13px; }
+  #o-handover ul { margin: 8px 0; padding-left: 20px; font-size: 12px;
+    color: var(--dim); }
+  #o-handover button { font-size: 12px; }
+  @media (max-width: 900px) {
+    .orow { flex-direction: column; }
+    #o-side { flex: none; }
+  }
   @media (max-width: 480px) {
     #o-chatbelow { margin: 8px 0; display: flex;
       flex-direction: column; gap: 8px; }
@@ -460,6 +485,22 @@
           <input id="o-input" maxlength="500" placeholder="Talk to sales…" aria-label="Message">
           <button type="submit">Send</button>
         </form>
+      </div>
+      <div id="o-side">
+        <div id="o-formpanel" aria-live="polite">
+          <h3>PRODUCTION REQUEST</h3>
+          <div class="frow empty" data-f="audience"><span>Audience</span><b>&mdash;</b></div>
+          <div class="frow empty" data-f="length"><span>Target length</span><b>&mdash;</b></div>
+          <div class="frow empty" data-f="depth"><span>Depth</span><b>&mdash;</b></div>
+          <div class="frow empty" data-f="theme"><span>Theme direction</span><b>&mdash;</b></div>
+          <p class="fnote" id="o-formnote">Sam fills this in as you talk.</p>
+        </div>
+        <div id="o-handover" style="display:none">
+          <h3>SAM'S WORK IS DONE</h3>
+          <p>The request was handed over to the crew.</p>
+          <ul id="o-hostages"></ul>
+          <p><button id="o-hidedone" type="button">Dismiss</button></p>
+        </div>
       </div>
     </div>
     <h3 id="o-qh">THE 5 QUESTIONS</h3>
@@ -3451,6 +3492,42 @@ button.linklike { background: none; border: none; padding: 0;
     function stopStartingPoll() {
       if (startTimer) { clearInterval(startTimer); startTimer = null; }
     }
+    const FORM_ORDER = ["audience", "length", "depth", "theme"];
+    function renderForm(f) {
+      const panel = document.getElementById("o-formpanel");
+      if (!panel) return;
+      let done = 0;
+      FORM_ORDER.forEach(k => {
+        const row = panel.querySelector('[data-f="' + k + '"]');
+        if (!row) return;
+        const v = (f && f[k] ? String(f[k]) : "").trim();
+        const b = row.querySelector("b");
+        if (v) { b.textContent = v; row.classList.remove("empty"); done++; }
+        else { b.textContent = "\u2014"; row.classList.add("empty"); }
+      });
+      const note = document.getElementById("o-formnote");
+      if (note) note.textContent = done === 4
+        ? "Complete \u2014 Sam will ask for the PDF."
+        : "Sam fills this in as you talk (" + done + "/4).";
+    }
+    window.__renderForm = renderForm;
+    function showHandover(r) {
+      renderForm(r.form);
+      const box = document.getElementById("o-handover");
+      if (box) {
+        const ul = document.getElementById("o-hostages");
+        if (ul) {
+          ul.innerHTML = "";
+          (r.stages || []).forEach(s => {
+            const li = document.createElement("li");
+            li.textContent = s;
+            ul.appendChild(li);
+          });
+        }
+        box.style.display = "";
+      }
+      beginStarting(r);
+    }
     function beginStarting(r) {
       stopStartingPoll();
       const scene = document.getElementById("o-scene");
@@ -3512,19 +3589,7 @@ button.linklike { background: none; border: none; padding: 0;
           : "the start did not finish");
       }
     }
-    async function runStart() {
-      try {
-        const st = await api.send("POST", "api/orders/" + oid + "/start", {});
-        stopStartingPoll();
-        const card = document.getElementById("o-startcard");
-        if (card) card.remove();
-        showStarted(st);
-      } catch (e) {
-        failStarting(e.message);
-      } finally {
-        delete form.dataset.busy;
-      }
-    }
+    /* runStart removed: the yes finalizes at once now. */
     function failStarting(reason) {
       stopStartingPoll();
       const scene = document.getElementById("o-scene");
@@ -3776,6 +3841,7 @@ button.linklike { background: none; border: none; padding: 0;
               repName = String(m.name || whoId).toUpperCase();
               statusEl.textContent = "Order " + oid + " — consulting with " + m.name + ".";
               mountReception(0);
+              renderForm(o.form);
               const turns = o.transcript || [];
               turns.slice(-2).forEach((t) => addMsg("me", t.user));
               if (turns.length && turns[turns.length - 1].reply) {
@@ -3812,6 +3878,8 @@ button.linklike { background: none; border: none; padding: 0;
         const m = member(whoId);
         repName = String(m.name || whoId).toUpperCase();
         statusEl.textContent = "Order " + oid + " — consulting with " + m.name + ".";
+        renderForm(null);
+        document.getElementById("o-handover").style.display = "none";
         mountReception(0);
         addMsg("them", "Hi! I'm " + m.name + ". I'll walk you through 5 quick questions, then write the production request for our crew.");
       } catch (e) {
@@ -3834,7 +3902,8 @@ button.linklike { background: none; border: none; padding: 0;
         const r = await api.send("POST", "api/orders/" + oid + "/chat", { messages: history, mode: mode });
         chatMissing = Array.isArray(r.missing) ? r.missing : [];
         history.push({ role: "assistant", content: r.reply });
-        if (r.accepted) { beginStarting(r); runStart(); }
+        renderForm(r.form);
+        if (r.accepted) { showHandover(r); }
         else addMsg("them", r.reply);
       } catch (err) {
         addMsg("them", lastSam);
@@ -3897,7 +3966,8 @@ button.linklike { background: none; border: none; padding: 0;
           return;
         }
         msg.textContent = "Saving answers…";
-        await api.send("PUT", "api/orders/" + oid + "/intake", { answers: answers });
+        const saved = await api.send("PUT", "api/orders/" + oid + "/intake", { answers: answers });
+        renderForm(saved.form);
         const inp = document.getElementById("o-pdf");
         if (inp.files.length) {
           msg.textContent = "Attaching PDF…";
@@ -3909,11 +3979,14 @@ button.linklike { background: none; border: none; padding: 0;
         msg.textContent = "Sales is writing the production request… (may take a minute)";
         const r = await api.send("POST", "api/orders/" + oid + "/start", {});
         btn.disabled = false;
-        showStarted(r);
+        showHandover(r);
       } catch (e) {
         btn.disabled = false;
         fail(e);
       }
+    };
+    document.getElementById("o-hidedone").onclick = () => {
+      document.getElementById("o-handover").style.display = "none";
     };
     function studioLink() {
       const b = document.createElement("button");
