@@ -38,6 +38,11 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Bound reads too: open at most 2 articles per part; a read must
   end in a pick or a gap note. Call write_cases as soon as every
   part has >=1 case -- never keep reading after coverage.
+  Batch independent calls in one block: searches, picks, opens
+  and Ash lists for several parts can share one step. Never
+  spend one step per part. Open each pick once (open_ref gives
+  the verbatim quote); read it again only when the quote is
+  too short to cite.
 - Real cases only: every case has a name, a date and a source;
   reject anything undated or unsourced, no exceptions.
 - No Source quotes: summaries, fit_why and viewer_hook are always

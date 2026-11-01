@@ -13,6 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import flow, results
+from agents._frame import tools as _tools
 from agents._frame import pc as _pc
 from agents._frame import video as _video
 _video._TRANSCRIBE_FN = lambda p: []  # never live in tests
@@ -971,6 +972,57 @@ mdwren = flow._render_inputs_md(
     os.path.join(tmp, "runs", "ridpen"), "board_penn",
     agent_id="voice_wren")
 ok('"start_s"' in mdwren, "slim applies to penn only")
+
+
+covdir = tempfile.mkdtemp()
+with open(os.path.join(covdir, "received.pd_marty.structure.json"),
+          "w", encoding="utf-8") as f:
+    json.dump({"sender": "pd_marty", "category": "structure",
+               "version": 2,
+               "data": {"parts": [{"id": "p%d" % (i + 1)}
+                                for i in range(8)],
+                        "links": []}}, f)
+
+
+def _cov_case(pid):
+    return {"part_id": pid,
+            "cases": [{"title": "T", "summary": "w " * 15,
+                       "kind": "event", "date": "2020",
+                       "fit_why": "F", "viewer_hook": "H",
+                       "claims": [{"text": "C",
+                                   "citations": [
+                                       {"ref": "pc://article/x#p1",
+                                        "quote": "Q"}]}]}],
+            "picks": [], "gaps": []}
+
+
+ctx4 = {"run_dir": covdir, "order_id": "o9", "producer": "case_rex"}
+r4 = _tools._write_report(
+    ctx4, {"cases": {"parts": [_cov_case("p%d" % (i + 1))
+                                for i in range(4)]}},
+    "cases", _tools.validate_cases)
+ok(not r4.get("ok") and any("p5" in e and "p8" in e
+                           for e in r4.get("errors", [])),
+   "partial 4/8 parts rejected with missing ids")
+r8 = _tools._write_report(
+    ctx4, {"cases": {"parts": [_cov_case("p%d" % (i + 1))
+                                for i in range(8)]}},
+    "cases", _tools.validate_cases)
+ok(not any("cover every structure part" in e
+           for e in r8.get("errors", [])),
+   "full 8/8 parts pass the coverage check")
+emptydir = tempfile.mkdtemp()
+re_ = _tools._write_report(
+    {"run_dir": emptydir, "order_id": "o9",
+     "producer": "case_rex"},
+    {"cases": {"parts": [_cov_case("p%d" % (i + 1))
+                         for i in range(4)]}},
+    "cases", _tools.validate_cases)
+ok(not any("cover every structure part" in e
+           for e in re_.get("errors", [])),
+   "no structure file means no coverage check")
+shutil.rmtree(covdir, ignore_errors=True)
+shutil.rmtree(emptydir, ignore_errors=True)
 
 
 def boom(agent_dir, run_dir, brief, input_md):

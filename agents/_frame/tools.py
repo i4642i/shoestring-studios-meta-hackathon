@@ -355,6 +355,9 @@ def _write_report(ctx, args, category, validator):
     if errors:
         return {"ok": False,
                 "errors": errors + _omitted_hints(ctx, errors)}
+    cov = _coverage_errors(ctx, category, obj)
+    if cov:
+        return {"ok": False, "errors": cov}
     cited = {}
     for i, p in enumerate(obj["parts"]):
         where = "%s.parts[%d]" % (category, i)
@@ -603,6 +606,49 @@ def write_narration(ctx, args):
 
 def write_concepts(ctx, args):
     return _write_report(ctx, args, "concepts", validate_concepts)
+
+
+def _structure_part_ids(run_dir):
+    """Part ids from the run's received structure map, or None."""
+    if not run_dir or not os.path.isdir(run_dir):
+        return None
+    try:
+        names = sorted(os.listdir(run_dir))
+    except OSError:
+        return None
+    for n in names:
+        if n.startswith("received.") and n.endswith(".structure.json"):
+            try:
+                with open(os.path.join(run_dir, n),
+                          encoding="utf-8") as f:
+                    rec = json.load(f)
+            except (OSError, ValueError):
+                return None
+            data = rec.get("data", rec) if isinstance(rec, dict) else {}
+            parts = data.get("parts") if isinstance(data, dict) else None
+            if not isinstance(parts, list):
+                return None
+            return [p.get("id") for p in parts
+                    if isinstance(p, dict)]
+    return None
+
+
+def _coverage_errors(ctx, category, obj):
+    """Every structure part must be reported (cases/concepts)."""
+    if category not in ("cases", "concepts"):
+        return []
+    want = _structure_part_ids((ctx or {}).get("run_dir", ""))
+    if not want:
+        return []
+    got = [p.get("part_id") for p in obj.get("parts", [])
+           if isinstance(p, dict)]
+    missing = [i for i in want if i not in got]
+    if not missing:
+        return []
+    return ["structure has parts %s but the report covers %s: cover "
+            "every structure part in order (narrow with 1 pick per "
+            "part and gaps if steps run low, never drop parts)"
+            % (",".join(want), ",".join(got) or "none")]
 
 
 def write_cases(ctx, args):

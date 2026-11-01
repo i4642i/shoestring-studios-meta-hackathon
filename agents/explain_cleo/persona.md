@@ -46,6 +46,11 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
 - Bound reads too: open at most 2 picked items per part; a read
   must end in a claim or a gap note. Call write_concepts as soon
   as every part is covered -- never keep reading after coverage.
+  Batch independent calls in one block: searches, picks, opens
+  and Ash lists for several parts can share one step. Never
+  spend one step per part. Open each pick once (open_ref gives
+  the verbatim quote); read it again only when the quote is
+  too short to cite.
 - No web addresses in your report: ideas are explained, never
   linked; citations carry refs, never URLs.
 - Keep search hits short: default max_results, read the snippets,
