@@ -2334,6 +2334,43 @@ class Handler(BaseHTTPRequestHandler):
             % (files.get("source", "source.pdf"), nbytes,
                files.get("upload_name", "?")), ""])
 
+    def _run_parse_stage(self, oid, run_dir):
+        """Parse the attached PDF as its own stage, outside any
+        model-call timeout. Forwards worker % to the timeline.
+        Returns an error string ("" when done)."""
+        last = [0]
+
+        def cb(pct, stage):
+            try:
+                pct = int(pct)
+            except (TypeError, ValueError):
+                return
+            if pct < last[0] + 5 and pct < 100:
+                return
+            last[0] = pct
+            projlog.log_event(
+                oid, "sam", "parse",
+                "Parsing your PDF… %d%%" % pct, node="sales_sam")
+
+        try:
+            out = registry.pc_send_source(
+                {"producer": "sales_sam", "order_id": oid,
+                 "run_dir": run_dir, "on_progress": cb},
+                {"build": "all"})
+        except Exception as exc:  # noqa: BLE001 - reported, not raised
+            return "parse failed: %s" % exc
+        if not isinstance(out, dict):
+            return "parse failed: bad tool result"
+        if out.get("error"):
+            return str(out["error"])[:300]
+        if out.get("warning"):
+            projlog.log_event(oid, "sam", "parse",
+                              str(out["warning"])[:200],
+                              node="sales_sam")
+        else:
+            cb(100, "done")
+        return ""
+
     def _do_complete(self, oid, d, meta, body, final_status):
         """Shared consultation pipeline: run Sam live (he sends the
         PDF to the Source PC, sets recipients, writes request +
@@ -2367,6 +2404,13 @@ class Handler(BaseHTTPRequestHandler):
                                                           "source.pdf")}
         run_dir = os.path.join(ROOT, "output", "runs", oid)
         os.makedirs(run_dir, exist_ok=True)
+        parse_err = self._run_parse_stage(oid, run_dir)
+        if parse_err:
+            projlog.log_event(oid, "sam", "error", parse_err[:200],
+                              node="sales_sam")
+            projlog.do_refresh(oid)
+            return (502, {"error": "parse failed before any model call: "
+                                   + parse_err})
         input_md = os.path.join(run_dir, "INPUTS.md")
         with open(input_md, "w", encoding="utf-8") as f:
             f.write(self._sam_inputs_md(oid, meta))

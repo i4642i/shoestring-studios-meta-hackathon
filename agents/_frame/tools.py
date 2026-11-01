@@ -1031,6 +1031,7 @@ def pc_send_source(ctx, args):
     build the map, index. Returns the entry ref + counts. Sam only;
     idempotent (same PDF = same ref, finished stages are skipped)."""
     ctx = ctx or {}
+    on_progress = ctx.get("on_progress")
     if ctx.get("producer") != INTAKE_PRODUCER:
         return {"error": "pc_send_source is Sam's tool"}
     order_id = ctx.get("order_id", "")
@@ -1062,6 +1063,8 @@ def pc_send_source(ctx, args):
             skipped, marks=marks)
     except (OSError, ValueError) as exc:
         return {"error": "ingest failed: %s" % exc}
+    if callable(on_progress):
+        on_progress(3, "PDF parsed")
     try:
         pc.set_recipients("source", r["doc_id"], order_id,
                            [ctx.get("producer", "")],
@@ -1100,29 +1103,75 @@ def pc_send_source(ctx, args):
             mode = "index" if map_done else ("noindex" if indexed
                                              else "all")
         try:
-            done = subprocess.run(
+            proc = subprocess.Popen(
                 [sys.executable, os.path.join("scripts",
                                               "pc_worker.py"),
                  r["doc_id"], mode, "source"],
-                cwd=base, capture_output=True, timeout=SEND_TIMEOUT)
-            worker_note = "mode %s exit %d" % (mode, done.returncode)
-        except subprocess.TimeoutExpired:
+                cwd=base, stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT)
+        except OSError as exc:
+            return {"error": "worker start failed: %s" % exc}
+        log_path = os.path.join(pc.entry_dir("source", r["doc_id"]),
+                                "log.jsonl")
+        try:
+            with open(log_path, encoding="utf-8") as f:
+                f.seek(0, 2)
+                log_off = f.tell()
+        except OSError:
+            log_off = 0
+        rc, t0 = None, time.time()
+        while True:
+            if time.time() - t0 > SEND_TIMEOUT:
+                rc = None
+                break
+            rc = proc.poll()
+            if callable(on_progress):
+                try:
+                    with open(log_path, encoding="utf-8") as f:
+                        f.seek(log_off)
+                        chunk = f.read()
+                        log_off = f.tell()
+                except OSError:
+                    chunk = ""
+                for ln in chunk.splitlines():
+                    try:
+                        ev = json.loads(ln)
+                    except ValueError:
+                        continue
+                    if isinstance(ev, dict) \
+                            and ev.get("ev") == "progress":
+                        try:
+                            on_progress(int(ev.get("pct", 0)),
+                                        str(ev.get("stage", "")))
+                        except (TypeError, ValueError):
+                            pass
+            if rc is not None:
+                break
+            time.sleep(2)
+        if rc is None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+            proc.wait()
             worker_note = "mode %s timed out after %ds" \
                 % (mode, SEND_TIMEOUT)
             warning = ("worker timed out; map/index may still be "
                        "pending (REBUILD from the PC page)")
+        else:
+            worker_note = "mode %s exit %d" % (mode, rc)
         if not warning:
             mp = pc.load_map_by_ref(r["ref"])
             map_done = isinstance(mp, dict) \
                 and mp.get("status") == "done"
             indexed = _indexed("source", prof, r["doc_id"])
-            if done.returncode != 0 and not map_done:
+            if rc != 0 and not map_done:
                 return {"error": "map build failed: %s"
                                  % (_worker_reason(
                                      pc.entry_dir("source",
                                                   r["doc_id"]))
                                     or worker_note)}
-            if done.returncode != 0:
+            if rc != 0:
                 warning = ("index failed (%s); the map is done so "
                            "the crew can read" % (
                                _worker_reason(pc.entry_dir(

@@ -6,10 +6,13 @@ question is an exact server-side string, and PDF sections are built by
 rule, not by the model. No sockets, no model calls, no writes.
 """
 import os
+import shutil
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
+sys.path.insert(0, ROOT)
 import intake  # noqa: E402
 
 FAILS = []
@@ -208,6 +211,53 @@ ok("graph.query" in _srv,
    "sam turns consult the LightRAG index on questions")
 ok("rag lookup skipped" in _srv,
    "a dead index never breaks the turn")
+# ---- parse is its own stage with % progress ----
+_tl2 = [{"at": "2026-11-01 22:01:28", "source": "sam",
+         "ev": "start", "summary": "x"},
+        {"at": "2026-11-01 22:01:40", "source": "sam",
+         "ev": "parse", "summary": "Parsing your PDF\u2026 12%"},
+        {"at": "2026-11-01 22:02:05", "source": "sam",
+         "ev": "parse", "summary": "Parsing your PDF\u2026 45%"},
+        {"at": "2026-11-01 22:03:11", "source": "sam",
+         "ev": "parse", "summary": "Parsing your PDF\u2026 100%"}]
+_pl2, _, _ = intake.progress_lines(_tl2, [])
+ok(_pl2 == ["Sam is writing the production request",
+            "Parsing your PDF\u2026 100%"],
+   "parse % lines collapse into the latest one")
+import pc_worker
+ok(pc_worker.stage_pct("transcribe", 0, 10) == 5
+   and pc_worker.stage_pct("transcribe", 10, 10) == 45
+   and pc_worker.stage_pct("describe", 1, 4) == 48
+   and pc_worker.stage_pct("map", 3, 3) == 85
+   and pc_worker.stage_pct("index", 0, 0) == 100
+   and pc_worker.stage_pct("bogus", 1, 2) == 50,
+   "parse % bands are monotonic inside each stage")
+from agents._frame import runner as _runner
+_old_chat = _runner._chat
+
+
+def _boom(*a, **k):
+    raise TimeoutError("timed out")
+
+
+_runner._chat = _boom
+try:
+    _rd = tempfile.mkdtemp(prefix="sam_timeout_")
+    _res = _runner.run(os.path.join(ROOT, "agents", "sales_sam"),
+                       _rd, {"order_id": "fixture-ord",
+                             "answers": {}}, "# fixture inputs")
+finally:
+    _runner._chat = _old_chat
+    shutil.rmtree(_rd, ignore_errors=True)
+ok(_res.get("ok") is False, "a model timeout fails the run")
+_rfails = [e for e in _res.get("events", [])
+           if e.get("ev") == "run_fail"]
+ok(_rfails and "timed out" in _rfails[-1].get("reason", "")
+   and "kept" in _rfails[-1].get("reason", ""),
+   "timeout reason says the parse results are kept")
+ok("_run_parse_stage" in _srv and "on_progress" in _srv
+   and "parse failed before any model call" in _srv,
+   "parse runs as its own stage before any model call")
 
 
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")

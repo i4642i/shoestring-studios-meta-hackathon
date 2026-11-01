@@ -176,6 +176,8 @@ def progress_lines(tl_rows, entry_rows):
                 staged.append((at, "Sam is writing the production request", ""))
             elif (src, ev) == ("sam", "done"):
                 staged.append((at, "Production request written", ""))
+            elif (src, ev) == ("sam", "parse"):
+                staged.append((at, summ[:200], ""))
             elif (src, ev) == ("pc_worker", "start"):
                 staged.append((at, "Reading your PDF", ""))
             elif (src, ev) == ("pc_worker", "done"):
@@ -211,7 +213,11 @@ def progress_lines(tl_rows, entry_rows):
             reason = prob
             lines.append("Problem: " + prob)
         elif text:
-            lines.append(text)
+            if text.startswith("Parsing your PDF") and lines \
+                    and lines[-1].startswith("Parsing your PDF"):
+                lines[-1] = text
+            else:
+                lines.append(text)
     if any(l.startswith("Reading your PDF (") for l in lines):
         lines = [l for l in lines if l != "Reading your PDF"]
     keep, seen = [], set()

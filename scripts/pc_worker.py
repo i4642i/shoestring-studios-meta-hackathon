@@ -27,6 +27,23 @@ META_VISION_MODEL = "muse-spark-1.3"  # Meta Model API flagship; second
 # vision attempt when the primary model cannot take images.
 FIG_KINDS = ("chart", "diagram", "photo", "formula", "table-image")
 VISION_PROMPT_VERSION = "eqtab-v1"  # part of the transcribe cache key
+
+# Parse progress bands (percent): the driver forwards these to the
+# order timeline while the worker runs, so the chat card can show %.
+_PARSE_BANDS = {"transcribe": (5, 45), "describe": (45, 60),
+                "map": (60, 85), "index": (85, 100)}
+
+
+def stage_pct(stage, done, total):
+    """Percent inside a parse band. Pure (tested)."""
+    lo, hi = _PARSE_BANDS.get(stage, (0, 100))
+    try:
+        done, total = int(done), int(total)
+    except (TypeError, ValueError):
+        return hi
+    if total <= 0:
+        return hi
+    return lo + (hi - lo) * min(max(done, 0), total) // total
 VISION_CALL_CAP = 10  # max paid vision calls per document (cache free)
 FORMULA_PROMPT = (
     "Copy every STANDALONE displayed math formula on this page "
@@ -190,7 +207,7 @@ def _describe_one(model, blob, caption):
     return obj, toks or (len(prompt) + len(text or "")) // 4
 
 
-def describe_figures(entry, edir, model):
+def describe_figures(entry, edir, model, progress=None):
     """Describe each figure once (table-images included). The first
     figure probes vision support; on failure the rest stay
     caption-only. Returns (described, failed, calls, tokens, backend).
@@ -204,10 +221,12 @@ def describe_figures(entry, edir, model):
             fig["described_by"] = "caption-only"
         return 0, len(figs), 0, 0, "no-key"
     backend, ok_n, fail_n, calls, toks = None, 0, 0, 0, 0
-    for fig in figs:
+    for _i, fig in enumerate(figs):
         if fig.get("described"):
             ok_n += 1  # carried over by a re-ingest: no repay
             backend = backend or fig.get("described_by") or None
+            if progress is not None:
+                progress("describe", _i + 1, len(figs))
             continue
         with open(os.path.join(edir, "figures", fig["file"]),
                   "rb") as f:
@@ -240,6 +259,8 @@ def describe_figures(entry, edir, model):
                           % (fig["addr"], m, exc), flush=True)
             if done:
                 break
+        if progress is not None:
+            progress("describe", _i + 1, len(figs))
         if done:
             ok_n += 1
         else:
@@ -286,7 +307,7 @@ def _cache_io(edir, kind, page, put=None):
     return put
 
 
-def transcribe_entry(entry, edir, model):
+def transcribe_entry(entry, edir, model, progress=None):
     """Vision re-reads: formulas on candidate pages + tables under
     captions. Cached by (page, kind, prompt version); at most
     VISION_CALL_CAP paid calls per document; every call logged with
@@ -321,7 +342,7 @@ def transcribe_entry(entry, edir, model):
                 png_of[n] = pdfingest.page_png(pdf.pages[n - 1])
         pages = texts
     calls, cached, added_eq, added_tab, rejected = 0, 0, [], [], 0
-    for kind, page, addr in jobs:
+    for _i, (kind, page, addr) in enumerate(jobs):
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
         hit = _cache_io(edir, kind, page)
         if hit is None and calls >= VISION_CALL_CAP:
@@ -382,6 +403,8 @@ def transcribe_entry(entry, edir, model):
             log(edir, {"ev": "transcribe_table", "page": page,
                        "addr": taddr, "checked": checked,
                        "missing": missing})
+        if progress is not None:
+            progress("transcribe", _i + 1, len(jobs))
     return {"status": "done", "calls": calls, "cached": cached,
             "equations": added_eq, "tables": added_tab,
             "rejected": rejected}
@@ -391,12 +414,12 @@ def _sec_no(addr):
     return pc.sec_of_addr(addr)
 
 
-def build_map(entry, model):
+def build_map(entry, model, progress=None):
     stats = {"calls": 0, "prompt_chars": 0, "reply_chars": 0}
     flat = entry["paragraphs"]
     pre = "s" if entry.get("pc", "source") == "source" else "g"
     out, missing = [], 0
-    for s in entry["sections"]:
+    for _i, s in enumerate(entry["sections"]):
         if s.get("non_content"):
             continue
         paras = flat[s["start"]:s["start"] + s["count"]]
@@ -425,6 +448,9 @@ def build_map(entry, model):
                     "subsections": list(s.get("subsections", []))})
         if miss:
             out[-1]["summary_missing"] = True
+        if progress is not None:
+            nsecs = len(entry["sections"])
+            progress("map", _i + 1, nsecs)
     entry_summary = ""
     if any(s["summary"] for s in out):
         joined = "\n".join(
@@ -523,20 +549,25 @@ def main(doc_id, mode="all", pcname="source"):
         msg = "%s missing: add it to .env" % runner.key_var(model)
         log(edir, {"ev": "map_failed", "error": msg})
         raise SystemExit(msg)
+    pg = lambda stage, done, total: log(  # noqa: E731
+        edir, {"ev": "progress",
+               "pct": stage_pct(stage, done, total), "stage": stage})
     if mode in ("all", "noindex"):
         t0 = time.time()
-        tsum = transcribe_entry(entry, edir, model)
+        tsum = transcribe_entry(entry, edir, model, progress=pg)
         with open(os.path.join(edir, "entry.json"), "w",
                   encoding="utf-8") as f:
             json.dump(entry, f, ensure_ascii=False, indent=2)
         log(edir, dict({"ev": "transcribe_done",
                         "seconds": round(time.time() - t0, 1)}, **tsum))
+        log(edir, {"ev": "progress", "pct": 45,
+                   "stage": "transcribe"})
         print("transcribe %s: %s (%d calls, %d cached)"
               % (doc_id, tsum["status"], tsum["calls"],
                  tsum["cached"]), flush=True)
         t0 = time.time()
         ok_n, fail_n, dcalls, dtoks, backend = describe_figures(
-            entry, edir, model)
+            entry, edir, model, progress=pg)
         with open(os.path.join(edir, "entry.json"), "w",
                   encoding="utf-8") as f:
             json.dump(entry, f, ensure_ascii=False, indent=2)
@@ -545,10 +576,12 @@ def main(doc_id, mode="all", pcname="source"):
                    "described": ok_n, "failed": fail_n, "calls": dcalls,
                    "tokens": dtoks, "backend": backend,
                    "seconds": round(time.time() - t0, 1)})
+        log(edir, {"ev": "progress", "pct": 60,
+                   "stage": "describe"})
         print("describe %s: %d ok, %d failed (%s)"
               % (doc_id, ok_n, fail_n, backend), flush=True)
         t0 = time.time()
-        mapd, stats = build_map(entry, model)
+        mapd, stats = build_map(entry, model, progress=pg)
         with open(os.path.join(edir, "map.json"), "w",
                   encoding="utf-8") as f:
             json.dump(mapd, f, ensure_ascii=False, indent=2)
@@ -557,10 +590,12 @@ def main(doc_id, mode="all", pcname="source"):
                    "llm_calls": stats["calls"],
                    "tokens_est": (stats["prompt_chars"]
                                   + stats["reply_chars"]) // 4})
+        log(edir, {"ev": "progress", "pct": 85, "stage": "map"})
         print("map %s: %s (%d calls)" % (doc_id, mapd["status"],
                                          stats["calls"]), flush=True)
     if mode in ("all", "index"):
         _run_index(mod, entry, edir, doc_id)
+        log(edir, {"ev": "progress", "pct": 100, "stage": "index"})
     if oid:
         projlog.pc_event(oid, "done",
                          "%s %s (%s)" % (pcname, doc_id,

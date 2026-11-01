@@ -326,7 +326,15 @@ def run(agent_dir, run_dir, brief, input_md):
         oai = [{"type": "function",
                 "function": {"name": n, "description": d, "parameters": s}}
                for n, (_, d, s) in play.items()]
-        resp = _chat(agent["model"], messages, oai)
+        try:
+            resp = _chat(agent["model"], messages, oai)
+        except TimeoutError:
+            emit({"ev": "run_fail",
+                  "reason": "model call timed out after 300s; "
+                            "Source PC parse results are kept, "
+                            "retry resumes from them",
+                  "usage": total})
+            return {"ok": False, "events": events, "usage": total}
         usage = resp.get("usage", {})
         total["prompt"] += usage.get("prompt_tokens", 0)
         total["completion"] += usage.get("completion_tokens", 0)
