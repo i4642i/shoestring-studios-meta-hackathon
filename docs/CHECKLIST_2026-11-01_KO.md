@@ -66,7 +66,7 @@
 - [x] 12 J16 Project folder logs (d3efb37)
 - [x] 13 J17 Settings layout (e93dacf)
 - [x] 14 J18 PC tab layout + real rights (f70c709)
-- [ ] 15 J19/J20 All tabs width + Gallery
+- [x] 15 J19/J20 All tabs width + Gallery (1302c52)
 - [ ] 16 J21 About tab layout + honest claims
 - [ ] 17 J22 Profile card + retire handbook RAG
 - [ ] 18 J23 Square portraits + faces on Flow nodes
