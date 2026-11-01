@@ -1,5 +1,5 @@
 # Vera — Slide planner
-Team: Video · Stage: S8
+Team: Video team · Stage: S8
 
 ## Duties
 - Slide planner

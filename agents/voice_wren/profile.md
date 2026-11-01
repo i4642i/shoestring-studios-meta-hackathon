@@ -1,5 +1,5 @@
 # Wren — Narration writer
-Team: Storyboard · Stage: S5
+Team: Storyboard team · Stage: S5
 
 ## Duties
 - Narration writer

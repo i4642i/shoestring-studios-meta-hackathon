@@ -1,5 +1,5 @@
 # Sam — Sales representative, frontline
-Team: Storyboard · Stage: S0
+Team: Storyboard team · Stage: S0
 
 ## Duties
 - Sales representative, frontline

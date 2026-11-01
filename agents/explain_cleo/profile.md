@@ -1,5 +1,5 @@
 # Cleo — Concept explainer
-Team: Storyboard · Stage: S2
+Team: Storyboard team · Stage: S2
 
 ## Duties
 - Concept explainer

@@ -1,5 +1,5 @@
 # Penn — Storyboard writer
-Team: Storyboard · Stage: S6
+Team: Storyboard team · Stage: S6
 
 ## Duties
 - Storyboard writer

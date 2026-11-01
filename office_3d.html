@@ -693,11 +693,16 @@ async function spawnCrew() {
       }
     }
     const seats = deskSeats[emp.team];
+    const deskN = seatIdx[emp.team]++;
+    if (deskN >= seats.length)
+      console.warn("office: no free " + emp.team + " desk for " +
+        emp.id + " (" + (emp.team === "story" ? sN : vN) +
+        " members, " + seats.length + " desks); sharing");
     const mug = { // member record
       emp, group: model, mixer, actions, variant: key, charS, hipDrop, walk,
       standHead, sitHead: sitHead || standHead * 0.72,
       target: null, route: null, state: "walk", idleUntil: 0, emoteUntil: 0,
-      seat: seats.length ? seats[seatIdx[emp.team]++ % seats.length] : null,
+      seat: seats.length ? seats[deskN % seats.length] : null,
       seatTrip: false, chatAt: 0, liveSeat: false, live: null, liveKey: "",
       lines: linesFor(emp), li: Math.floor(rand(0, 99)), bubbleAt: performance.now() + i * 1300,
       current: null,
@@ -1137,6 +1142,9 @@ function animate() {
     story: crew.filter((m) => m.emp.team === "story").length,
     video: crew.filter((m) => m.emp.team === "video").length,
     desks: { story: deskSeats.story.length, video: deskSeats.video.length },
+    sharing: crew.filter((m, k) => { const tn = m.emp.team;
+      return crew.slice(0, k).filter((o) => o.emp.team === tn).length >=
+        deskSeats[tn].length; }).map((m) => m.emp.id),
     desksOk: crew.length > 0 && crew.every((m) => m.seat)
       && deskSeats.story.length >= crew.filter((m) => m.emp.team === "story").length
       && deskSeats.video.length >= crew.filter((m) => m.emp.team === "video").length,

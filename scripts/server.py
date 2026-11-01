@@ -380,6 +380,7 @@ class Handler(BaseHTTPRequestHandler):
         available = sorted(registry.get_tools(path))
         return self._json(200, {
             "id": agent["id"], "name": agent["name"], "title": agent["title"],
+            "team": agent.get("team"),
             "model": agent["model"], "tools": agent["tools"],
             "bounds": agent["bounds"], "io": agent["io"], "done": agent["done"],
             "persona": persona,
@@ -410,8 +411,9 @@ class Handler(BaseHTTPRequestHandler):
         bad = self._apply_update(agent, body)
         if bad:
             return self._json(400, {"error": bad})
-        changed = [k for k in ("name", "title", "model", "tools", "bounds",
-                               "done", "persona", "appearance") if k in body]
+        changed = [k for k in ("name", "title", "model", "team", "tools",
+                               "bounds", "done", "persona",
+                               "appearance") if k in body]
         with open(os.path.join(path, "agent.json"), "w", encoding="utf-8") as f:
             json.dump(agent, f, ensure_ascii=False, indent=2)
         if "persona" in body:
@@ -433,6 +435,23 @@ class Handler(BaseHTTPRequestHandler):
                 with open(ap_path, "w", encoding="utf-8") as f:
                     f.write(backup_ap)
             return self._json(422, {"error": "validation failed", "details": errs})
+        if "team" in body:
+            prof_names = {}
+            for _eid in sorted(os.listdir(os.path.join(ROOT, "agents"))):
+                _jp = os.path.join(ROOT, "agents", _eid, "agent.json")
+                if os.path.isfile(_jp):
+                    try:
+                        with open(_jp, encoding="utf-8") as _f:
+                            prof_names[_eid] = json.load(_f).get(
+                                "name", _eid)
+                    except ValueError:
+                        continue
+            with open(os.path.join(path, "profile.md"), "w",
+                      encoding="utf-8") as f:
+                f.write(profiles.build_profile(
+                    path,
+                    os.path.join(ROOT, "data", "flows", "default.json"),
+                    prof_names))
         print("update %s: %s" % (eid, ",".join(changed)), flush=True)
         return self._json(200, {"ok": True, "changed": changed})
 
@@ -446,6 +465,13 @@ class Handler(BaseHTTPRequestHandler):
                 agent[key] = body[key].strip()
         if "model" in body:
             agent["model"] = body["model"]
+        if "team" in body:
+            if body["team"] not in ("story", "video", "", None):
+                return "team must be story, video or empty"
+            if body["team"]:
+                agent["team"] = body["team"]
+            elif "team" in agent:
+                del agent["team"]
         if "tools" in body:
             if not isinstance(body["tools"], list):
                 return "tools must be a list"
@@ -489,12 +515,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "bad id (lowercase snake, no leading _)"})
         if not name or not title:
             return self._json(400, {"error": "name and title are required"})
+        team = body.get("team") or ""
+        if team not in ("story", "video"):
+            return self._json(400, {"error": "team is required: story or video"})
         path = os.path.join(ROOT, "agents", eid)
         if os.path.exists(path):
             return self._json(409, {"error": "employee exists: " + eid})
         model = body.get("model") or "meta-models/muse-spark-open-1026"
         os.makedirs(os.path.join(path, "handbook"))
         agent = {"frame_version": 1, "id": eid, "name": name, "title": title,
+                 "team": team,
                  "model": model, "tools": ["read_md_section", "write_structure"],
                  "bounds": {"max_steps": 6},
                  "io": {"inputs": ["brief.json", "input.md"], "output": "result.json"},

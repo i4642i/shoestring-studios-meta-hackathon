@@ -1,12 +1,17 @@
-"""Crew portraits check, J1/J2/J23 (one shot).
+"""Crew portraits + team sections check, J1/J2/J23/J24 (one shot).
 
 Starts scripts/server.py on port 8765 (never 8000), drives headless
 Edge over CDP (1920x1080 then 390x844), clicks the Crew nav item, and
 asserts: 13 employee cards, 13 non-empty portraits (one shared
 offscreen renderer, so no canvas elements inside the roster), the 88px
-square layout (64px at 390px), zero console errors. Saves
-runs/crew_1920.png, runs/crew_390.png and runs/crew_square_1920.png,
-then ALWAYS stops the server + Edge (try/finally). Stdlib only.
+square layout (64px at 390px), team sections (story/video/none, sorted
+by stage then id, team-colour stripes), the required Team select on
+Add employee, zero console errors. Creates a temp video employee via
+the API, checks it lands in the Video section and in the office (desk
+sharing is reported), edits its team, then deletes it. Saves
+runs/crew_1920.png, runs/crew_390.png, runs/crew_square_1920.png,
+runs/crew_teams_1920.png and runs/crew_teams_390.png, then ALWAYS
+stops the server + Edge (try/finally). Stdlib only.
 """
 import _browser
 import base64
@@ -29,6 +34,9 @@ RUNS = os.path.join(ROOT, "runs")
 PNG1920 = os.path.join(RUNS, "crew_1920.png")
 PNG390 = os.path.join(RUNS, "crew_390.png")
 PNGSQUARE = os.path.join(RUNS, "crew_square_1920.png")
+PNGTEAMS1920 = os.path.join(RUNS, "crew_teams_1920.png")
+PNGTEAMS390 = os.path.join(RUNS, "crew_teams_390.png")
+TMP_ID = "tmp24_vid"
 SERVER_LOG = os.path.join(RUNS, "crew_live_server.log")
 
 fails = 0
@@ -221,6 +229,46 @@ PROBE_JS = """(() => {
 })()"""
 
 
+TEAMS_JS = """(() => {
+  const heads = Array.from(
+    document.querySelectorAll('#roster .teamhead'))
+    .map(h => h.textContent);
+  const grids = Array.from(
+    document.querySelectorAll('#roster .idgrid'))
+    .map(g => ({
+      team: g.dataset.team || '',
+      ids: Array.from(g.querySelectorAll('.idcard'))
+        .map(c => (c.getAttribute('aria-label') || '')
+          .replace(/^Employee /, '')),
+      stripe: (() => {
+        const s = g.querySelector('.idcard .stripe');
+        return s ? getComputedStyle(s).backgroundColor : '';
+      })()
+    }));
+  return {
+    heads: heads,
+    grids: grids,
+    note: (document.querySelector('#roster .teamnote') || {})
+      .textContent || ''
+  };
+})()"""
+
+
+def http_json(method, path, body=None):
+    req = urllib.request.Request(
+        "http://127.0.0.1:%d%s" % (SERVER_PORT, path),
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Content-Type": "application/json"}, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.load(e)
+        except ValueError:
+            return e.code, {}
+
+
 def stop_proc(proc, name):
     if proc is None or proc.poll() is not None:
         return
@@ -358,11 +406,66 @@ def main():
            "id/model line unchanged (%s)" % out.get("meta"))
         ok(not out.get("graph"),
            "graph line gone (%s)" % out.get("graph"))
+        teams = js_eval(ws, TEAMS_JS)
+        ok(teams.get("heads") == ["STORYBOARD TEAM (7)",
+                                  "VIDEO TEAM (5)",
+                                  "NO TEAM (1)"],
+           "sections in order with counts (%s)"
+           % teams.get("heads"))
+        grids = {g["team"]: g for g in teams.get("grids", [])}
+        ok(grids.get("story", {}).get("ids")
+           == ["sales_sam", "pd_marty", "case_rex", "explain_cleo",
+               "plan_ash", "voice_wren", "board_penn"],
+           "story sorted by stage then id (%s)"
+           % grids.get("story", {}).get("ids"))
+        ok(grids.get("video", {}).get("ids")
+           == ["anim_max", "image_gene", "photo_pia",
+               "board_vera", "slide_remy"],
+           "video sorted by stage then id (%s)"
+           % grids.get("video", {}).get("ids"))
+        ok(grids.get("none", {}).get("ids") == ["voice_iris"],
+           "no-team holds only voice_iris (%s)"
+           % grids.get("none", {}).get("ids"))
+        ok(teams.get("note") == "Not in the current flow.",
+           "no-team note shown (%r)" % teams.get("note"))
+        ok(grids.get("story", {}).get("stripe")
+           == "rgb(0, 100, 224)"
+           and grids.get("video", {}).get("stripe")
+           == "rgb(194, 87, 27)",
+           "stripes use the team colours (%s/%s)"
+           % (grids.get("story", {}).get("stripe"),
+              grids.get("video", {}).get("stripe")))
+        js_eval(ws, "document.querySelector"
+                    "('#crew-tabs [data-ct=add]').click()")
+        time.sleep(0.5)
+        add = js_eval(ws, "(() => { const s = "
+                          "document.getElementById('n-team'); return {"
+                          "opts: Array.from(s.options).map(o => o.value),"
+                          "sel: s.value, "
+                          "dis: document.getElementById('n-create')"
+                          ".disabled}; })()")
+        ok(add.get("opts") == ["", "story", "video"]
+           and add.get("sel") == "",
+           "team select storyboard/video, no default (%s)"
+           % add)
+        ok(add.get("dis") is True,
+           "create disabled until a team is picked")
+        js_eval(ws, "(() => { const s = "
+                    "document.getElementById('n-team'); s.value = 'video';"
+                    " s.dispatchEvent(new Event('change')); })()")
+        ok(js_eval(ws, "document.getElementById('n-create')"
+                       ".disabled") is False,
+           "create enables after picking a team")
+        js_eval(ws, "document.querySelector"
+                    "('#crew-tabs [data-ct=list]').click()")
+        time.sleep(0.5)
         data = ws.call("Page.captureScreenshot",
                        {"format": "png"})["data"]
         with open(PNG1920, "wb") as f:
             f.write(base64.b64decode(data))
         with open(PNGSQUARE, "wb") as f:
+            f.write(base64.b64decode(data))
+        with open(PNGTEAMS1920, "wb") as f:
             f.write(base64.b64decode(data))
         ok(os.path.isfile(PNG1920)
            and os.path.getsize(PNG1920) > 1000,
@@ -370,6 +473,9 @@ def main():
         ok(os.path.isfile(PNGSQUARE)
            and os.path.getsize(PNGSQUARE) > 1000,
            "screenshot saved (%s)" % PNGSQUARE)
+        ok(os.path.isfile(PNGTEAMS1920)
+           and os.path.getsize(PNGTEAMS1920) > 1000,
+           "screenshot saved (%s)" % PNGTEAMS1920)
         ws.call("Emulation.setDeviceMetricsOverride",
                 {"width": 390, "height": 844,
                  "deviceScaleFactor": 1, "mobile": False})
@@ -383,9 +489,85 @@ def main():
                        {"format": "png"})["data"]
         with open(PNG390, "wb") as f:
             f.write(base64.b64decode(data))
+        with open(PNGTEAMS390, "wb") as f:
+            f.write(base64.b64decode(data))
         ok(os.path.isfile(PNG390)
            and os.path.getsize(PNG390) > 1000,
            "screenshot saved (%s)" % PNG390)
+        ok(os.path.isfile(PNGTEAMS390)
+           and os.path.getsize(PNGTEAMS390) > 1000,
+           "screenshot saved (%s)" % PNGTEAMS390)
+        ws.call("Emulation.setDeviceMetricsOverride",
+                {"width": 1920, "height": 1080,
+                 "deviceScaleFactor": 1, "mobile": False})
+        time.sleep(1)
+        st, rej = http_json("POST", "/api/crew",
+                            {"id": TMP_ID, "name": "Tmp",
+                             "title": "Tester"})
+        ok(st == 400, "create without team is refused (%s)" % st)
+        tmp_path = os.path.join(ROOT, "agents", TMP_ID)
+        try:
+            st, created = http_json(
+                "POST", "/api/crew",
+                {"id": TMP_ID, "name": "Tmp", "title": "Tester",
+                 "team": "video"})
+            ok(st == 201, "temp video employee created (%s)" % st)
+            prof = os.path.join(tmp_path, "profile.md")
+            ok(os.path.isfile(prof) and "Team: Video team" in
+               open(prof, encoding="utf-8").read(),
+               "temp profile card says Video team")
+            ws.call("Page.navigate",
+                    {"url": "http://localhost:%d/" % SERVER_PORT})
+            drain_dialogs(ws, 12)
+            t0 = time.time()
+            while time.time() - t0 < 40:
+                if js_eval(ws, "document.readyState") == "complete":
+                    break
+                time.sleep(0.5)
+            js_eval(ws, "document.querySelector"
+                        "('nav button[data-p=crew]').click()")
+            ok(wait_for(ws, "document.querySelectorAll("
+                            "'#roster .idcard').length === 14",
+                        timeout=30),
+               "14 cards with the temp employee")
+            teams2 = js_eval(ws, TEAMS_JS)
+            grids2 = {g["team"]: g
+                      for g in teams2.get("grids", [])}
+            ok(TMP_ID in grids2.get("video", {}).get("ids", []),
+               "temp employee shows in the Video section (%s)"
+               % grids2.get("video", {}).get("ids"))
+            st, upd = http_json("PUT", "/api/crew/" + TMP_ID,
+                                {"team": "story"})
+            ok(st == 200 and "team" in (upd.get("changed") or []),
+               "detail edit path changes the team (%s)" % st)
+            ok("Team: Storyboard team" in
+               open(prof, encoding="utf-8").read(),
+               "profile card rebuilt after the team edit")
+            st, upd = http_json("PUT", "/api/crew/" + TMP_ID,
+                                {"team": "video"})
+            ok(st == 200, "temp employee moved back to video")
+            js_eval(ws, "document.querySelector"
+                        "('nav button[data-p=studio]').click()")
+            ok(wait_for(ws, "(() => { const f = document.querySelector("
+                            "'#p-studio iframe.office'); try { return !!(f "
+                            "&& f.contentWindow.__officeReady); } "
+                            "catch (e) { return false; } })()",
+                        timeout=180),
+               "office boots with the temp employee")
+            status = js_eval(ws, "JSON.parse(JSON.stringify("
+                                 "document.querySelector("
+                                 "'#p-studio iframe.office')"
+                                 ".contentWindow.__officeStatus))")
+            ok((status or {}).get("video") == 6,
+               "office spawns 6 video members (%s)" % status)
+            ok(TMP_ID in (status or {}).get("sharing", []),
+               "desk run-out names the temp employee (%s)"
+               % (status or {}).get("sharing"))
+        finally:
+            http_json("DELETE", "/api/crew/" + TMP_ID)
+            shutil.rmtree(tmp_path, ignore_errors=True)
+            ok(not os.path.exists(tmp_path),
+               "temp employee removed")
         ws.call("Runtime.disable")
         nerr = console_errors(ws.events)
         ok(nerr == 0, "zero console errors (got %d)" % nerr)

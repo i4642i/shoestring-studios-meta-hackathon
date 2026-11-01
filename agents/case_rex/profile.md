@@ -1,5 +1,5 @@
 # Rex — Case researcher
-Team: Storyboard · Stage: S2
+Team: Storyboard team · Stage: S2
 
 ## Duties
 - Case researcher

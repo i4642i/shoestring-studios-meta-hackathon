@@ -1,5 +1,5 @@
 # Max — Animation planner
-Team: Video · Stage: S7
+Team: Video team · Stage: S7
 
 ## Duties
 - Animation planner

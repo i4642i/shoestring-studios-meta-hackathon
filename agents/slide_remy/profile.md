@@ -1,5 +1,5 @@
 # Remy — Slide builder
-Team: Video · Stage: S9
+Team: Video team · Stage: S9
 
 ## Duties
 - Slide builder

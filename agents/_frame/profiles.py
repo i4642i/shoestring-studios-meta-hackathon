@@ -9,7 +9,8 @@ sentences for the Studio interview chat.
 import json
 import os
 
-TEAM_NAMES = {"story": "Storyboard", "video": "Video",
+TEAM_NAMES = {"story": "Storyboard team",
+              "video": "Video team",
               "sales": "Sales", "program": "Program"}
 
 PC_NAMES = {"source": "Source PC", "theory": "Theory PC",

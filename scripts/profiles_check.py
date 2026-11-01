@@ -85,7 +85,7 @@ def main():
             names[eid] = json.load(f).get("name", eid)
     marty = profiles.build_profile(
         os.path.join(ROOT, "agents", "pd_marty"), flow, names)
-    ok("Team: Storyboard" in marty, "marty team line")
+    ok("Team: Storyboard team" in marty, "marty team line")
     ok("request from Sam (sales_sam)" in marty,
        "marty receives from sam")
     ok("concept to Cleo (explain_cleo)" in marty,

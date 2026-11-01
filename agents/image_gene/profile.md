@@ -1,5 +1,5 @@
 # Gene — Image generator
-Team: Video · Stage: S7
+Team: Video team · Stage: S7
 
 ## Duties
 - Image generator

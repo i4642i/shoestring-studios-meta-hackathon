@@ -199,6 +199,10 @@
   .idcard .meta { display: block; font-size: 12px; color: var(--dim); font-family: monospace; }
 
 
+  .teamhead { font-size: 13px; letter-spacing: 2px; font-weight: 800;
+    margin: 14px 0 4px; }
+  #roster > .teamhead:first-child { margin-top: 0; }
+  .teamnote { font-size: 12px; color: var(--dim); margin: 0 0 4px; }
   .idempty { font-size: 14px; color: var(--dim); }
   @media (max-width: 700px) {
     .idcard .idpic { width: 64px; height: 64px; }
@@ -567,7 +571,7 @@
     </div>
     <p id="crewerr"></p>
     <div id="ct-list">
-      <div class="idgrid" id="roster"></div>
+      <div id="roster"></div>
     </div>
     <div id="ct-add" style="display:none">
       <h3>ADD EMPLOYEE</h3>
@@ -577,7 +581,12 @@
         <input id="n-title" maxlength="64" placeholder="Title (e.g. Researcher)" aria-label="Employee title">
         <select id="n-model" aria-label="Model"></select>
         <select id="n-variant" aria-label="3D variant"></select>
-        <button class="cta" id="n-create">CREATE</button>
+        <select id="n-team" aria-label="Team">
+          <option value="">Team&hellip;</option>
+          <option value="story">Storyboard</option>
+          <option value="video">Video</option>
+        </select>
+        <button class="cta" id="n-create" disabled>CREATE</button>
       </div>
       <p class="hint">Scaffolds agent.json, persona.md, handbook seed and appearance.json, then validates. Unused 3D variant is picked automatically when left on Auto.</p>
     </div>
@@ -2337,6 +2346,8 @@ button.linklike { background: none; border: none; padding: 0;
     "female-a", "female-b", "female-c", "female-d", "female-e", "female-f"]
     .map(s => "character-" + s + ".glb");
   (function () {
+    const CTEAMC = { story: "#0064e0", video: "#c2571b",
+      none: "#9ca3af" };
     const roster = document.getElementById("roster");
     const detail = document.getElementById("detail");
     const errline = document.getElementById("crewerr");
@@ -2346,7 +2357,10 @@ button.linklike { background: none; border: none; padding: 0;
     document.getElementById("n-variant").innerHTML =
       '<option value="">Auto (first unused)</option>' +
       VARIANTS.map(v => '<option value="' + v + '">' + v + "</option>").join("");
-    document.getElementById("n-create").onclick = async () => {
+    const nCreate = document.getElementById("n-create");
+    const nTeam = document.getElementById("n-team");
+    nTeam.onchange = () => { nCreate.disabled = !nTeam.value; };
+    nCreate.onclick = async () => {
       try {
         errline.textContent = "";
         const r = await api.send("POST", "api/crew", {
@@ -2355,11 +2369,14 @@ button.linklike { background: none; border: none; padding: 0;
           title: document.getElementById("n-title").value.trim(),
           model: document.getElementById("n-model").value,
           variant: document.getElementById("n-variant").value || undefined,
+          team: nTeam.value,
         });
         errline.textContent = "Created " + r.id + ".";
         document.getElementById("n-id").value = "";
         document.getElementById("n-name").value = "";
         document.getElementById("n-title").value = "";
+        nTeam.value = "";
+        nCreate.disabled = true;
         current = null;
         crewTab("list");
         await loadRoster();
@@ -2384,7 +2401,7 @@ button.linklike { background: none; border: none; padding: 0;
       b.onclick = () => crewTab(b.dataset.ct);
     });
     // Portraits come from the deferred 3D module, which may load
-    // after this classic script; wait for it (grey circle until then).
+    // after this classic script; wait for it (grey square until then).
     function fillPortrait(pic, appearance, name, tries) {
       // Note: the card is still detached when this is first called
       // (it is appended at the end of the loop), so a disconnected
@@ -2435,15 +2452,44 @@ button.linklike { background: none; border: none; padding: 0;
         p.textContent = "No employees yet — add one on the ADD EMPLOYEE tab.";
         roster.appendChild(p);
       }
-      list.forEach(c => {
-        const tint = /^#[0-9a-f]{6}$/i.test((c.appearance || {}).tint || "")
-          ? c.appearance.tint.toLowerCase() : "#111111";
+      const byStage = (a, b) => {
+        const sa = (a.stage === 0 || a.stage) ? a.stage : 99;
+        const sb = (b.stage === 0 || b.stage) ? b.stage : 99;
+        return sa - sb || (a.id < b.id ? -1 : 1);
+      };
+      const groups = [
+        { key: "story", title: "STORYBOARD TEAM" },
+        { key: "video", title: "VIDEO TEAM" },
+        { key: "", title: "NO TEAM",
+          note: "Not in the current flow." },
+      ];
+      groups.forEach(g => {
+        const members = list.filter(
+          c => (c.team || "") === g.key).sort(byStage);
+        if (!members.length) return;
+        const color = CTEAMC[g.key || "none"];
+        const h = document.createElement("h3");
+        h.className = "teamhead";
+        h.style.color = color;
+        h.textContent = g.title + " (" + members.length + ")";
+        roster.appendChild(h);
+        if (g.note) {
+          const note = document.createElement("p");
+          note.className = "teamnote";
+          note.textContent = g.note;
+          roster.appendChild(note);
+        }
+        const grid = document.createElement("div");
+        grid.className = "idgrid";
+        grid.dataset.team = g.key || "none";
+        roster.appendChild(grid);
+        members.forEach(c => {
         const b = document.createElement("button");
         b.className = "idcard";
         b.setAttribute("aria-label", "Employee " + c.id);
         const stripe = document.createElement("span");
         stripe.className = "stripe";
-        stripe.style.background = tint;
+        stripe.style.background = color;
         const top = document.createElement("span");
         top.className = "idtop";
         const pic = document.createElement("span");
@@ -2468,7 +2514,8 @@ button.linklike { background: none; border: none; padding: 0;
 
         b.append(stripe, top, meta);
         b.onclick = () => show(c.id).catch(fail);
-        roster.appendChild(b);
+        grid.appendChild(b);
+        });
       });
     }
     const MAP_COLORS = ["#e0681f", "#2e7d6f", "#8a6d1d", "#4a6fa5", "#a5432e", "#5d7a4a"];
@@ -2741,6 +2788,10 @@ button.linklike { background: none; border: none; padding: 0;
         "<div class=\"spanel\" id=\"sp-details\">" +
         '<label>Name <input id="f-name" maxlength="32" value="' + esc(c.name) + '"></label>' +
         '<label>Title <input id="f-title" maxlength="64" value="' + esc(c.title) + '"></label>' +
+        '<label>Team <select id="f-team">' +
+        '<option value=""' + (!c.team ? " selected" : "") + ">No team</option>" +
+        '<option value="story"' + (c.team === "story" ? " selected" : "") + ">Storyboard</option>" +
+        '<option value="video"' + (c.team === "video" ? " selected" : "") + ">Video</option></select></label>" +
         '<label>Max steps <input id="f-steps" type="number" min="1" max="20" value="' + c.bounds.max_steps + '"></label>' +
         "<label>Done when (one per line)<textarea id=\"f-done\" rows=\"3\">" + esc(c.done.join("\n")) + "</textarea></label>" +
         "<p><b>Inputs:</b> " + esc((c.io.inputs || []).join(", ")) + " · <b>Output:</b> " + esc(c.io.output || "") + "</p>" +
@@ -2807,6 +2858,7 @@ button.linklike { background: none; border: none; padding: 0;
           await api.send("PUT", "api/crew/" + id, {
             name: document.getElementById("f-name").value,
             title: document.getElementById("f-title").value,
+            team: document.getElementById("f-team").value,
             persona: document.getElementById("f-persona").value,
             model: document.getElementById("f-model").value,
             tools: checked,

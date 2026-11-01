@@ -1,5 +1,5 @@
 # Ash — Planning PD
-Team: Storyboard · Stage: S3
+Team: Storyboard team · Stage: S3
 
 ## Duties
 - Your job: take the concept, structure (with time plan), concepts, and cases and write the scene plan — timed scenes, refs per scene, and the Penn/Wren handoff lists. Your only output is the `storyboard_draft` category (see docs/RESULT_JSON_DRAFT_EN.md).

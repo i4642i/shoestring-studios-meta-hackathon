@@ -70,7 +70,7 @@
 - [x] 16 J21 About tab layout + honest claims (6daa397)
 - [x] 17 J22 Profile card + retire handbook RAG
 - [x] 18 J23 Square portraits + faces on Flow nodes
-- [ ] 19 J24 Crew grouped by team + team on Add employee
+- [x] 19 J24 Crew grouped by team + team on Add employee
 - [ ] 20 J25 Order tab received state
 - [ ] 21 J26 3D performance
 - [ ] 22 J27 Video toolchain install + smoke test
