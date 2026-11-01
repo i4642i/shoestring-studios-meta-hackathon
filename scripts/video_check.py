@@ -196,8 +196,15 @@ if os.path.isdir(rmods):
 else:
     ok(tools._have_remotion() is False,
        "missing remotion detected")
-ff = video.run_ffmpeg(["ffmpeg", "-version"])
-ok(ff.get("ok") is False and "ffmpeg" in ff.get("error", "").lower(),
+ff = video.run_ffmpeg([video.ffmpeg_exe() or "ffmpeg", "-version"])
+ok(ff.get("ok") is True, "bundled ffmpeg answers")
+real_exe = video.ffmpeg_exe
+video.ffmpeg_exe = lambda: None
+try:
+    ff2 = video.run_ffmpeg(["ffmpeg", "-version"])
+finally:
+    video.ffmpeg_exe = real_exe
+ok(ff2.get("ok") is False and "ffmpeg" in ff2.get("error", "").lower(),
    "missing ffmpeg fails with a hint, never silently")
 
 # ---- stub voice engine ----
