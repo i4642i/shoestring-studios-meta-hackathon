@@ -817,6 +817,16 @@ try:
     ok(frag.get("text") == "Second paragraph here.",
        "theory fragment read still exact")
 
+    mix = {"sections": [{"n": "0", "heading": "", "non_content": False},
+                        {"n": "1.1", "heading": "A", "non_content": False},
+                        {"n": "1", "heading": "Noise", "non_content": False},
+                        {"n": "1.2", "heading": "B", "non_content": False}]}
+    ok([s["n"] for s in pc.map_sections(mix)] == ["0", "1.1", "1.2"],
+       "map view skips legacy bare-number sections")
+    flat = {"sections": [{"n": "1", "heading": "Only",
+                          "non_content": False}]}
+    ok([s["n"] for s in pc.map_sections(flat)] == ["1"],
+       "unheaded single-section entry keeps its section")
     ok(missing_wrap == [],
        "all 16 PC tools wrapped for reads logging (%s)"
        % (missing_wrap,))

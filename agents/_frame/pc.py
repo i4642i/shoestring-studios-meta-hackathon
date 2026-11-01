@@ -1581,15 +1581,14 @@ def marty_input_text(ref):
     except (OSError, ValueError, KeyError):
         mp = {}
     by_ref = {s.get("ref", ""): s for s in mp.get("sections", [])}
+    shown = map_sections(entry)
     out = ["# %s" % entry.get("title", "source"), "",
            "(Source PC %s; headings below are exact.)" % entry["ref"],
            ""]
     if mp.get("entry_summary"):
         out += ["# MAP NOTES (navigation only; never map these as parts)",
                 "", mp["entry_summary"], ""]
-        for s in entry.get("sections", []):
-            if s.get("non_content"):
-                continue
+        for s in shown:
             ms = by_ref.get("s" + s["n"], {})
             out += ["## MAP s%s: %s" % (s["n"], s.get("heading", "")), ""]
             for b in ms.get("summary", []):
@@ -1601,9 +1600,7 @@ def marty_input_text(ref):
                 out.append("Has %s: %s" % (h.get("ref", "").split("#")[-1],
                                            h.get("caption", "")))
             out.append("")
-    for s in entry.get("sections", []):
-        if s.get("non_content"):
-            continue
+    for s in map_sections(entry):
         if s["n"] != "0":
             out += ["## %s %s" % (s["n"], s.get("heading", "")), "",
                     "(ref: %s#s%s)" % (entry["ref"], s["n"]), ""]
@@ -2006,6 +2003,21 @@ def entry_parts_allow(entry, agent_id, order_id, target_ref):
     return any(ref_within(target_ref, part) for part in parts)
 
 
+def map_sections(entry):
+    """Sections shown in the agent-facing map view.
+
+    Skips non-content sections and legacy bare-number sections
+    (footnotes/table rows ingested as sections before the
+    dotted-only rule) whenever the entry also holds real dotted
+    sections. The stored entry is untouched."""
+    secs = [s for s in entry.get("sections", [])
+            if not s.get("non_content")]
+    if any("." in (s.get("n") or "") for s in secs):
+        secs = [s for s in secs
+                if "." in (s.get("n") or "") or (s.get("n") or "") == "0"]
+    return secs
+
+
 def entry_markdown(entry):
     """Full entry text as markdown (content sections only): the text
     writer checks validate against. Headings exact, each followed by
@@ -2013,9 +2025,7 @@ def entry_markdown(entry):
     ref = entry.get("ref", "")
     out = ["# %s" % entry.get("title", "source"), "",
            "(Source PC %s; headings below are exact.)" % ref, ""]
-    for s in entry.get("sections", []):
-        if s.get("non_content"):
-            continue
+    for s in map_sections(entry):
         if s["n"] != "0":
             out += ["## %s %s" % (s["n"], s.get("heading", "")), "",
                     "(ref: %s#s%s)" % (ref, s["n"]), ""]
