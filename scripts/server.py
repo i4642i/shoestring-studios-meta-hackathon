@@ -1446,6 +1446,7 @@ class Handler(BaseHTTPRequestHandler):
                               if turns[i]["role"] == "user"]
         meta["missing"] = intake.missing_of(meta.get("answers", {}),
                                             meta.get("files", {}))
+        meta["run_id"] = self._latest_run_for_order(oid)
         return self._json(200, meta)
 
     @staticmethod
@@ -1922,6 +1923,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error":
                 "need {messages: [{role, content}*]} (<=2000 chars each)"})
         meta = self._order_meta(d)
+        if meta.get("status") in intake.STARTED:
+            return self._json(409, {"error": "already started: "
+                                             "consultation is closed"})
         free = isinstance(body, dict) and body.get("mode") == "free"
         path = self._employee(meta["assignee"])
         agent = self._load_agent(path)
@@ -2048,6 +2052,8 @@ class Handler(BaseHTTPRequestHandler):
                                                        bool):
             return self._json(400, {"error": "need {confirm: true|false}"})
         meta = self._order_meta(d)
+        if meta.get("status") in intake.STARTED:
+            return self._json(409, {"error": "already started"})
         if body["confirm"] is False:
             self._chat_append(d, intake.NO_LINE, intake.DECLINE_ACK)
             projlog.log_event(oid, "order", "declined",

@@ -7,6 +7,7 @@ scripts/order_check.py (no sockets, no model calls).
 import re
 
 INTAKE_KEYS = ("audience", "length", "depth", "theme")
+STARTED = ("complete", "in_production")
 
 READY_QUESTION = ("I have everything I need. Anything else you'd like "
                   "to add? Shall I start?")
@@ -17,6 +18,7 @@ DECLINE_ACK = ("Of course — take your time. Tell me anything else "
 YES_LINE = "Yes, start."
 NO_LINE = "No, not yet."
 START_LINE = "Great — starting production now."
+RECEIVED_LINE = "Thanks! Your order is in. The crew has started."
 
 NO_PROMISE_RULE = ("Never promise to do anything or claim anything is "
                    "done or already underway (starting production, "

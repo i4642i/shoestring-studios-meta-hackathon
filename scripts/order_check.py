@@ -90,5 +90,23 @@ ok(intake.chat_reply_payload("ok", True, [])["missing"] == [],
 ok(intake.chat_reply_payload("x", False, None)["missing"] == [],
    "missing None becomes []")
 
+# ---- received state: started orders lock the consultation (J25) ----
+ok(intake.STARTED == ("complete", "in_production"),
+   "started statuses are complete + in_production")
+ok(intake.RECEIVED_LINE
+   == "Thanks! Your order is in. The crew has started.",
+   "received line is exact")
+_ui = open(os.path.join(ROOT, "index.html"),
+           encoding="utf-8").read()
+ok("Thanks! Your order is in. The crew has started." in _ui,
+   "UI writes the fixed received line")
+ok("Order received" in _ui and "olockdim" in _ui
+   and "oreceived" in _ui and "__recepLock" in _ui,
+   "UI has the received card, dim and room lock")
+ok("already started" in open(os.path.join(ROOT, "scripts",
+                                          "server.py"),
+                             encoding="utf-8").read(),
+   "server refuses turns on started orders")
+
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
 sys.exit(1 if FAILS else 0)

@@ -315,6 +315,30 @@
   #o-mebub { position: absolute; right: 10px; bottom: 24px; display: flex;
     flex-direction: column; gap: 6px; align-items: flex-end; max-width: 55%; }
   #o-bubbles .bub { max-width: min(55%, 440px); }
+  #o-scene.locked canvas { filter: saturate(.7); }
+  .olockdim { position: absolute; inset: 0;
+    background: rgba(15,20,35,.55); z-index: 5; }
+  .oreceived { position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%,-50%); z-index: 6; background: #fff;
+    border-radius: 12px; padding: 20px 26px; text-align: center;
+    max-width: min(90%, 460px);
+    box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+  .oreceived h3 { margin: 0 0 8px; font-size: 18px; }
+  .oreceived p { margin: 6px 0; font-size: 13px; }
+  .oreceived .osub { color: var(--dim); font-size: 12px; }
+  .oreceived .obtns { margin-top: 12px; display: flex; gap: 8px;
+    justify-content: center; }
+  .oreceived .obtns button { font-size: 13px; font-weight: 700;
+    padding: 8px 16px; border-radius: 8px;
+    border: 1px solid var(--line); background: #fff;
+    color: var(--ink); cursor: pointer; }
+  .oreceived .obtns button.primary { background: var(--ink);
+    color: #fff; border-color: var(--ink); }
+  .oreceived .onew { margin-top: 10px; font-size: 12px; }
+  #o-form input:disabled, #o-form button:disabled,
+  #o-modes button:disabled, #order-form .q input:disabled,
+  #start:disabled, #o-ok:disabled { opacity: .45;
+    cursor: not-allowed; }
   #o-mebub .bub-me { position: static; background: var(--accent); color: #fff;
     border-bottom-right-radius: 4px; max-width: 100%; }
   #o-sysbub { position: absolute; top: 8px; left: 10px;
@@ -3292,6 +3316,9 @@ button.linklike { background: none; border: none; padding: 0;
     const msg = document.getElementById("o-msg");
     if (!statusEl || !form) return;
     let oid = null, roster = [];
+    let locked = false, lockedRun = "";
+    const RECEIVED_LINE =
+      "Thanks! Your order is in. The crew has started.";
     let mode = "free";
     let lastSam = "";
     let repName = "SAM";
@@ -3351,6 +3378,7 @@ button.linklike { background: none; border: none; padding: 0;
     // the only thing missing is the source PDF; after upload it becomes
     // a "check + filename" label.
     function appendPdfAttach(el) {
+      if (locked) return;
       if (serverPdf) {
         const done = document.createElement("div");
         done.className = "pdfdone";
@@ -3504,6 +3532,7 @@ button.linklike { background: none; border: none; padding: 0;
       chatMissing = [];
       history.length = 0;
       document.getElementById("o-result").style.display = "none";
+      unlockReceived();
       try {
         roster = await api.get("api/crew");
         if (!roster.length) throw new Error("no crew yet");
@@ -3515,6 +3544,23 @@ button.linklike { background: none; border: none; padding: 0;
         if (stored) {
           try {
             const o = await api.get("api/orders/" + encodeURIComponent(stored));
+            if ((o.status === "complete" ||
+                o.status === "in_production") &&
+                member(o.assignee)) {
+              oid = o.id;
+              whoId = o.assignee;
+              const m = member(whoId);
+              repName = String(m.name || whoId).toUpperCase();
+              statusEl.textContent = "Order " + oid +
+                " \u2014 in production.";
+              mountReception(0);
+              (o.transcript || []).slice(-2)
+                .forEach((t) => addMsg("me", t.user));
+              lockReceived(o.run_id || "");
+              msg.textContent = "Order " + oid +
+                " already started \u2014 locked.";
+              return;
+            }
             if (o.status === "consulting" && member(o.assignee)) {
               oid = o.id;
               whoId = o.assignee;
@@ -3574,7 +3620,7 @@ button.linklike { background: none; border: none; padding: 0;
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const text = input.value.trim();
-      if (!text || !oid || form.dataset.busy) return;
+      if (locked || !text || !oid || form.dataset.busy) return;
       form.dataset.busy = "1";
       const btn = form.querySelector("button");
       btn.disabled = true;
@@ -3627,6 +3673,7 @@ button.linklike { background: none; border: none; padding: 0;
     recep.addEventListener("drop", (e) => {
       e.preventDefault();
       recep.classList.remove("pdfdrop");
+      if (locked) return;
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (!f) return;
       if (!/\.pdf$/i.test(f.name)) {
@@ -3674,6 +3721,87 @@ button.linklike { background: none; border: none; padding: 0;
         'nav button[data-p="studio"]').click();
       return b;
     }
+    function lockReceived(runId) {
+      locked = true;
+      lockedRun = runId || "";
+      samSay(RECEIVED_LINE);
+      showConfirm(false);
+      const scene = document.getElementById("o-scene");
+      scene.classList.add("locked");
+      if (!scene.querySelector(".olockdim")) {
+        const dim = document.createElement("div");
+        dim.className = "olockdim";
+        scene.appendChild(dim);
+        const card = document.createElement("div");
+        card.className = "oreceived";
+        const h = document.createElement("h3");
+        h.textContent = "Order received \u2713";
+        const l1 = document.createElement("p");
+        l1.textContent = "Order " + oid + " \u00b7 run " +
+          (lockedRun || "\u2014");
+        const l2 = document.createElement("p");
+        l2.className = "osub";
+        l2.textContent = "Track progress in Studio (live office)" +
+          " and Board (every step, inputs and logs).";
+        const btns = document.createElement("div");
+        btns.className = "obtns";
+        const bS = document.createElement("button");
+        bS.type = "button"; bS.className = "primary";
+        bS.textContent = "Open Studio";
+        bS.onclick = () => document.querySelector(
+          'nav button[data-p="studio"]').click();
+        const bB = document.createElement("button");
+        bB.type = "button"; bB.textContent = "Open Board";
+        bB.onclick = () => {
+          if (window.__openBoardRun)
+            window.__openBoardRun(lockedRun);
+        };
+        btns.append(bS, bB);
+        const nw = document.createElement("button");
+        nw.type = "button"; nw.className = "linklike onew";
+        nw.textContent = "New order";
+        nw.onclick = () => {
+          try {
+            sessionStorage.removeItem("shoestring_order");
+          } catch (e) { /* storage blocked */ }
+          newOrder().catch(fail);
+        };
+        card.append(h, l1, l2, btns, nw);
+        scene.appendChild(card);
+      }
+      input.disabled = true;
+      form.querySelector("button").disabled = true;
+      document.querySelectorAll("#o-modes [data-m]")
+        .forEach(x => { x.disabled = true; });
+      ["o-audience", "o-length", "o-depth", "o-theme",
+        "o-pdf"].forEach(id => {
+        document.getElementById(id).disabled = true;
+      });
+      document.getElementById("start").disabled = true;
+      document.getElementById("o-ok").disabled = true;
+      const pb = document.getElementById("o-sambub")
+        .querySelector(".pdfbtn");
+      if (pb) pb.remove();
+      if (window.__recepLock) window.__recepLock(true);
+    }
+    function unlockReceived() {
+      locked = false;
+      lockedRun = "";
+      const scene = document.getElementById("o-scene");
+      scene.classList.remove("locked");
+      scene.querySelectorAll(".olockdim, .oreceived")
+        .forEach(e => e.remove());
+      input.disabled = false;
+      form.querySelector("button").disabled = false;
+      document.querySelectorAll("#o-modes [data-m]")
+        .forEach(x => { x.disabled = false; });
+      ["o-audience", "o-length", "o-depth", "o-theme",
+        "o-pdf"].forEach(id => {
+        document.getElementById(id).disabled = false;
+      });
+      document.getElementById("o-ok").disabled = false;
+      if (window.__recepLock) window.__recepLock(false);
+    }
     function showStarted(r) {
       msg.textContent = "Order " + oid + " in production: " + r.files.join(", ");
       const pre = document.getElementById("o-result");
@@ -3693,8 +3821,8 @@ button.linklike { background: none; border: none; padding: 0;
       } else {
         q.textContent = "Production started.";
       }
-      try { sessionStorage.removeItem("shoestring_order"); }
-      catch (e) { /* storage blocked: nothing stored */ }
+      // Keep the order id stored: reload resumes the locked view.
+      lockReceived(r.run_id || "");
     }
     document.getElementById("o-yes").onclick = async () => {
       showConfirm(false);
@@ -6577,6 +6705,7 @@ function mountReception(box, appearance, bub) {
     return info;
   };
   renderer.domElement.addEventListener("dblclick", () => {
+    if (vs.cur && vs.cur.locked) return;
     camCancel();
     camera.position.copy(homePos);
     controls.target.copy(homeTgt);
@@ -6600,6 +6729,13 @@ function mountReception(box, appearance, bub) {
   const hv = new THREE.Vector3();
   const tick = () => {
     if (!box.isConnected) return;
+    if (vs.cur && vs.cur.locked) {
+      vs.cur.skip = ((vs.cur.skip || 0) + 1) % 12;
+      if (vs.cur.skip) {
+        vs.cur.raf = requestAnimationFrame(tick);
+        return;
+      }
+    }
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.05);
     if (slot.mixer) slot.mixer.update(dt);
@@ -6628,6 +6764,11 @@ function mountReception(box, appearance, bub) {
     vs.cur.raf = requestAnimationFrame(tick);
   };
   vs.cur = { raf: requestAnimationFrame(tick), renderer, ro, camClear };
+  window.__recepLock = (on) => {
+    if (!vs.cur) return;
+    vs.cur.locked = !!on;
+    controls.enabled = !on;
+  };
 }
 </script>
 </body>
