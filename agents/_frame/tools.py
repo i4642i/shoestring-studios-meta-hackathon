@@ -271,6 +271,10 @@ def _check_quote(errors, ref, quote, where):
         return
     if _norm_ws(quote) not in _norm_ws(_verbatim_haystack(passage)):
         errors.append("%s: quote not found verbatim in %r" % (where, ref))
+        hay = _verbatim_haystack(passage)
+        if hay:
+            errors.append("%s: quotable text at %r: %r"
+                          % (where, ref, hay[:800]))
         try:
             near = _nearest_para_hint(
                 entry, quote, pc.entry_ref(rpc, rid))

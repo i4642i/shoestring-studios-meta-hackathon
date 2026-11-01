@@ -1074,6 +1074,37 @@ ok(_tools._nearest_para_hint(
    "hint works for source section addresses")
 
 
+qtmdir = tempfile.mkdtemp()
+qdoc = "ab12cd34ef56"
+qdir = os.path.join(qtmdir, "storage", "_pc", "source", "entries",
+                      qdoc)
+os.makedirs(qdir)
+with open(os.path.join(qdir, "entry.json"), "w",
+          encoding="utf-8") as f:
+    json.dump({"pc": "source", "doc_id": qdoc,
+               "ref": "pc://source/" + qdoc, "title": "Q",
+               "sections": [],
+               "paragraphs": [{"addr": "s1.1/p1",
+                               "text": "alpha beta gamma delta epsilon",
+                               "pages": [1]}]}, f)
+oldroot = _pc.ROOT_OVERRIDE
+_pc.ROOT_OVERRIDE = qtmdir
+try:
+    qerrs = []
+    _tools._check_quote(qerrs, "pc://source/" + qdoc + "#s1.1/p1",
+                        "beta gamma delta", "w")
+    ok(qerrs == [], "exact quote passes silently")
+    qerrs2 = []
+    _tools._check_quote(qerrs2, "pc://source/" + qdoc + "#s1.1/p1",
+                        "beta gamma invented", "w")
+    ok(any("quotable text at" in e and "alpha beta gamma" in e
+           for e in qerrs2),
+       "verbatim miss carries the actual passage text")
+finally:
+    _pc.ROOT_OVERRIDE = oldroot
+    shutil.rmtree(qtmdir, ignore_errors=True)
+
+
 def boom(agent_dir, run_dir, brief, input_md):
     return {"ok": False, "error": "kaput"}
 
