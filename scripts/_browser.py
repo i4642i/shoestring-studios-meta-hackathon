@@ -45,6 +45,22 @@ def launch_args(cdp_port, profile, width=None, height=None,
     return args + ["about:blank"]
 
 
+def dump_dom_args(url, profile, width, height, budget_s=15,
+                  binary=None):
+    """One-shot Edge command line for --dump-dom harness pages.
+
+    Same GL-mode rule as launch_args: hardware by default, SwiftShader
+    only with SHOE_CHECK_GL=software. Returns the argv list."""
+    args = [binary or EDGE, "--headless", "--no-sandbox",
+            "--no-first-run", "--disable-extensions"]
+    if mode() == "software":
+        args = args + SOFTWARE_FLAGS
+    return args + ["--user-data-dir=" + profile,
+                   "--virtual-time-budget=%d" % (budget_s * 1000),
+                   "--window-size=%d,%d" % (width, height),
+                   "--dump-dom", url]
+
+
 def stop_tree(proc, name):
     """Kill a process and its whole tree (taskkill /T). Plain
     terminate() leaves Edge helper processes behind holding the

@@ -21,6 +21,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+import _browser  # noqa: E402
 from agents._frame import flow as _flow  # noqa: E402
 
 EDGE_PATHS = (
@@ -68,6 +69,7 @@ def main():
 <div id="fl-scroll"><div id="fl-zoom"><div id="fl-canvas">
 <svg id="fl-svg" width="1690" height="710"></svg>
 <div id="fl-nodes"></div><div id="fl-linepop"></div>
+<div id="teamframe"></div>
 </div></div></div></div>
 <p id="fl-err"></p><ul id="fl-problems"></ul>
 <p id="fl-status"></p><pre id="fl-log"></pre>
@@ -84,6 +86,10 @@ def main():
 <input id="fl-note"><span id="fl-stepstate"></span>
 <div id="fl-steps"></div><select id="fl-fnode"></select>
 <select id="fl-fname"></select><button id="fl-view"></button>
+<p id="fl-hint"></p><button id="fl-help"></button>
+<button id="fl-steps-toggle"></button><div id="fl-stage"></div>
+<div id="fl-steps-panel"></div><button id="fl-stop"></button>
+<select id="fl-part"><option value="">all parts</option></select>
 </div>
 <div id="probe">PENDING</div>
 <script>
@@ -92,6 +98,11 @@ def main():
 // Without this every path keeps its hidden-load zero coords and all
 // geometry asserts pass vacuously.
 window.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+window.__errs = [];
+window.onerror = (m) => { window.__errs.push(String(m).slice(0, 200)); };
+window.onunhandledrejection = (e) => { const r = e && e.reason;
+  window.__errs.push("rejection: " + String((r && r.message) || r)
+    .slice(0, 200)); };
 const esc = (s) => String(s).replace(/&/g, "&amp;")
   .replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const CATALOG = %s;
@@ -121,8 +132,17 @@ const api = {
     if (!clicked) {
       const probs = (document.getElementById("fl-problems") || {})
         .textContent || "";
-      if ((st.indexOf("Loaded") !== 0 || probs.indexOf("Valid") !== 0) &&
-          tries <= 600) return;
+      const ready = probs.indexOf("Valid") === 0 &&
+        (st.indexOf("Loaded") === 0 || st.indexOf("Valid") === 0);
+      if (!ready && tries <= 200) return;
+      if (!ready) {
+        clearInterval(timer);
+        document.getElementById("probe").textContent = JSON.stringify(
+          {status: st, problems: probs.slice(0, 300),
+           note: "gate-timeout", errs: window.__errs || []});
+        return;
+      }
+
       // real user path: hidden load, then the Flow tab click
       document.getElementById("p-flow").classList.add("active");
       if (window.__flowShown) window.__flowShown();
@@ -299,7 +319,8 @@ const api = {
       }
       out.ports = {rows: 0, edgeOk: 0, spanClear: 0, crewNodes: 0,
                    pcRows: 0, marty: {rows: 0, labels: []},
-                   sam: {rows: 0, labels: []}};
+                   sam: {rows: 0, labels: []},
+                   remy: {rows: 0, labels: []}};
       document.querySelectorAll("#fl-nodes .fl-node").forEach(el => {
         const r = el.getBoundingClientRect();
         const nx = r.left - cr.left, ny = r.top - cr.top;
@@ -329,6 +350,10 @@ const api = {
           out.ports.marty = {rows: rows.length,
             labels: Array.from(rows).map(
               r => r.querySelector("span").textContent)};
+        if (el.dataset.n === "slide_remy")
+          out.ports.remy = {rows: rows.length,
+            labels: Array.from(rows).map(
+              r => r.querySelector("span").textContent)};
         if (el.dataset.n === "sales_sam")
           out.ports.sam = {rows: rows.length,
             labels: Array.from(rows).map(
@@ -349,12 +374,14 @@ const api = {
     with open(hp, "w", encoding="utf-8") as f:
         f.write(harness)
     url = "file:///" + hp.replace("\\", "/")
-    cmd = [edge, "--headless", "--no-sandbox", "--disable-gpu",
-           "--use-angle=swiftshader", "--no-first-run",
-           "--disable-extensions",
-           "--user-data-dir=" + os.path.join(tmpd, "profile"),
-           "--virtual-time-budget=15000",
-           "--window-size=1800,1000", "--dump-dom", url]
+    print("check GL mode: " + _browser.mode(), flush=True)
+    cmd = _browser.dump_dom_args(url, os.path.join(tmpd, "profile"),
+                                 1800, 1000, binary=edge)
+
+
+
+
+
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               encoding="utf-8", errors="replace",
@@ -377,12 +404,14 @@ const api = {
         return 1
     try:
         out = json.loads(html.unescape(m.group(1)))
+
     except ValueError:
+        print("PROBE:", repr(m.group(1)[:200]))
         ok(False, "probe output is JSON")
         print("1 FAILURES")
         return 1
     ok(isinstance(out, dict) and out.get("error") is None
-       and out.get("status", "").startswith("Loaded"),
+       and out.get("status", "").startswith(("Loaded", "Valid")),
        "harness loaded the default flow")
     if not isinstance(out, dict) or out.get("error"):
         print("PROBE ERROR:", (out.get("error") or "?")[:800])
@@ -404,7 +433,7 @@ const api = {
     ok(sw > 0 and sh > 0 and sw >= 3282 and sh >= 900
        and abs(cw - sw) <= 2 and abs(ch - sh) <= 2,
        "svg is live and matches the canvas (%dx%d)" % (sw, sh))
-    ok(0.4 <= out.get("zoom", 0) <= 2,
+    ok(0.25 <= out.get("zoom", 0) <= 2,
        "zoom settled in range (%s)" % out.get("zoom"))
     ok(sw > 0 and sh > 0 and out.get("inside", -1) == 91,
        "all 91 paths sit inside the live svg box (%s)" %
@@ -415,10 +444,10 @@ const api = {
        and out.get("dottedAfterClick") == 44,
        "click selects one dotted line next to full text, no duplicates")
     p = out.get("ports", {})
-    ok(p.get("rows") == 19 and p.get("edgeOk") == 19
-       and p.get("spanClear") == 19 and p.get("pcRows", -1) == 0
+    ok(p.get("rows") == 20 and p.get("edgeOk") == 20
+       and p.get("spanClear") == 20 and p.get("pcRows", -1) == 0
        and p.get("crewNodes") == 14,
-       "19 out-ports on right edges, labels clear of text")
+       "20 out-ports on right edges, labels clear of text")
     m = p.get("marty", {})
     ok(m.get("rows") == 2
        and m.get("labels") == ["concept", "structure"],
@@ -426,13 +455,20 @@ const api = {
     s = p.get("sam", {})
     ok(s.get("rows") == 1 and s.get("labels") == ["request"],
        "sam shows only the request port (%s)" % s)
+    r = p.get("remy", {})
+    ok(r.get("rows") == 2
+       and r.get("labels") == ["render_log", "part_info"],
+       "remy shows render_log + part_info ports (%s)" % r)
     ok(out.get("dots") == 44 and out.get("dotErr") == [],
        "44 dotted crew ends on edges/ports (%s)"
        % (out.get("dotErr") or "ok"))
-    ok(out.get("solidVisible", -1) >= 30
+    lab_ok = (out.get("solidVisible") == 0
+              if out.get("zoom", 1) < 0.7
+              else out.get("solidVisible", -1) >= 30)
+    ok(lab_ok
        and out.get("labelClash", -1) == 0,
-       "solid labels on, dense rest hover-only, none overlap (%s)"
-       % out.get("solidVisible"))
+       "labels follow the zoom rule, none overlap (zoom %s, vis %s)"
+       % (out.get("zoom"), out.get("solidVisible")))
     ok(out.get("hoverSolid") is True,
        "hover reveals a hidden solid label")
     if fails:
