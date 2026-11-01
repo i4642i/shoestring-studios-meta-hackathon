@@ -35,6 +35,7 @@ from agents._frame import tools as registry  # noqa: E402
 import validate_agent  # noqa: E402
 import intake  # noqa: E402
 from agents._frame import pc  # noqa: E402
+from agents._frame import gallery  # noqa: E402
 
 ALLOWED_UPLOAD = (".md", ".txt", ".pdf")
 
@@ -195,6 +196,8 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "orders"] and len(parts) == 4 \
                 and parts[3] == "projectlog":
             return self._api_order_projectlog(parts[2])
+        if parts[:2] == ["api", "gallery"] and len(parts) == 2:
+            return self._api_gallery_list()
         if parts[:2] == ["api", "ref"] and len(parts) == 2:
             return self._api_ref()
         if parts[:2] == ["api", "pcs"] and len(parts) == 2:
@@ -1385,6 +1388,12 @@ class Handler(BaseHTTPRequestHandler):
                         "timeline.jsonl": "text/plain",
                         "LOG_INDEX.json": "application/json"}
 
+    def _api_gallery_list(self):
+        """One card per order with a video or storyboard table."""
+        odir = os.path.join(ROOT, "orders")
+        cards = gallery.gallery_cards(odir, flows.RUNS_DIR)
+        return self._json(200, {"cards": cards})
+
     def _api_order_projectlog(self, oid):
         """Serve one project-log file (Board "Project log" link)."""
         qs = unquote(self.path).split("?", 1)
@@ -1636,6 +1645,8 @@ class Handler(BaseHTTPRequestHandler):
             flows.RUNS_DIR, run_id, node, rel)
         if full is None:
             return self._json(404, {"error": "no such file"})
+        if os.path.splitext(full)[1].lower() in (".mp4", ".webm"):
+            return self._serve_media(full)
         with open(full, "rb") as f:
             data = f.read()
         if len(data) > 5242880:
@@ -1647,6 +1658,54 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def _serve_media(self, full):
+        """Stream a video file with byte ranges (<video> seeking)."""
+        try:
+            size = os.path.getsize(full)
+        except OSError:
+            return self._json(404, {"error": "no such file"})
+        start, end, ranged = 0, size - 1, False
+        m = re.match(r"bytes=(\d*)-(\d*)$",
+                     self.headers.get("Range", "").strip())
+        if m and size > 0:
+            a, b = m.group(1), m.group(2)
+            if a:
+                start = int(a)
+            elif b:
+                start = max(0, size - int(b))
+            if b and a:
+                end = min(int(b), size - 1)
+            if start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range",
+                                 "bytes */%d" % size)
+                self.end_headers()
+                return
+            ranged = True
+        length = end - start + 1
+        self.send_response(206 if ranged else 200)
+        self.send_header("Content-Type",
+                         mimetypes.guess_type(full)[0]
+                         or "application/octet-stream")
+        self.send_header("Accept-Ranges", "bytes")
+        if ranged:
+            self.send_header("Content-Range", "bytes %d-%d/%d"
+                             % (start, end, size))
+        self.send_header("Content-Length", str(length))
+        self.end_headers()
+        try:
+            with open(full, "rb") as f:
+                f.seek(start)
+                left = length
+                while left > 0:
+                    chunk = f.read(min(65536, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+        except (OSError, ValueError):
+            pass
 
     _RUN_FILES = {"INPUTS.md": "text/markdown",
                   "INPUTS.json": "application/json",

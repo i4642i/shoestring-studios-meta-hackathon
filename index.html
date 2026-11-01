@@ -37,9 +37,13 @@
     padding: 24px; margin-bottom: 16px; }
   .card h2 { font-size: 15px; letter-spacing: 2px; margin: 0 0 12px; color: var(--ink); font-weight: 800; }
   .card p { color: var(--dim); font-size: 14px; line-height: 1.6; }
+  .page.wide { max-width: none; padding: 16px 0; }
+  .page.wide > .card { width: min(1600px, calc(100% - 32px));
+    margin: 0 auto; }
+  #p-about.wide > .card > * { max-width: 860px; }
   /* hero */
   #p-order { max-width: none; padding: 0 0 16px; }
-  #p-order .card { width: min(1600px, calc(100vw - 32px)); margin-left: auto; margin-right: auto; }
+
   body.tab-order { padding-bottom: 0; }
   body.tab-order footer { display: none; }
   #p-studio.active { max-width: none; padding: 12px 16px 16px; height: calc(100dvh - 72px);
@@ -117,12 +121,42 @@
   #queued { color: var(--accent); font-size: 13px; }
   iframe.office { width: 100%; height: auto; aspect-ratio: 16 / 9; min-height: 420px; max-height: 78vh;
     border: 1px solid var(--line); border-radius: 12px; background: #000; }
-  /* gallery reels */
-  .gal { display: flex; gap: 14px; }
-  .gal .item { flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 10px; text-align: center; }
-  .gal .thumb { background: #f4f4f5; border-radius: 8px; height: 110px; display: flex; align-items: center; justify-content: center;
-    color: var(--dim); font-size: 13px; letter-spacing: 2px; }
-  .gal p { font-size: 13px; }
+  /* gallery cards */
+  .galgrid { display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px; }
+  .galcard { border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px; background: #fff; }
+  .galthumb { aspect-ratio: 16/9; border-radius: 8px;
+    background: #f4f4f5; overflow: hidden; display: flex;
+    align-items: center; justify-content: center;
+    color: var(--dim); font-size: 13px; }
+  .galthumb img { width: 100%; height: 100%; object-fit: cover;
+    display: block; }
+  .galthumb video { width: 100%; height: 100%; display: block;
+    background: #000; }
+  .galtitle { font-size: 15px; font-weight: 800; margin: 10px 0 2px; }
+  .galmeta { font-size: 12px; color: var(--dim); }
+  .galchip { display: inline-block; font-size: 11px; font-weight: 700;
+    letter-spacing: 1px; border-radius: 999px; padding: 3px 10px;
+    margin: 8px 0 0; }
+  .galchip.gv { background: #dcfce7; color: #166534; }
+  .galchip.gt { background: #dbeafe; color: #1d4ed8; }
+  .galchip.gc { background: #e5e7eb; color: #4b5563; }
+  .galbtns { display: flex; gap: 8px; flex-wrap: wrap;
+    margin-top: 10px; }
+  .galbtns button, .galbtns a { font-size: 12px; font-weight: 700;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    color: var(--ink); padding: 6px 12px; cursor: pointer;
+    text-decoration: none; }
+  .galbtns button.galplay { background: var(--ink); color: #fff;
+    border-color: var(--ink); }
+  .galempty { color: var(--dim); font-size: 14px; }
+
+
+
+
+
   /* crew roster */
   .idgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
     gap: 12px; margin: 12px 0; }
@@ -332,7 +366,7 @@
   </nav>
 </header>
 
-<div class="page active" id="p-order">
+<div class="page wide active" id="p-order">
   <div class="hero">
     <div class="eyebrow">SHOESTRING STUDIOS — AN AI VIDEO TEAM</div>
     <h1>Order it. <span class="outline">Watch it get made.</span></h1>
@@ -416,18 +450,92 @@
   </div>
 </div>
 
-<div class="page" id="p-gallery">
+<div class="page wide" id="p-gallery">
   <div class="card">
     <h2>GALLERY — PAST VIDEOS</h2>
-    <div class="gal">
-      <div class="item"><div class="thumb">REEL 01</div><p>empty slot</p></div>
-      <div class="item"><div class="thumb">REEL 02</div><p>empty slot</p></div>
-      <div class="item"><div class="thumb">REEL 03</div><p>empty slot</p></div>
+    <div class="galgrid" id="gal-grid">
+      <p class="galempty">No finished videos yet — place an order in the Order tab.</p>
+
+
     </div>
   </div>
 </div>
 
-<div class="page" id="p-crew">
+<script>
+  /* Gallery: one card per order with a video or storyboard table. */
+  function galDur(s) {
+    if (s == null) return "—";
+    s = Math.round(s);
+    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+    return (h ? h + ":" + String(m).padStart(2, "0") : m + ":") +
+      String(s % 60).padStart(2, "0");
+  }
+  function galCard(c) {
+    const chip = c.status === "video" ?
+      '<span class="galchip gv">Video ready</span>' :
+      c.status === "closed" ?
+      '<span class="galchip gc">Closed</span>' :
+      '<span class="galchip gt">Storyboard only</span>';
+    const thumb = c.thumb_url ?
+      '<img src="' + esc(c.thumb_url) + '" alt="">' :
+      '<span>No preview</span>';
+    const date = String(c.created || "").slice(0, 10);
+    let btns = "";
+    if (c.video_url)
+      btns += '<button class="galplay" data-play="' +
+        esc(c.video_url) + '">Play</button>';
+    if (c.table_url)
+      btns += '<a href="' + esc(c.table_url) +
+        '" target="_blank" rel="noopener">Storyboard table</a>';
+    btns += '<button data-board="' + esc(c.run_id) +
+      '">Board</button>';
+    if (c.log_url)
+      btns += '<a href="' + esc(c.log_url) +
+        '" target="_blank" rel="noopener">Project log</a>';
+    return '<div class="galcard" data-order="' + esc(c.order_id) +
+      '"><div class="galthumb">' + thumb + '</div>' +
+      '<div class="galtitle">' + esc(c.title || c.order_id) +
+      '</div><div class="galmeta">' + esc(c.order_id) +
+      ' · ' + esc(date) + ' · ' + esc(galDur(c.length_s)) +
+      '</div>' + chip +
+      '<div class="galbtns">' + btns + '</div></div>';
+  }
+  async function loadGallery() {
+    const grid = document.getElementById("gal-grid");
+    const d = await api.get("api/gallery");
+    const cards = (d && d.cards) || [];
+    if (!cards.length) {
+      grid.innerHTML = '<p class="galempty">No finished videos yet — ' +
+        'place an order in the Order tab.</p>';
+      return;
+    }
+    grid.innerHTML = cards.map(galCard).join("");
+    grid.querySelectorAll("[data-play]").forEach(b => {
+      b.onclick = () => {
+        const box = b.closest(".galcard")
+          .querySelector(".galthumb");
+        const v = document.createElement("video");
+        v.controls = true;
+        v.autoplay = true;
+        v.src = b.getAttribute("data-play");
+        box.innerHTML = "";
+        box.appendChild(v);
+      };
+    });
+    grid.querySelectorAll("[data-board]").forEach(b => {
+      b.onclick = () => window.__openBoardRun(
+        b.getAttribute("data-board"));
+    });
+  }
+  window.__galleryShown = () => {
+    loadGallery().catch(e => {
+      document.getElementById("gal-grid").innerHTML =
+        '<p class="galempty">Error: ' + esc(e.message) + '</p>';
+    });
+  };
+</script>
+
+<div class="page wide" id="p-crew">
   <div class="card">
     <h2>CREW — EMPLOYEES</h2>
     <div class="subtabs" id="crew-tabs">
@@ -455,8 +563,8 @@
 </div>
 
 <style>
-  #p-pc { max-width: none; padding: 16px 16px 16px; }
-  #p-pc > .card { width: min(1600px, 100%); margin: 0 auto; }
+
+
   #pc-cards { display: grid; grid-template-columns: repeat(3, 1fr);
     gap: 12px; margin: 12px 0 16px; }
   @media (max-width: 1200px) {
@@ -492,7 +600,7 @@
     z-index: 1; }
   #pc-rights td.pc-pick { color: var(--dim); font-style: italic; }
 </style>
-<div class="page" id="p-pc">
+<div class="page wide" id="p-pc">
   <div class="card">
     <h2>PC — COMPANY COMPUTERS</h2>
     <p class="hint">Shared stores, not agents. Employees reach PC materials through a tool, never directly.</p>
@@ -539,8 +647,8 @@
 <style>
   body.tab-settings { padding-bottom: 0; }
   body.tab-settings footer { display: none; }
-  #p-settings { max-width: none; padding: 16px 16px 16px; }
-  #p-settings > .card { width: min(1600px, 100%); margin: 0 auto; }
+
+
   #se-active { font-size: 13px; }
   #se-active b { color: var(--ink); }
   #se-cols { display: flex; gap: 12px; align-items: flex-start; }
@@ -574,7 +682,7 @@
     #se-left, #se-right { width: 100%; }
   }
 </style>
-<div class="page" id="p-settings">
+<div class="page wide" id="p-settings">
   <div class="card">
     <h2>SETTINGS</h2>
     <p id="se-active"></p>
@@ -1064,7 +1172,7 @@ button.linklike { background: none; border: none; padding: 0;
     B.vcache = {};
     B.runs = d.runs || [];
     const sel = $("bd-run");
-    const keep = sel.value || B.run;
+    const keep = B.wantRun || sel.value || B.run;
     sel.innerHTML = B.runs.map(r =>
       '<option value="' + esc(r.run_id) + '">' + esc(r.run_id) +
       " \u00b7 " + esc(r.state || "?") + "</option>").join("");
@@ -1076,6 +1184,7 @@ button.linklike { background: none; border: none; padding: 0;
     sel.value = B.runs.some(r => r.run_id === keep) ? keep
       : B.runs[0].run_id;
     B.run = sel.value;
+    B.wantRun = "";
     const cur = B.runs.find(r => r.run_id === B.run) || {};
     B.flowId = cur.flow_id || "";
     B.orderId = cur.order_id || "";
@@ -1935,6 +2044,10 @@ button.linklike { background: none; border: none; padding: 0;
       .then(() => loadBoard())
       .catch(e => err("Error: " + e.message));
   }
+  window.__openBoardRun = (run) => {
+    B.wantRun = run;
+    document.querySelector('nav button[data-p="board"]').click();
+  };
   window.__boardShown = () => {
     if (!B.loaded) init();
     else loadRuns().then(() => loadBoard())
@@ -1943,7 +2056,7 @@ button.linklike { background: none; border: none; padding: 0;
 })();
 </script>
 
-<div class="page" id="p-about">
+<div class="page wide" id="p-about">
   <div class="card">
     <h2>ABOUT — WHY WE BUILD THIS</h2>
     <h3>MOTIVATION</h3>
@@ -2047,6 +2160,8 @@ button.linklike { background: none; border: none; padding: 0;
       window.__flowShown();
     if (b.dataset.p === "board" && window.__boardShown)
       window.__boardShown();
+    if (b.dataset.p === "gallery" && window.__galleryShown)
+      window.__galleryShown();
     if (b.dataset.p === "order" && window.__orderShown)
       window.__orderShown();
     if (b.dataset.p === "studio" && window.__studioShown)

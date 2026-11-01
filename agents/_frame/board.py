@@ -55,7 +55,7 @@ _VERIFY_FILES = ("report.md", "result.json", "INPUTS.md",
 _MAX_VERIFY_ROWS = 500
 
 _RUN_PATH_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".json",
-                  ".md", ".txt", ".srt")
+                  ".md", ".txt", ".srt", ".mp4", ".webm")
 
 _NODE_RE = re.compile(r"[A-Za-z0-9_\-]+")
 
