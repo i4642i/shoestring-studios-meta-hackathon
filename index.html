@@ -445,10 +445,6 @@
           <input id="o-input" maxlength="500" placeholder="Talk to sales…" aria-label="Message">
           <button type="submit">Send</button>
         </form>
-        <div id="o-confirm" style="display:none">
-          <button id="o-yes">Yes, start</button>
-          <button id="o-no">No, not yet</button>
-        </div>
       </div>
     </div>
     <h3 id="o-qh">THE 5 QUESTIONS</h3>
@@ -3380,8 +3376,18 @@ button.linklike { background: none; border: none; padding: 0;
         "\nPDF: " + pdfName;
       boxEl.style.display = "block";
     }
-    function showConfirm(on) {
-      document.getElementById("o-confirm").style.display = on ? "block" : "none";
+    function showChatStarted(r) {
+      const a = r.answers || {};
+      const prog = "Here's what I have:\n" +
+        "Audience: " + a.audience + "\nLength: " + a.length +
+        "\nDepth: " + a.depth + "\nTheme: " + a.theme +
+        "\nPDF: " + r.pdf.file + " (" + r.pdf.bytes +
+        " bytes, stored)" +
+        (r.sections ? "\nPDF sections: " + r.sections.count +
+          " (" + r.sections.file + ")" : "");
+      samSay(prog);
+      samSay(prog + "\nProduction started \u2014 watch it in Studio.");
+      showStarted(r.start);
     }
     function samSay(text) {
       const el = document.getElementById("o-sambub");
@@ -3544,7 +3550,6 @@ button.linklike { background: none; border: none; padding: 0;
       approvedSnap = "";
       document.getElementById("start").disabled = true;
       document.getElementById("o-approve").style.display = "none";
-      showConfirm(false);
       ["o-audience", "o-length", "o-depth", "o-theme"].forEach((id) => {
         document.getElementById(id).value = "";
       });
@@ -3650,14 +3655,13 @@ button.linklike { background: none; border: none; padding: 0;
       addMsg("me", text);
       history.push({ role: "user", content: text });
       input.value = "";
-      showConfirm(false);
       addMsg("typing", "…");
       try {
         const r = await api.send("POST", "api/orders/" + oid + "/chat", { messages: history, mode: mode });
         chatMissing = Array.isArray(r.missing) ? r.missing : [];
-        addMsg("them", r.reply);
         history.push({ role: "assistant", content: r.reply });
-        showConfirm(!!r.ready);
+        if (r.started) showChatStarted(r);
+        else addMsg("them", r.reply);
       } catch (err) {
         addMsg("them", lastSam);
         addMsg("sys", "Error: " + err.message);
@@ -3748,7 +3752,6 @@ button.linklike { background: none; border: none; padding: 0;
       locked = true;
       lockedRun = runId || "";
       samSay(RECEIVED_LINE);
-      showConfirm(false);
       const scene = document.getElementById("o-scene");
       scene.classList.add("locked");
       if (!scene.querySelector(".olockdim")) {
@@ -3847,50 +3850,6 @@ button.linklike { background: none; border: none; padding: 0;
       // Keep the order id stored: reload resumes the locked view.
       lockReceived(r.run_id || "");
     }
-    document.getElementById("o-yes").onclick = async () => {
-      showConfirm(false);
-      if (!oid || form.dataset.busy) return;
-      form.dataset.busy = "1";
-      const btn = form.querySelector("button");
-      btn.disabled = true;
-      addMsg("me", "Yes, start.");
-      history.push({ role: "user", content: "Yes, start." });
-      let prog = "";
-      try {
-        samSay("Starting…");
-        const c = await api.send("POST", "api/orders/" + oid + "/confirm", { confirm: true });
-        history.push({ role: "assistant", content: c.reply });
-        const a = c.answers || {};
-        prog = "Here's what I have:\n" +
-          "Audience: " + a.audience + "\nLength: " + a.length +
-          "\nDepth: " + a.depth + "\nTheme: " + a.theme +
-          "\nPDF: " + c.pdf.file + " (" + c.pdf.bytes + " bytes, stored)" +
-          (c.sections ? "\nPDF sections: " + c.sections.count +
-            " (" + c.sections.file + ")" : "");
-        samSay(prog);
-        msg.textContent = "Answers saved, PDF sectioned. Sales is writing the production request… (may take a minute)";
-        const r = await api.send("POST", "api/orders/" + oid + "/start", {});
-        samSay(prog + "\nProduction started \u2014 watch it in Studio.");
-        showStarted(r);
-      } catch (e) {
-        samSay((prog ? prog + "\n" : "") + "Couldn't start: " + e.message);
-        fail(e);
-      } finally {
-        delete form.dataset.busy;
-        btn.disabled = false;
-      }
-    };
-    document.getElementById("o-no").onclick = async () => {
-      showConfirm(false);
-      if (!oid || form.dataset.busy) return;
-      try {
-        const c = await api.send("POST", "api/orders/" + oid + "/confirm", { confirm: false });
-        addMsg("me", "No, not yet.");
-        history.push({ role: "user", content: "No, not yet." });
-        addMsg("them", c.reply);
-        history.push({ role: "assistant", content: c.reply });
-      } catch (e) { fail(e); }
-    };
     newOrder().catch(fail);
     requestAnimationFrame(fitOrderRoom);
   })();

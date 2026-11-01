@@ -1946,6 +1946,20 @@ class Handler(BaseHTTPRequestHandler):
         missing = intake.missing_of(meta.get("answers", {}),
                                     meta.get("files", {}))
         ready = not missing
+        step = intake.confirm_step(ready, extra)
+        if step == "start":
+            code, out = self._do_chat_start(oid, d, meta, extra)
+            return self._json(code, out)
+        if step in ("keep", "ask"):
+            note = (intake.DECLINE_ACK if step == "keep"
+                    else intake.CONFIRM_AGAIN)
+            self._chat_append(d, extra, note)
+            projlog.log_event(oid, "order", "chat",
+                              "client: %s / Sam: %s" % (extra, note),
+                              file="orders/%s/chat.jsonl" % oid)
+            projlog.do_refresh(oid)
+            return self._json(200, intake.chat_reply_payload(
+                note, True, []))
         answers = meta.get("answers", {})
         recorded = ("; ".join("%s is %s" % (k, answers[k])
                               for k in INTAKE_KEYS if k in answers)
@@ -1975,7 +1989,8 @@ class Handler(BaseHTTPRequestHandler):
 
                   "Keep replies to 1-3 short sentences. "
                   "Reply in plain conversational sentences only: never "
-                  "output JSON, code, or tool calls.")
+                  "output JSON, code, tool calls, or anything in "
+                  "<|...|> or <function> tags.")
         try:
             tail = [msgs[-1]] if msgs[-1]["role"] == "user" else msgs
             resp = runner._chat(
@@ -1988,10 +2003,13 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("empty reply")
         except Exception as exc:  # noqa: BLE001 - surfaced as 502, key never leaks
             return self._json(502, {"error": "model API error: %s" % exc})
-        text = reply.strip()
-        if ready:
+        raw = reply.strip()
+        text = intake.clean_chat_reply(raw)
+        if not text:
+            text = intake.CHAT_UNREADABLE
+        elif ready:
             text = text + " " + intake.READY_QUESTION
-        self._chat_append(d, msgs[-1]["content"], text)
+        self._chat_append(d, msgs[-1]["content"], text, raw=raw)
         projlog.log_event(
             oid, "order", "chat",
             "client: %s / Sam: %s"
@@ -2002,10 +2020,12 @@ class Handler(BaseHTTPRequestHandler):
             text, ready, missing))
 
     @staticmethod
-    def _chat_append(d, user, reply):
+    def _chat_append(d, user, reply, raw=None):
+        rec = {"user": user, "reply": reply}
+        if raw is not None and raw != reply:
+            rec["raw"] = raw
         with open(os.path.join(d, "chat.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps({"user": user, "reply": reply},
-                               ensure_ascii=False) + "\n")
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     def _api_order_complete(self, oid):
         d = self._order_dir(oid)
@@ -2063,17 +2083,27 @@ class Handler(BaseHTTPRequestHandler):
             projlog.do_refresh(oid)
             return self._json(200, {"ok": True, "declined": True,
                                     "reply": intake.DECLINE_ACK})
+        code, out = self._confirm_yes_out(oid, d, meta)
+        if code == 200:
+            self._chat_append(d, intake.YES_LINE, intake.START_LINE)
+        return self._json(code, out)
+
+    def _confirm_yes_out(self, oid, d, meta):
+        """Shared approve step (confirm:true and a clear yes in chat).
+
+        Returns (code, obj); sends nothing. The caller appends the
+        chat line with its own user text."""
         if meta.get("status") in ("complete", "in_production"):
-            return self._json(409, {"error": "already started"})
+            return (409, {"error": "already started"})
         try:
             self._try_fill_answers(d, meta)
         except RuntimeError as exc:
-            return self._json(502, {"error": str(exc)})
+            return (502, {"error": str(exc)})
         missing = intake.missing_of(meta.get("answers", {}),
                                     meta.get("files", {}))
         if missing:
-            return self._json(409, {"error": "intake incomplete",
-                                    "missing": missing})
+            return (409, {"error": "intake incomplete",
+                          "missing": missing})
         legacy = None
         parsed_p = os.path.join(d, "parsed.md")
         if os.path.isfile(parsed_p):
@@ -2097,7 +2127,6 @@ class Handler(BaseHTTPRequestHandler):
                             "answers": dict(meta.get("answers", {})),
                             "via": "chat"}
         self._order_save_meta(d, meta)
-        self._chat_append(d, intake.YES_LINE, intake.START_LINE)
         print("order confirm %s (%s)" % (oid, "legacy sections.md"
                                          if legacy else "stored PDF"),
               flush=True)
@@ -2111,7 +2140,42 @@ class Handler(BaseHTTPRequestHandler):
                "reply": intake.START_LINE, "pdf": pdf}
         if legacy:
             out["sections"] = legacy
-        return self._json(200, out)
+        return (200, out)
+
+    def _do_chat_start(self, oid, d, meta, user_text):
+        """Conversation-only start: confirm, then start, like Yes."""
+        code, out = self._confirm_yes_out(oid, d, meta)
+        if code != 200:
+            err = (out.get("error") if isinstance(out, dict)
+                   else "confirm failed")
+            reply = "Couldn't start: " + err
+            self._chat_append(d, user_text, reply)
+            bad = intake.chat_reply_payload(reply, True, [])
+            bad["started"] = False
+            return self._json(code, bad)
+        code2, out2 = self._do_complete(oid, d, self._order_meta(d),
+                                        {}, "in_production")
+        if code2 != 200:
+            err = (out2.get("error") if isinstance(out2, dict)
+                   else "start failed")
+            reply = "Couldn't start: " + err
+            self._chat_append(d, user_text, reply)
+            bad = intake.chat_reply_payload(reply, False, [])
+            bad["started"] = False
+            return self._json(code2, bad)
+        reply = intake.START_LINE + " " + intake.START_DONE
+        self._chat_append(d, user_text, reply)
+        projlog.log_event(oid, "order", "chat",
+                          "client: %s / Sam: %s" % (user_text, reply),
+                          file="orders/%s/chat.jsonl" % oid)
+        projlog.do_refresh(oid)
+        payload = intake.chat_reply_payload(reply, False, [])
+        payload.update({"started": True,
+                        "answers": out.get("answers"),
+                        "pdf": out.get("pdf"), "start": out2})
+        if "sections" in out:
+            payload["sections"] = out["sections"]
+        return self._json(200, payload)
 
     @staticmethod
     def _sam_inputs_md(oid, meta):

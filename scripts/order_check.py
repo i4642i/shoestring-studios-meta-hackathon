@@ -108,5 +108,48 @@ ok("already started" in open(os.path.join(ROOT, "scripts",
                              encoding="utf-8").read(),
    "server refuses turns on started orders")
 
+# ---- reply cleaning: imitated control/function blocks go, text stays ----
+RAW = ("<|start|>assistant to=commentary<|message|>Got it! I will help.<|eom|>"
+       '<|start|>assistant to=pc_send_source<|message|><function name="pc_send_source"></function><|eot|> trailing.')
+ok(intake.clean_chat_reply(RAW) == "Got it! I will help. trailing.",
+   "control + function blocks stripped, plain text kept")
+ok(intake.clean_chat_reply("plain text stays") == "plain text stays",
+   "clean reply leaves plain text alone")
+ok(intake.clean_chat_reply('<function name="x"></function>') == "",
+   "tool-only reply cleans to empty")
+ok(intake.clean_chat_reply('a <function name="x"/> b') == "a b",
+   "self-closing function tag stripped")
+ok(intake.CHAT_UNREADABLE == "Sam's reply could not be read, please send again.",
+   "unreadable error line is exact")
+_srv = open(os.path.join(ROOT, "scripts", "server.py"),
+             encoding="utf-8").read()
+ok("clean_chat_reply" in _srv and "CHAT_UNREADABLE" in _srv,
+   "chat endpoint cleans every reply, errors when empty")
+ok('rec["raw"]' in _srv,
+   "chat log keeps the raw reply for audit")
+
+# ---- conversation-only start: no buttons, yes/no by text ----
+for _y in ("yes, start", "Yes, start.", "go ahead", "ok", "START", "please start"):
+    ok(intake.classify_confirm(_y) == "yes",
+       "clear yes: %r" % (_y,))
+for _n in ("No, not yet.", "not yet", "wait"):
+    ok(intake.classify_confirm(_n) == "no",
+       "clear no: %r" % (_n,))
+for _u in ("", "maybe later", "yes, but change the theme", "what happens next?"):
+    ok(intake.classify_confirm(_u) is None,
+       "unclear stays unclear: %r" % (_u,))
+ok(intake.confirm_step(False, "yes, start") == "chat",
+   "not ready: normal model turn")
+ok(intake.confirm_step(True, "yes, start") == "start",
+   "ready + yes starts (ord-20261101-245 regression)")
+ok(intake.confirm_step(True, "No, not yet.") == "keep",
+   "ready + no keeps the consultation open")
+ok(intake.confirm_step(True, "hmm?") == "ask",
+   "ready + unclear asks once more")
+ok("o-confirm" not in _ui and "o-yes" not in _ui and "showConfirm" not in _ui,
+   "confirm buttons and their wiring are gone")
+ok("_do_chat_start" in _srv and "showChatStarted" in _ui,
+   "chat-yes runs the same confirm-then-start")
+
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")
 sys.exit(1 if FAILS else 0)
