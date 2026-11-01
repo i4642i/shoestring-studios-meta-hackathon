@@ -48,6 +48,11 @@
     "category": "storyboard",
     "required": false,
     "description": "Penn's screen ideas for reference."
+   },
+   {
+    "category": "style_guide",
+    "required": false,
+    "description": "Penn's style guide: render_slide needs it."
    }
   ],
   "outputs": [

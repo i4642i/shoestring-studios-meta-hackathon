@@ -99,9 +99,9 @@ ok([n["id"] for n in dflt["nodes"]]
    "default flow is sam->..->wren->penn->helpers->vera->remy->video")
 ok(not next(n for n in dflt["nodes"]
             if n["id"] == "final").get("temp")
-   and len(dflt["lines"]) == 47
+   and len(dflt["lines"]) == 48
    and len(dflt.get("pc_lines", [])) == 44,
-   "final takes video+storyboard_table, 47 solid + 44 dotted")
+   "final takes video+storyboard_table, 48 solid + 44 dotted")
 ok(next(n for n in dflt["nodes"]
         if n["id"] == "video_production").get("code") is True,
    "video node is marked code")
@@ -137,10 +137,10 @@ ok(not clash, "default nodes do not overlap (%s)"
 crew = {n["id"] for n in dflt["nodes"] if not n.get("pc")}
 solids = dflt["lines"]
 dots = dflt.get("pc_lines", [])
-ok(len(solids) == 47 and len(dots) == 44
+ok(len(solids) == 48 and len(dots) == 44
    and all(ln["from"] in crew and ln["to"] in crew for ln in solids)
    and all(pl["from"] in boxes and pl["to"] in boxes for pl in dots),
-   "91 lines would draw (47 solid + 44 dotted)")
+   "92 lines would draw (48 solid + 44 dotted)")
 # No PC-row gap rule: the owner's drawn layout (source of truth)
 # interleaves PCs with crew (Source PC sits above Sam).
 try:
@@ -672,7 +672,7 @@ evs = [json.loads(ln) for ln in
        open(os.path.join(rdir, "events.jsonl"), encoding="utf-8")]
 kinds = [e["ev"] for e in evs]
 ok(kinds[0] == "flow_start" and kinds[-1] == "flow_done"
-   and "order_ready" not in kinds and kinds.count("line") == 47
+   and "order_ready" not in kinds and kinds.count("line") == 48
    and "final_ready" in kinds, "event trail complete")
 line1 = next(e for e in evs if e.get("line") == "c1")
 ok(line1["categories"] == ["request"]
@@ -1254,6 +1254,22 @@ ok(not rv.get("ok")
            for e in rv.get("errors", [])),
    "string-wrapped slide draft is parsed, then shape-checked")
 shutil.rmtree(vdir, ignore_errors=True)
+rmdir = tempfile.mkdtemp()
+with open(os.path.join(rmdir,
+                       "received.board_vera.slide_draft.json"),
+          "w", encoding="utf-8") as f:
+    json.dump({"sender": "board_vera", "category":
+               "slide_draft", "version": 2,
+               "data": {"cuts": []}}, f)
+rctx = {"run_dir": rmdir, "order_id": "o9",
+        "producer": "slide_remy"}
+rr = _tools.write_render_log(
+    rctx, {"render_log": json.dumps({"cuts": "x"})})
+ok(not rr.get("ok")
+   and any("cuts must be a list" in e
+           for e in rr.get("errors", [])),
+   "string-wrapped render log is parsed, then shape-checked")
+shutil.rmtree(rmdir, ignore_errors=True)
 ok(_runner._exhaust_reason(
     [{"ev": "tool", "errors": ["total_s None != plan 720"]}])
    == "max_steps exhausted (last: total_s None != plan 720)",

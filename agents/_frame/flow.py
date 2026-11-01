@@ -1413,7 +1413,8 @@ def _run_part_split(run_dir, node_id, order_id, order_brief,
                               os.path.basename(run_dir),
                               {"split_plan": plan,
                                "narration": data["narration"],
-                               "storyboard": data["storyboard"]})
+                               "storyboard": data["storyboard"],
+                               "style_guide": data["style_guide"]})
     problems = results.check_result(res, where=node_id)
     if problems:
         return {"ok": False, "error": "%s: %s" % (node_id, problems[0])}
@@ -1426,7 +1427,8 @@ def _run_part_split(run_dir, node_id, order_id, order_brief,
                 {"code": True, "llm_calls": 0, "prompt_tokens": 0,
                  "completion_tokens": 0, "tools": {}})
     emit({"ev": "agent_done", "agent": node_id, "code": True,
-          "outputs": ["split_plan", "narration", "storyboard"],
+          "outputs": ["split_plan", "narration", "storyboard",
+                      "style_guide"],
           "split": len(plan["parts"])})
     return {"ok": True}
 

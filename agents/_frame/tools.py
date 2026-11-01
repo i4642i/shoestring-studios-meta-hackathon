@@ -2241,16 +2241,20 @@ def write_render_log(ctx, args):
     """Remy's render record: cut match vs Vera's draft, ≤3
     renders, layout-only adjustments."""
     obj = (args or {}).get("render_log")
+    if isinstance(obj, str):
+        obj = _lenient_json(obj)
     if not isinstance(obj, dict):
         return {"ok": False, "errors": [
-            "call with {render_log: {...}}"]}
+            "call with {render_log: {...}} -- pass the object "
+            "itself, not a JSON string"]}
     draft = _received_data(ctx, "slide_draft")
     if not draft:
         return {"ok": False, "errors": [
             "no slide_draft received in this run"]}
     errors = validate_render_log(obj, draft)
     if errors:
-        return {"ok": False, "errors": errors}
+        return {"ok": False, "errors": errors +
+                _omitted_hints(ctx, errors)}
     return _save_category(ctx, "render_log", obj)
 
 

@@ -1633,7 +1633,7 @@ Solid lines (one category each):
 | c90\u2013c92 | split \u2192 Gene | `split_plan`, `narration`, `storyboard` |
 | c93\u2013c95 | split \u2192 Max | `split_plan`, `narration`, `storyboard` |
 | c96\u2013c98 | split \u2192 Vera | `split_plan`, `narration`, `storyboard` |
-| c99\u2013c101 | split \u2192 Remy | `split_plan`, `narration`, `storyboard` |
+| c99\u2013c102 | split \u2192 Remy | `split_plan`, `narration`, `storyboard`, `style_guide` |
 | c56 | Pia \u2192 Vera | `photo_picks` |
 | c57 | Gene \u2192 Vera | `gen_picks` |
 | c58 | Max \u2192 Vera | `anim_picks` |

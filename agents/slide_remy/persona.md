@@ -36,6 +36,18 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, render_slide, remy_view_slide,
   write_render_log.
-- Finish by calling write_render_log with the COMPLETE object.
-  If it reports errors, fix them and call it again within your
-  remaining steps.
+- Render BEFORE writing: call render_slide({cut_id}) for every
+  cut first (it needs the received slide_draft + style_guide),
+  view each PNG with remy_view_slide, re-render (at most 3 per
+  cut) only for layout values. Never write before every cut
+  has its final PNG. Batch independent renders in one block.
+- Finish with ONE write_render_log call shaped EXACTLY like
+  this (a real object argument, never a JSON string):
+  {render_log: {cuts: [{cut_id (Vera's), slide_file (the
+  rendered PNG path), renders_n (1-3 used), adjustments:
+  [{field: position|size|font_size|alignment|crop|zoom|
+  padding|accent|x|y|width|height|font, was, now}] (empty when
+  the first render shipped), issues: [] (open layout issues,
+  empty when none), status: rendered}]}}. Every draft cut
+  appears exactly once. If it reports errors, fix them and
+  call it again within your remaining steps.
