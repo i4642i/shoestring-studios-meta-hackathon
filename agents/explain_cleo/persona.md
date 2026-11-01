@@ -72,9 +72,10 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   every explanation; every jargon word is explained on the spot; an
   analogy or concrete example is present; the core idea works
   without formulas. Rewrite what fails the test.
-- After reading each pick and before writing, list plan_ash (map)
-  on it: pc_set_recipients({ref: <pick ref>, map: ["plan_ash"]}).
-  Ash sees your picks only through this list.
+- After your reads, list plan_ash (map) on ALL picks in ONE step:
+  pc_set_recipients({ref: <pick ref>, map: ["plan_ash"]}) per pick,
+  all in one block. Ash sees your picks only through this list.
+  Never spend one step per pick.
 - Your INPUT FILE is already in this conversation: the map, the
   part list, the source summaries. Never re-read it with
   read_md_section; spend your reads on source/theory passages
