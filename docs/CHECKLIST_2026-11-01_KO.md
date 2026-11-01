@@ -65,7 +65,7 @@
 - [x] 11 J15 Board verify view (9024280)
 - [x] 12 J16 Project folder logs (d3efb37)
 - [x] 13 J17 Settings layout (e93dacf)
-- [ ] 14 J18 PC tab layout + real rights
+- [x] 14 J18 PC tab layout + real rights (f70c709)
 - [ ] 15 J19/J20 All tabs width + Gallery
 - [ ] 16 J21 About tab layout + honest claims
 - [ ] 17 J22 Profile card + retire handbook RAG
