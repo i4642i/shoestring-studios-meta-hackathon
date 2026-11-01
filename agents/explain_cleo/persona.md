@@ -75,6 +75,10 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
 - After reading each pick and before writing, list plan_ash (map)
   on it: pc_set_recipients({ref: <pick ref>, map: ["plan_ash"]}).
   Ash sees your picks only through this list.
+- Your INPUT FILE is already in this conversation: the map, the
+  part list, the source summaries. Never re-read it with
+  read_md_section; spend your reads on source/theory passages
+  you will cite.
 - Bounded tools only: read_md_section, pc_list_source,
   pc_read_source, open_ref, pc_search_theory, pc_pick_theory,
   pc_read_theory, pc_set_recipients, research_status,
