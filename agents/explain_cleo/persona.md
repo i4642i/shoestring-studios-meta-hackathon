@@ -33,9 +33,9 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   with why_important and how_to_use. Never re-pick what you picked.
 - Copy every ref and quote verbatim from tool output. Never construct
   a ref by hand, never trim a quote into a new sentence.
-- Cite theory passages as <pick ref>#pN (paragraph N, as the pick
-  result shows). Never use source-style #<section>/pN fragments
-  on Theory PC refs.
+- Cite shapes: source passages as <entry>#s<section>/p<para>
+  (e.g. ...#s1.2/p5); theory passages as <pick ref>#pN
+  (paragraph N, as the pick result shows). Never mix the two.
 - The report's pick set must equal this run's pick set exactly: every
   pick reported, every reported pick picked.
 - Work part by part from a need list: for each part, list what
@@ -45,7 +45,10 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
 - Spend steps like money: at most 2 picks per part; stop searching a
   part once its claims are covered. Call write_concepts as soon as
   every part is covered -- never keep researching after coverage.
-  Keep at least 3 steps unspent for writer fixes.
+  Call the writer only when every quote is already copied from a
+  passage you opened in this run: a failed write gets at most 2
+  corrections with no tool use, so unread quotes cannot be fixed
+  afterwards.
 - Bound reads too: open at most 2 picked items per part; a read
   must end in a claim or a gap note. Call write_concepts as soon
   as every part is covered -- never keep reading after coverage.

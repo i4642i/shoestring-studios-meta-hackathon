@@ -742,7 +742,9 @@ def pc_read_source(ctx, args):
 
 def _full_entry_text(entry, args):
     """Whole entry as markdown (content sections, exact headings).
-    Capped like any other read; truncation says how much is missing."""
+    Capped like any other read; truncation says how much is missing.
+    Pass a section ref <entry>#sX[.Y] to read one section; cite
+    passages as <entry>#s<section>/p<para>."""
     try:
         cap = int((args or {}).get("max_chars", 60000))
     except (TypeError, ValueError):
@@ -780,7 +782,11 @@ def _need_grant(ctx, pcname):
 def open_ref(ctx, args):
     """Any-PC ref reader with grant enforcement: the caller must hold
     pc_read_<pc> plus a recipient row for this order. Grants are the
-    tools listed in its agent.json."""
+    tools listed in its agent.json. Cite shapes: source
+    <entry>#s<section>/p<para>, theory/article <entry>#p<para>
+    or <entry>#g<section>. A bare entry ref returns metadata only,
+    never passage text: always open the full passage ref and copy
+    quotes from the result."""
     ref = (args or {}).get("ref", "")
     try:
         pcname, _id, _frag = pc.parse_ref(ref)
@@ -1025,14 +1031,18 @@ def _pc_read_web(ctx, args, pcname):
 @readlog.logged("theory")
 def pc_read_theory(ctx, args):
     """Read a Theory PC ref verbatim with provenance. Refused unless
-    listed as a recipient for this order."""
+    listed as a recipient for this order. Pass <entry>#pN for
+    paragraph N (the pick result tells you how many paragraphs
+    exist); a bare entry ref lists sections only, not text."""
     return _pc_read_web(ctx, args, "theory")
 
 
 @readlog.logged("article")
 def pc_read_article(ctx, args):
     """Read an Article PC ref verbatim with provenance. Refused unless
-    listed as a recipient for this order."""
+    listed as a recipient for this order. Pass <entry>#pN for
+    paragraph N (the pick result tells you how many paragraphs
+    exist); a bare entry ref lists sections only, not text."""
     return _pc_read_web(ctx, args, "article")
 
 
