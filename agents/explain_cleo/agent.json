@@ -45,7 +45,6 @@
  "title": "Concept explainer",
  "stage": 2,
  "tools": [
-  "read_md_section",
   "pc_list_source",
   "pc_read_source",
   "open_ref",

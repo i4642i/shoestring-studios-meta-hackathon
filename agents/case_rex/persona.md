@@ -88,7 +88,10 @@ docs/RESULT_JSON_DRAFT_EN.md).
   part list, the source summaries. Never re-read it with
   read_md_section; spend your reads on source/article passages
   you will cite.
-- Bounded tools only: read_md_section, pc_list_source,
+- Search FIRST: make your first pc_search_articles calls no later
+  than step 4, from the INPUT FILE map alone. Reads before
+  searching waste the run.
+- Bounded tools only: pc_list_source,
   pc_read_source, open_ref, pc_search_articles, pc_pick_article,
   pc_read_article, pc_set_recipients, research_status, write_cases.
   Ask for nothing else.
