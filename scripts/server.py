@@ -935,16 +935,22 @@ class Handler(BaseHTTPRequestHandler):
             for prof in ("local", "jetson"):
                 mark = mod.read_marker(path, prof)
                 job = _INDEX_JOBS.get((eid, prof))
-                building = job is not None and job.poll() is None
+                code = job.poll() if job is not None else None
+                building = code is None and job is not None
+                failed = code is not None and code != 0 \
+                    and not mark
                 if mark:
                     per[prof] = {
                         "built": True, "building": building,
+                        "failed": False,
                         "model": mark.get("model", ""),
                         "dim": mark.get("dim", 0),
                         "chunk_size": mark.get("chunk_size", 0),
                         "indexed_at": mark.get("indexed_at", "")}
                 else:
-                    per[prof] = {"built": False, "building": building}
+                    per[prof] = {"built": False,
+                                 "building": building,
+                                 "failed": failed}
             agents_out[eid] = per
         out = {"profile": eff["profile"], "jetson_url": eff["jetson_url"],
                "llm_model": eff["llm_model"], "query_mode": eff["query_mode"],

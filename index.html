@@ -492,9 +492,51 @@
   </div>
 </div>
 
+<style>
+  body.tab-settings { padding-bottom: 0; }
+  body.tab-settings footer { display: none; }
+  #p-settings { max-width: none; padding: 16px 16px 16px; }
+  #p-settings > .card { width: min(1600px, 100%); margin: 0 auto; }
+  #se-active { font-size: 13px; }
+  #se-active b { color: var(--ink); }
+  #se-cols { display: flex; gap: 12px; align-items: flex-start; }
+  #se-left { flex: 1 1 0; min-width: 0; display: flex;
+    flex-direction: column; gap: 12px; }
+  #se-right { flex: 1.25 1 0; min-width: 0; }
+  .se-sub { margin: 0; padding: 10px 12px; }
+  .se-sub h3 { margin: 0 0 6px; }
+  .se-sub p { margin: 6px 0; }
+  .se-sub p.hint { font-size: 12px; }
+  #se-profile { display: flex; gap: 16px; flex-wrap: wrap;
+    margin-bottom: 8px; }
+  #se-tablewrap { overflow: auto; max-height: calc(100vh - 440px);
+    max-height: calc(100dvh - 440px);
+    border: 1px solid var(--line); border-radius: 8px; }
+  #se-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  #se-table th, #se-table td { border: 1px solid var(--line);
+    padding: 6px 8px; text-align: left; vertical-align: top; }
+  #se-table thead th { position: sticky; top: 0; background: #fff;
+    z-index: 1; }
+  #se-table th.se-on, #se-table td.se-on { background: #e8f0fe; }
+  .se-st { font-weight: 800; font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; }
+  .se-ok { color: #15803d; }
+  .se-wait { color: #6b7280; }
+  .se-run { color: #b45309; }
+  .se-fail { color: #b91c1c; }
+  .se-meta { font-size: 11px; color: var(--dim); margin: 2px 0 6px; }
+  @media (max-width: 1199px) {
+    #se-cols { flex-direction: column; }
+    #se-left, #se-right { width: 100%; }
+  }
+</style>
 <div class="page" id="p-settings">
   <div class="card">
     <h2>SETTINGS</h2>
+    <p id="se-active"></p>
+    <div id="se-cols">
+      <div id="se-left">
+        <div class="card se-sub">
     <h3>EMBEDDINGS (RAG)</h3>
     <p class="hint">One index per profile. Switching profile never deletes the other index.</p>
     <div id="se-profile">
@@ -508,27 +550,43 @@
       <button id="se-test">TEST CONNECTION</button>
     </div>
     <p id="se-testout"></p>
-    <p id="se-err"></p>
+        </div>
+        <div class="card se-sub">
     <h3>LLM (LIGHTRAG)</h3>
     <div class="addform">
       <select id="se-llm" aria-label="LLM model"></select>
     </div>
+        </div>
+        <div class="card se-sub">
     <h3>QUERY</h3>
     <div class="addform">
       <label>Mode <select id="se-mode" aria-label="Query mode"></select></label>
       <label>Top K <input id="se-topk" type="number" min="5" max="100" aria-label="Top K"></label>
     </div>
+        </div>
+        <div class="card se-sub">
     <h3>CHUNKS (NEW INDEXES ONLY)</h3>
     <p class="hint">Chunk sizes apply when an index is built, not to existing indexes.</p>
     <div class="addform">
       <label>Local <input id="se-chunk-local" type="number" min="64" max="1024" aria-label="Local chunk size"></label>
       <label>Jetson <input id="se-chunk-jetson" type="number" min="64" max="1024" aria-label="Jetson chunk size"></label>
     </div>
+        </div>
+      </div>
+      <div id="se-right">
+        <div class="card se-sub">
     <h3>INDEX STATUS</h3>
+    <p><button id="se-buildall">BUILD ALL (ACTIVE PROFILE)</button> <span id="se-bamsg"></span></p>
+    <div id="se-tablewrap">
     <table id="se-table">
-      <thead><tr><th>AGENT</th><th>PROFILE</th><th>STATUS</th><th>MODEL</th><th>DIM</th><th>BUILT</th><th></th></tr></thead>
-      <tbody id="se-rows"><tr><td colspan="7">Loading…</td></tr></tbody>
+      <thead><tr><th>AGENT</th><th id="se-th-local">LOCAL</th><th id="se-th-jetson">JETSON</th></tr></thead>
+      <tbody id="se-rows"><tr><td colspan="3">Loading…</td></tr></tbody>
     </table>
+    </div>
+        </div>
+      </div>
+    </div>
+    <p id="se-err"></p>
   </div>
 </div>
 
@@ -1939,6 +1997,8 @@ button.linklike { background: none; border: none; padding: 0;
       b.dataset.p === "flow");
     document.body.classList.toggle("tab-order",
       b.dataset.p === "order");
+    document.body.classList.toggle("tab-settings",
+      b.dataset.p === "settings");
     if (b.dataset.p === "flow" && window.__flowShown)
       window.__flowShown();
     if (b.dataset.p === "board" && window.__boardShown)
@@ -1953,6 +2013,7 @@ button.linklike { background: none; border: none; padding: 0;
     const p = init ? init.dataset.p : "order";
     document.body.classList.toggle("tab-flow", p === "flow");
     document.body.classList.toggle("tab-order", p === "order");
+    document.body.classList.toggle("tab-settings", p === "settings");
   })();
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -4683,11 +4744,55 @@ button.linklike { background: none; border: none; padding: 0;
     if (!rows) return;
     const errline = document.getElementById("se-err");
     const testout = document.getElementById("se-testout");
+    const bamsg = document.getElementById("se-bamsg");
+    let last = null;
+    let lastTest = { ok: null, at: "" };
+    try {
+      const saved = JSON.parse(
+        window.localStorage.getItem("se-lasttest") || "null");
+      if (saved && saved.at) lastTest = saved;
+    } catch (e) { /* fresh profile */ }
     function fail(e) { errline.textContent = "Error: " + e.message; }
+    function renderActive() {
+      const el = document.getElementById("se-active");
+      if (!last) { el.textContent = ""; return; }
+      if (last.profile === "jetson") {
+        let conn = "not tested yet";
+        if (lastTest.at) conn = "connection " +
+          (lastTest.ok ? "ok" : "failed") + " (" +
+          lastTest.at + ")";
+        el.innerHTML = "Active: <b>Jetson (" +
+          esc(last.jetson_url || "") + ")</b> \u2014 " +
+          esc(conn);
+      } else {
+        el.innerHTML = "Active: <b>Local " +
+          "(all-MiniLM-L6-v2)</b> \u2014 no connection needed";
+      }
+    }
+    function cellHtml(eid, prof, st) {
+      const word = st.building ? "building"
+        : st.failed ? "failed"
+        : st.built ? "built" : "not built";
+      let h = '<div class="se-st se-' +
+        (st.building ? "run" : st.failed ? "fail"
+          : st.built ? "ok" : "wait") + '">' + word + "</div>";
+      h += '<div class="se-meta">' + (st.built
+        ? esc(st.model || "\u2014") + " \u00b7 dim " +
+          esc(String(st.dim == null ? "\u2014" : st.dim)) +
+          " \u00b7 " + esc(st.indexed_at || "\u2014")
+        : "\u2014") + "</div>";
+      if (!st.built && !st.building)
+        h += '<button data-build="' + esc(eid) + "|" + prof +
+          '">BUILD INDEX</button>';
+      return h;
+    }
     async function load() {
       try {
         errline.textContent = "";
+        if (bamsg) bamsg.textContent = "";
         const s = await api.get("api/settings");
+        last = s;
+        renderActive();
         document.querySelectorAll('input[name="se-prof"]').forEach(r => {
           r.checked = r.value === s.profile;
         });
@@ -4707,26 +4812,28 @@ button.linklike { background: none; border: none; padding: 0;
         document.getElementById("se-chunk-local").value = s.chunk_local;
         document.getElementById("se-chunk-jetson").value = s.chunk_jetson;
         if (s.settings_error) errline.textContent = s.settings_error;
+        document.getElementById("se-th-local").className =
+          s.profile === "local" ? "se-on" : "";
+        document.getElementById("se-th-jetson").className =
+          s.profile === "jetson" ? "se-on" : "";
         const eids = Object.keys(s.agents || {}).sort();
         if (!eids.length) {
-          rows.innerHTML = '<tr><td colspan="7">No employees.</td></tr>';
+          rows.innerHTML = '<tr><td colspan="3">No employees.</td></tr>';
           return;
         }
         rows.innerHTML = "";
         let anyBuilding = false;
         eids.forEach(eid => {
-          ["local", "jetson"].forEach(prof => {
+          const tr = document.createElement("tr");
+          const tds = ["local", "jetson"].map(prof => {
             const st = (s.agents[eid] || {})[prof] || {};
             if (st.building) anyBuilding = true;
-            const status = st.building ? "BUILDING…" : (st.built ? "built" : "not built");
-            const btn = (!st.built && !st.building)
-              ? '<button data-build="' + esc(eid) + "|" + prof + '">BUILD INDEX</button>' : "";
-            const tr = document.createElement("tr");
-            tr.innerHTML = "<td>" + esc(eid) + "</td><td>" + prof + "</td><td>" + status +
-              "</td><td>" + esc(st.model || "—") + "</td><td>" + esc(String(st.dim || "—")) +
-              "</td><td>" + esc(st.indexed_at || "—") + "</td><td>" + btn + "</td>";
-            rows.appendChild(tr);
-          });
+            return '<td class="' +
+              (prof === s.profile ? "se-on" : "") + '">' +
+              cellHtml(eid, prof, st) + "</td>";
+          }).join("");
+          tr.innerHTML = "<td>" + esc(eid) + "</td>" + tds;
+          rows.appendChild(tr);
         });
         rows.querySelectorAll("[data-build]").forEach(b => {
           b.onclick = async () => {
@@ -4741,7 +4848,7 @@ button.linklike { background: none; border: none; padding: 0;
         });
         if (anyBuilding) setTimeout(load, 5000);
       } catch (e) {
-        rows.innerHTML = '<tr><td colspan="7">Settings unavailable — is the server running?</td></tr>';
+        rows.innerHTML = '<tr><td colspan="3">Settings unavailable \u2014 is the server running?</td></tr>';
       }
     }
     document.getElementById("se-save").onclick = async () => {
@@ -4759,15 +4866,54 @@ button.linklike { background: none; border: none; padding: 0;
         load();
       } catch (e) { fail(e); }
     };
+    function noteTest(ok) {
+      lastTest = { ok: !!ok,
+        at: new Date().toLocaleTimeString() };
+      try {
+        window.localStorage.setItem("se-lasttest",
+          JSON.stringify(lastTest));
+      } catch (e) { /* private mode */ }
+      renderActive();
+    }
     document.getElementById("se-test").onclick = async () => {
       try {
-        testout.textContent = "Testing…";
+        testout.textContent = "Testing\u2026";
         const r = await api.send("POST", "api/settings/test", {
           jetson_url: document.getElementById("se-url").value.trim() });
         testout.textContent = r.ok
           ? "OK: " + r.model + " on " + r.device + ", dim " + r.dim + " (" + r.ms + " ms)"
           : "Failed: " + (r.error || "unknown");
-      } catch (e) { testout.textContent = "Failed: " + e.message; }
+        noteTest(r.ok);
+      } catch (e) {
+        testout.textContent = "Failed: " + e.message;
+        noteTest(false);
+      }
+    };
+    document.getElementById("se-buildall").onclick = async () => {
+      try {
+        if (!last) return;
+        const prof = last.profile || "jetson";
+        const todo = Object.keys(last.agents || {}).sort()
+          .filter(eid => {
+            const st = (last.agents[eid] || {})[prof] || {};
+            return !st.built && !st.building;
+          });
+        if (!todo.length) {
+          bamsg.textContent = "Everything is built.";
+          return;
+        }
+        if (!window.confirm("Build " + todo.length + " " +
+            prof + " indexes? This makes model calls."))
+          return;
+        for (const eid of todo) {
+          const r = await api.send("POST",
+            "api/crew/" + eid + "/index", { profile: prof });
+          if (!r.started)
+            throw new Error(eid + ": " +
+              (r.reason || "build refused"));
+        }
+        load();
+      } catch (e) { fail(e); }
     };
     load();
   })();
