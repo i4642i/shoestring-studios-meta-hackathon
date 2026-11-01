@@ -1085,6 +1085,15 @@ def _pc_read_web(ctx, args, pcname):
         out = pc.open_ref(entry, ref)
     except (KeyError, ValueError) as exc:
         return {"error": str(exc)}
+    if out.get("kind") == "entry" and pcname in ("theory", "article"):
+        bits = []
+        for p in entry.get("paragraphs", []) or []:
+            if isinstance(p, dict) and p.get("text"):
+                bits.append("[%s] %s" % (p.get("addr", "?"),
+                                         p["text"]))
+        out = {"kind": "passage", "ref": ref,
+               "text": "\n\n".join(bits),
+               "provenance": out.get("provenance")}
     try:
         cap = int(args.get("max_chars", 8000))
     except (TypeError, ValueError):
@@ -1101,7 +1110,8 @@ def pc_read_theory(ctx, args):
     """Read a Theory PC ref verbatim with provenance. Refused unless
     listed as a recipient for this order. Pass <entry>#pN for
     paragraph N (the pick result tells you how many paragraphs
-    exist); a bare entry ref lists sections only, not text."""
+    exist); a bare entry ref returns the whole text with [pN]
+    markers -- cite the marker's paragraph."""
     return _pc_read_web(ctx, args, "theory")
 
 
@@ -1110,7 +1120,8 @@ def pc_read_article(ctx, args):
     """Read an Article PC ref verbatim with provenance. Refused unless
     listed as a recipient for this order. Pass <entry>#pN for
     paragraph N (the pick result tells you how many paragraphs
-    exist); a bare entry ref lists sections only, not text."""
+    exist); a bare entry ref returns the whole text with [pN]
+    markers -- cite the marker's paragraph."""
     return _pc_read_web(ctx, args, "article")
 
 

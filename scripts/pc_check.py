@@ -798,6 +798,25 @@ try:
          ("pc_search_images", _med), ("pc_pick_image", _med),
          ("pc_generate_image", _med), ("vera_view_image", _med))
         if not hasattr(getattr(m, n), "__wrapped__")]
+    wt = pc.ingest_theory("http://x.test/a", "T", "P", "2020", "now",
+                           "case_rex",
+                           "First paragraph here.\n\nSecond paragraph here.",
+                           tmp2)
+    pc.set_recipients("theory", wt["doc_id"], "ord-20261030-009",
+                      ["explain_cleo"], "case_rex", kind="full", root=tmp2)
+    cleor = {"agent_dir": os.path.join(ROOT, "agents",
+                                       "explain_cleo"),
+               "producer": "explain_cleo",
+               "order_id": "ord-20261030-009"}
+    bare = tmod.pc_read_theory(cleor, {"ref": wt["ref"]})
+    ok(bare.get("kind") == "passage"
+       and "[p1]" in bare.get("text", "")
+       and "First paragraph here." in bare.get("text", ""),
+       "bare theory read returns quotable text with markers")
+    frag = tmod.pc_read_theory(cleor, {"ref": wt["ref"] + "#p2"})
+    ok(frag.get("text") == "Second paragraph here.",
+       "theory fragment read still exact")
+
     ok(missing_wrap == [],
        "all 16 PC tools wrapped for reads logging (%s)"
        % (missing_wrap,))
