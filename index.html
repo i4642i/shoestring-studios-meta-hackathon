@@ -3441,6 +3441,7 @@ button.linklike { background: none; border: none; padding: 0;
     let pdfUpload = null;
     let chatMissing = [];
     const history = [];
+    const queued = [];
     function readAnswers() {
       return {
         audience: document.getElementById("o-audience").value.trim(),
@@ -3782,6 +3783,7 @@ button.linklike { background: none; border: none; padding: 0;
     async function newOrder() {
       statusEl.textContent = "Starting…";
       msg.textContent = "";
+      queued.length = 0;
       document.getElementById("o-sambub").textContent = "";
       document.getElementById("o-mebub").innerHTML = "";
       document.getElementById("o-sysbub").style.display = "none";
@@ -3896,7 +3898,13 @@ button.linklike { background: none; border: none; padding: 0;
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const text = input.value.trim();
-      if (locked || !text || !oid || form.dataset.busy) return;
+      if (locked || !text || !oid) return;
+      if (form.dataset.busy) {
+        queued.push(text);
+        input.value = "";
+        msg.textContent = "Sam is still replying — your message is queued and sends next.";
+        return;
+      }
       form.dataset.busy = "1";
       const btn = form.querySelector("button");
       btn.disabled = true;
@@ -3923,6 +3931,11 @@ button.linklike { background: none; border: none; padding: 0;
           delete form.dataset.busy;
           btn.disabled = false;
           input.focus();
+          if (queued.length) {
+            input.value = queued.shift();
+            msg.textContent = "";
+            form.requestSubmit();
+          }
         }
       }
     });

@@ -11,6 +11,9 @@ Asserts: Sam bubble 24px on rgba(255,255,255,.8), fixed at the left
 and vertically centred, max 40% of the room (full width at 390px),
 tail on the Sam side; client bubbles 26px on rgba(0,100,224,.8);
 input 28px and taller; the render tick no longer moves Sam's bubble.
+A queue probe (fetch stubbed, still no model call) submits a second
+message while the first turn is in flight and asserts it is queued,
+announced, and sent after the turn instead of silently dropped.
 """
 import _browser
 import base64
@@ -147,9 +150,10 @@ class WS:
             pass
 
 
-def js_eval(ws, expr, timeout=30):
+def js_eval(ws, expr, timeout=90, await_promise=False):
     r = ws.call("Runtime.evaluate",
-                {"expression": expr, "returnByValue": True},
+                {"expression": expr, "returnByValue": True,
+                 "awaitPromise": await_promise},
                 timeout=timeout)
     return (r.get("result") or {}).get("value")
 
@@ -262,6 +266,80 @@ GEOM_JS = """(() => {
     meFont: mcs.fontSize || '', meBg: mcs.backgroundColor || '',
     inFont: ics.fontSize, inH: inp.getBoundingClientRect().height
   };
+})()"""
+
+QUEUE_JS = """(() => {
+  const out = {waited: false, busySeen: false, postsBefore: -1,
+    postsAfter: -1, meCount: -1, msgText: '', secondSent: false,
+    restored: false};
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const form = document.getElementById('o-form');
+  const input = document.getElementById('o-input');
+  const msg = document.getElementById('o-msg');
+  return (async () => {
+    try {
+      const t0 = Date.now();
+      while (!/ord-[0-9-]+/.test(document.body.innerText)) {
+        if (Date.now() - t0 > 30000) return out;
+        await sleep(500);
+      }
+      out.waited = true;
+      const realFetch = window.fetch;
+      const posts = [];
+      let release = null;
+      const gate = new Promise((res) => { release = res; });
+      const fake = {reply: 'Noted. And how long should the video be?',
+        missing: ['length', 'depth', 'theme', 'source PDF'],
+        form: {audience: 'book club beginners', length: '',
+          depth: '', theme: ''}, accepted: false};
+      window.fetch = (url, o2) => {
+        if (typeof url === 'string' && url.indexOf('/chat') >= 0
+            && o2 && o2.method === 'POST') {
+          const n = posts.length;
+          posts.push(JSON.parse(o2.body).messages.map(
+            (m) => m.content));
+          if (n === 0)
+            return gate.then(() => ({ok: true,
+              json: async () => fake}));
+          return Promise.resolve({ok: true, json: async () => fake});
+        }
+        return realFetch(url, o2);
+      };
+      try {
+        input.value = 'my book club friends, no science background';
+        form.requestSubmit();
+        const b0 = Date.now();
+        while (!form.dataset.busy) {
+          if (Date.now() - b0 > 15000) break;
+          await sleep(200);
+        }
+        out.busySeen = !!form.dataset.busy;
+        input.value = 'around twelve minutes long';
+        form.requestSubmit();
+        await sleep(1000);
+        out.postsBefore = posts.length;
+        out.msgText = msg ? msg.textContent : '';
+        release();
+        const w0 = Date.now();
+        while (posts.length < 2) {
+          if (Date.now() - w0 > 20000) break;
+          await sleep(300);
+        }
+        out.postsAfter = posts.length;
+        out.meCount = document.querySelectorAll(
+          '#o-mebub .bub-me').length;
+        out.secondSent = posts.length >= 2 &&
+          posts[1].join(' ').indexOf('twelve minutes') >= 0;
+      } finally {
+        window.fetch = realFetch;
+        out.restored = window.fetch === realFetch;
+      }
+      return out;
+    } catch (e) {
+      out.msgText = 'JS-ERROR ' + e;
+      return out;
+    }
+  })();
 })()"""
 
 FORM_JS = """(() => {
@@ -446,6 +524,30 @@ def main():
            "no bubble overlap at 390 (%s/%s)"
            % (g2.get("samBottom"), g2.get("meTop")))
         shot(ws, PNG390)
+        q = js_eval(ws, QUEUE_JS, timeout=120, await_promise=True)
+        try:
+            print("queue probe:", q, flush=True)
+        except UnicodeEncodeError:
+            print(("queue probe: %s" % q).encode(
+                "ascii", "replace").decode(), flush=True)
+        ok((q or {}).get("waited") is True, "order created on load")
+        ok((q or {}).get("busySeen") is True,
+           "turn overlapped the busy window")
+        ok((q or {}).get("postsBefore") == 1,
+           "no second request while busy (%s)"
+           % (q or {}).get("postsBefore"))
+        ok("queued" in ((q or {}).get("msgText") or ""),
+           "queued notice shown (%s)"
+           % ((q or {}).get("msgText") or "")[:60])
+        ok((q or {}).get("postsAfter") == 2,
+           "queued message sent after the turn (%s)"
+           % (q or {}).get("postsAfter"))
+        ok((q or {}).get("secondSent") is True,
+           "second text reached the server")
+        ok((q or {}).get("meCount") == 2,
+           "both client bubbles shown (%s)"
+           % (q or {}).get("meCount"))
+        ok((q or {}).get("restored") is True, "fetch stub restored")
         ws.call("Runtime.disable")
         nerr = console_errors(ws.events)
         ok(nerr == 0, "zero console errors (got %d)" % nerr)
