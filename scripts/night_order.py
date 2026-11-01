@@ -141,6 +141,31 @@ def send_now(ws, text):
     return False
 
 
+def api_upload(pdf, oid):
+    """Owner-approved fallback for the attach step only: POST the PDF
+    to the order's upload endpoint, then the page reload shows it."""
+    try:
+        with open(pdf, "rb") as f:
+            raw = f.read()
+    except OSError:
+        return False
+    bound = "NIGHTBOUND789"
+    pre = ("--" + bound + '\r\nContent-Disposition: form-data; '
+           'name="file"; filename="source.pdf"\r\n'
+           "Content-Type: application/pdf\r\n\r\n").encode()
+    post = ("\r\n--" + bound + "--\r\n").encode()
+    req = urllib.request.Request(
+        "http://localhost:%d/api/orders/%s/upload" % (PORT, oid),
+        data=pre + raw + post,
+        headers={"Content-Type":
+                 "multipart/form-data; boundary=" + bound})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return r.status == 200
+    except OSError:
+        return False
+
+
 def do_order(pdf, answers_path):
     with open(answers_path, encoding="utf-8") as f:
         answers = json.load(f)
@@ -185,6 +210,12 @@ def do_order(pdf, answers_path):
                     ".innerText)()") or ""
             prt("NO-ATTACH-BUTTON bub=" + bub[-300:])
             return 1
+        oc.js_eval(ws, "(() => { const i = document.querySelector("
+                        "'label.pdfbtn input'); if (i) {"
+                        " i.style.display = 'block';"
+                        " i.style.width = '12px';"
+                        " i.scrollIntoView({block: 'nearest'}); } "
+                        "return !!i; })()")
         doc = ws.call("DOM.getDocument", {"depth": 0})
         node = ws.call("DOM.querySelector",
                        {"nodeId": doc["root"]["nodeId"],
@@ -192,21 +223,44 @@ def do_order(pdf, answers_path):
         if "nodeId" not in node:
             prt("NO-ATTACH-NODE")
             return 1
+        attached = False
         ws.call("DOM.setFileInputFiles",
                 {"nodeId": node["nodeId"], "files": [pdf]})
+        oc.js_eval(ws, "(() => { const i = document.querySelector("
+                        "'label.pdfbtn input'); if (i) "
+                        "i.dispatchEvent(new Event('change', "
+                        "{bubbles: true})); return !!i; })()")
         t0 = time.time()
-        attached = False
-        while time.time() - t0 < 120:
+        while time.time() - t0 < 60:
             bub = oc.js_eval(
                 ws, "(() => document.getElementById('o-bubbles')"
                     ".innerText)()") or ""
-            if "Attached" in bub:
+            if "Attached " in bub:
                 attached = True
+                break
+            if "Attach failed" in bub:
                 break
             time.sleep(3)
         if not attached:
-            print("NO-ATTACH")
-            return 1
+            prt("UI-ATTACH-FAILED api-fallback")
+            if not api_upload(pdf, oid):
+                print("NO-ATTACH")
+                return 1
+            ws.call("Page.navigate",
+                    {"url": "http://localhost:%d/#order" % PORT})
+            t0 = time.time()
+            while time.time() - t0 < 120:
+                done = oc.js_eval(
+                    ws, "!!document.querySelector("
+                        "'#o-sambub .pdfdone')") or False
+                if done:
+                    break
+                time.sleep(3)
+            else:
+                print("NO-ATTACH-SEEN")
+                return 1
+            last = _core(oc.js_eval(ws, SAM_JS))
+        oc.shot(ws, os.path.join(RUNS, "night_%s_attach.png" % oid))
         print("ATTACHED", flush=True)
         if not send_now(ws, answers["yes"]):
             print("NO-ECHO after yes")

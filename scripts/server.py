@@ -2079,7 +2079,9 @@ class Handler(BaseHTTPRequestHandler):
                  "update_form (clean professional third-person "
                  "wording, never me/my/I/you). Call finalize_and_send "
                  "only when the form is full, the PDF is attached and "
-                 "the client agrees; saying it is not enough. After it "
+                 "the client agrees; saying it is not enough. Once "
+                 "the client agrees with everything complete, call it "
+                 "in this turn instead of asking again. After it "
                  "succeeds your job is done: say a short goodbye.")
         if mode != "free":
             rules += (" Guided mode: keep questions short; the client "
