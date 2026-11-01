@@ -1025,6 +1025,22 @@ shutil.rmtree(covdir, ignore_errors=True)
 shutil.rmtree(emptydir, ignore_errors=True)
 
 
+ok(_tools._norm_ws("a \u2013 b \u201cC\u201d") == 'a - b "C"',
+   "norm folds dashes and quotes")
+ok(_tools._nearest_para_hint(
+    {"paragraphs": [{"addr": "p1", "text": "logo menu login"},
+                    {"addr": "p2",
+                     "text": "the quick brown fox jumps high"}]},
+    "quick brown fox jumps high today", "pc://article/abcd12ef34gh")
+   == "pc://article/abcd12ef34gh#p2",
+   "hint points at the matching paragraph")
+ok(_tools._nearest_para_hint(
+    {"paragraphs": [{"addr": "p1", "text": "logo menu login"}]},
+    "purple elephants dance on Mars happily", "pc://article/abcd12")
+   is None,
+   "hint stays silent on invented quotes")
+
+
 def boom(agent_dir, run_dir, brief, input_md):
     return {"ok": False, "error": "kaput"}
 

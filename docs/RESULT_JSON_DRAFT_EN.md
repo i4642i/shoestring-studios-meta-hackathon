@@ -1198,7 +1198,8 @@ pc://article/<id>#p<paragraph>
   provenance. The caller's PC read grant still applies: no grant, no
   passage.
 - Citation check: a citation passes only if `quote` appears verbatim
-  in the passage at `ref` (normalize whitespace only). Writer tools
+  in the passage at `ref` (whitespace normalized, dash/quote marks
+  folded; words must match exactly). Writer tools
   run this check at write time (same pattern as the existing
   writer-validated outputs); reviewers re-verify through `open_ref`
   and list any failures as problems (the result stays `checked`
@@ -1484,7 +1485,8 @@ At write time, the writer tool verifies, in order:
 1. Schema check: payload matches `concepts` v1 / `cases` v1.
 2. Verbatim citation check: every `claims[].citations[]` and every
    pick `evidence` passes the §9 check (quote appears verbatim at
-   `ref`, whitespace only normalized). Summary/map text is never
+   `ref`; whitespace normalized, dash/quote marks folded, words
+   exact). Summary/map text is never
    quotable evidence.
 3. "No evidence, no save": every claim carries ≥1 citation; every
    case carries ≥1 claim with ≥1 citation. On failure the tool

@@ -212,13 +212,26 @@ def _verbatim_haystack(passage):
     return passage.get("text", "")
 
 
+_PUNCT_FOLD = {"\u2013": "-", "\u2014": "-", "\u2012": "-",
+                "\u2011": "-", "\u2019": "'", "\u2018": "'",
+                "\u201a": "'", "\u201b": "'", "\u201c": '"',
+                "\u201d": '"', "\u201e": '"', "\u201f": '"',
+                "\u2026": "..."}
+
+
 def _norm_ws(s):
-    return " ".join(str(s).split())
+    """Whitespace-normalized with dash/quote marks folded to ASCII.
+    Words must still match exactly; only punctuation equivalence."""
+    t = str(s)
+    for k, v in _PUNCT_FOLD.items():
+        t = t.replace(k, v)
+    return " ".join(t.split())
 
 
 def _check_quote(errors, ref, quote, where):
     """One {ref, quote} pair passes only when the quote appears
-    verbatim (whitespace normalized) in the passage at the ref."""
+    verbatim in the passage at the ref (whitespace normalized,
+    dash/quote marks folded; words must match exactly)."""
     if not isinstance(ref, str) or not ref.strip():
         errors.append("%s: missing ref" % where)
         return
@@ -251,6 +264,40 @@ def _check_quote(errors, ref, quote, where):
         return
     if _norm_ws(quote) not in _norm_ws(_verbatim_haystack(passage)):
         errors.append("%s: quote not found verbatim in %r" % (where, ref))
+        try:
+            near = _nearest_para_hint(
+                entry, quote, pc.entry_ref(rpc, rid))
+        except (OSError, ValueError, KeyError):
+            near = None
+        if near:
+            errors.append("%s: these words appear in %s" % (where, near))
+
+
+def _nearest_para_hint(entry, quote, base):
+    """Best paragraph addr whose words match a run of the quote."""
+    qw = _norm_ws(quote).lower().split()
+    if len(qw) < 5:
+        return None
+    best, bestn = None, 0
+    for p in entry.get("paragraphs", []):
+        if not isinstance(p, dict):
+            continue
+        pw = _norm_ws(p.get("text", "")).lower().split()
+        if not pw:
+            continue
+        runs = 0
+        for i in range(len(qw)):
+            for j in range(len(pw)):
+                k = 0
+                while (i + k < len(qw) and j + k < len(pw)
+                       and qw[i + k] == pw[j + k]):
+                    k += 1
+                runs = max(runs, k)
+        if runs > bestn:
+            best, bestn = p.get("addr"), runs
+    if best and bestn >= 5:
+        return "%s#%s" % (base, best)
+    return None
 
 
 def _run_pick_refs(ctx):
