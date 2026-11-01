@@ -33,6 +33,8 @@ QUERY_MODES = ("local", "global", "hybrid", "naive", "mix")
 DEFAULT_JETSON_URL = "http://192.168.0.4:8790"
 TOP_K_MIN, TOP_K_MAX = 5, 100
 CHUNK_MIN, CHUNK_MAX = 64, 1024
+OFFICE_FPS_VALUES = (15, 20, 30)
+OFFICE_FPS_DEFAULT = 20
 
 
 def _read_settings_file():
@@ -90,6 +92,15 @@ def clean_settings(d):
                 raise RuntimeError("%s must be %d..%d"
                                    % (k, CHUNK_MIN, CHUNK_MAX))
             out[k] = v
+    if "office_fps" in d:
+        try:
+            v = int(d["office_fps"])
+        except (TypeError, ValueError):
+            raise RuntimeError("office_fps must be an integer")
+        if v not in OFFICE_FPS_VALUES:
+            raise RuntimeError("office_fps must be one of %s"
+                               % "|".join(str(x) for x in OFFICE_FPS_VALUES))
+        out["office_fps"] = v
     return out
 JETSON_DOWN = ("Jetson embed server not reachable at %s. "
                "It may be off or in parser mode.")
@@ -188,6 +199,19 @@ def llm_settings():
             "key_env": cfg.get("llm_key_env", "")}
 
 
+def office_fps_settings():
+    """Office 3D frame cap: settings win, 20 fps default."""
+    v = _read_settings_file().get("office_fps", OFFICE_FPS_DEFAULT)
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        raise RuntimeError("office_fps must be an integer")
+    if v not in OFFICE_FPS_VALUES:
+        raise RuntimeError("office_fps must be one of %s"
+                           % "|".join(str(x) for x in OFFICE_FPS_VALUES))
+    return {"fps": v}
+
+
 def query_settings():
     """Effective retrieval options: settings win, config/package default."""
     cfg = load_config()
@@ -231,10 +255,16 @@ def resolved_settings():
         except RuntimeError as e:
             chunks[p] = fb
             probs.append(str(e))
+    try:
+        fps = office_fps_settings()["fps"]
+    except RuntimeError as e:
+        fps = OFFICE_FPS_DEFAULT
+        probs.append(str(e))
     return {"profile": st["profile"], "jetson_url": st["jetson_url"],
             "llm_model": lm, "query_mode": q["mode"], "top_k": q["top_k"],
             "chunk_local": chunks["local"],
-            "chunk_jetson": chunks["jetson"], "problems": probs}
+            "chunk_jetson": chunks["jetson"],
+            "office_fps": fps, "problems": probs}
 
 
 def marker_path(agent_dir, profile):

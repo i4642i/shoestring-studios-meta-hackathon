@@ -789,6 +789,14 @@
       <label>Jetson <input id="se-chunk-jetson" type="number" min="64" max="1024" aria-label="Jetson chunk size"></label>
     </div>
         </div>
+        <div class="card se-sub">
+    <h3>OFFICE 3D FRAME RATE</h3>
+    <div class="addform" id="se-fps">
+      <label><input type="radio" name="se-fps" value="15"> 15</label>
+      <label><input type="radio" name="se-fps" value="20" checked> 20</label>
+      <label><input type="radio" name="se-fps" value="30"> 30</label>
+    </div>
+        </div>
       </div>
       <div id="se-right">
         <div class="card se-sub">
@@ -5243,6 +5251,11 @@ button.linklike { background: none; border: none; padding: 0;
         document.getElementById("se-topk").value = s.top_k;
         document.getElementById("se-chunk-local").value = s.chunk_local;
         document.getElementById("se-chunk-jetson").value = s.chunk_jetson;
+        const fps = [15, 20, 30].indexOf(s.office_fps) >= 0
+          ? s.office_fps : 20;
+        document.querySelectorAll('input[name="se-fps"]')
+          .forEach(r => { r.checked = parseInt(r.value, 10) === fps; });
+        if (window.__setOfficeFps) window.__setOfficeFps(fps);
         if (s.settings_error) errline.textContent = s.settings_error;
         document.getElementById("se-th-local").className =
           s.profile === "local" ? "se-on" : "";
@@ -5326,7 +5339,12 @@ button.linklike { background: none; border: none; padding: 0;
           query_mode: document.getElementById("se-mode").value,
           top_k: parseInt(document.getElementById("se-topk").value, 10),
           chunk_local: parseInt(document.getElementById("se-chunk-local").value, 10),
-          chunk_jetson: parseInt(document.getElementById("se-chunk-jetson").value, 10) });
+          chunk_jetson: parseInt(document.getElementById("se-chunk-jetson").value, 10),
+          office_fps: (() => {
+            const c = document.querySelector('input[name="se-fps"]:checked');
+            const v = c ? parseInt(c.value, 10) : 20;
+            return [15, 20, 30].indexOf(v) >= 0 ? v : 20;
+          })() });
         load();
       } catch (e) { fail(e); }
     };
@@ -6313,6 +6331,22 @@ let RECEP_HEAD_Y = 1.0;
 const SEAT_CLIP = "drive";
 const SEAT_DEBUG = new URLSearchParams(location.search).has("seatdebug");
 const RECEP_SCALE = 1.9;
+let recepFps = 20;
+window.__setOfficeFps = (v) => {
+  v = parseInt(v, 10);
+  if (v === 15 || v === 20 || v === 30) recepFps = v;
+  const f = document.querySelector("#p-studio iframe.office");
+  if (f && f.contentWindow) {
+    try {
+      f.contentWindow.postMessage({ kind: "office-fps", fps: recepFps }, location.origin);
+    } catch (e) { /* iframe not ready yet */ }
+  }
+  return recepFps;
+};
+fetch("api/settings", { cache: "no-store" })
+  .then((r) => r.json())
+  .then((scfg) => { window.__setOfficeFps((scfg && scfg.office_fps) || 20); })
+  .catch(() => {});
 
 function mountReception(box, appearance, bub) {
   const vs = slots.recep;
@@ -6765,6 +6799,13 @@ function mountReception(box, appearance, bub) {
     if (!box.isConnected) return;
     if (recepHidden()) { vs.cur.waiting = true; return; }
     vs.cur.waiting = false;
+    const gap = 1000 / recepFps;
+    const nowT = performance.now();
+    if (nowT - (vs.cur.lastT || 0) < gap) {
+      vs.cur.raf = requestAnimationFrame(tick);
+      return;
+    }
+    vs.cur.lastT = nowT;
     if (vs.cur && vs.cur.locked) {
       vs.cur.skip = ((vs.cur.skip || 0) + 1) % 12;
       if (vs.cur.skip) {

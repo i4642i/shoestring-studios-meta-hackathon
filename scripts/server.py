@@ -1084,6 +1084,7 @@ class Handler(BaseHTTPRequestHandler):
                "llm_model": eff["llm_model"], "query_mode": eff["query_mode"],
                "top_k": eff["top_k"], "chunk_local": eff["chunk_local"],
                "chunk_jetson": eff["chunk_jetson"],
+               "office_fps": eff["office_fps"],
                "llm_models": [{"model": m,
                                "provider": runner.provider_of(m)[0]}
                               for m in runner.LLM_MODELS],

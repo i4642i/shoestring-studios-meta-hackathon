@@ -932,6 +932,11 @@ addEventListener("message", (e) => {
   if (e.origin !== location.origin) return;
   const d = e.data;
   if (d && d.kind === "office-run") { setLiveRun(d.run_id || ""); return; }
+  if (d && d.kind === "office-fps") {
+    const v = parseInt(d.fps, 10);
+    if (v === 15 || v === 20 || v === 30) officeFps = v;
+    return;
+  }
   if (d && d.kind === "office-vis") {
     officeShown = !!d.show;
     wakeOffice();
@@ -1130,8 +1135,20 @@ window.__officeLive = () => {
 let officeShown = window.parent === window;
 let loopIdle = false;
 let lastFrame = 0;
+let officeFps = 20;
+function loadOfficeFps() {
+  fetch("api/settings", { cache: "no-store" })
+    .then((r) => r.json())
+    .then((scfg) => {
+      const v = scfg ? parseInt(scfg.office_fps, 10) : 20;
+      if (v === 15 || v === 20 || v === 30) officeFps = v;
+    })
+    .catch(() => {});
+}
+loadOfficeFps();
 function officeHidden() { return document.hidden || !officeShown; }
 function wakeOffice() {
+  loadOfficeFps();
   if (loopIdle && !officeHidden()) {
     loopIdle = false;
     lastFrame = 0;
@@ -1147,7 +1164,7 @@ function animate() {
   loopIdle = false;
   requestAnimationFrame(animate);
   const nowMs = performance.now();
-  if (nowMs - lastFrame < 33) return;
+  if (nowMs - lastFrame < 1000 / officeFps) return;
   lastFrame = nowMs;
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.05);
