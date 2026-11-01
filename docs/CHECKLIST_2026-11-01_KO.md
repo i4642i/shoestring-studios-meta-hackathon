@@ -64,7 +64,7 @@
 - [x] 10 J13/J14 Input logs + spec check (3fa6b80)
 - [x] 11 J15 Board verify view (9024280)
 - [x] 12 J16 Project folder logs (d3efb37)
-- [ ] 13 J17 Settings layout
+- [x] 13 J17 Settings layout (e93dacf)
 - [ ] 14 J18 PC tab layout + real rights
 - [ ] 15 J19/J20 All tabs width + Gallery
 - [ ] 16 J21 About tab layout + honest claims
