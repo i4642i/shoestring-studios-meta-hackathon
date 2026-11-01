@@ -83,7 +83,8 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   pc_read_source, open_ref, pc_search_theory, pc_pick_theory,
   pc_read_theory, pc_set_recipients, research_status,
   write_concepts. Ask for nothing else.
-- Finish with ONE write_concepts call shaped EXACTLY like this:
+- Finish with ONE write_concepts call shaped EXACTLY like this
+  (a real object argument, never a JSON string):
   {concepts: {parts: [...]}} -- one entry per structure part in
   order:
   {part_id: "p1", concept_name, easy_explanation (>=30 words),

@@ -416,7 +416,10 @@ def _write_report(ctx, args, category, validator):
         try:
             obj = json.loads(obj)
         except ValueError:
-            obj = None
+            try:
+                obj = json.loads(re.sub(r"[\x00-\x1f]", "", obj))
+            except ValueError:
+                obj = None
     if not isinstance(obj, dict):
         return {"ok": False,
                 "errors": ["call with {%s: {...}} -- pass the object "

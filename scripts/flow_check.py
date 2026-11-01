@@ -1105,6 +1105,26 @@ finally:
     shutil.rmtree(qtmdir, ignore_errors=True)
 
 
+covdir3 = tempfile.mkdtemp()
+with open(os.path.join(covdir3, "received.pd_marty.structure.json"),
+          "w", encoding="utf-8") as f:
+    json.dump({"sender": "pd_marty", "category": "structure",
+                "version": 2,
+                "data": {"parts": [{"id": "p%d" % (i + 1)}
+                                 for i in range(8)],
+                         "links": []}}, f)
+ctxs3 = {"run_dir": covdir3, "order_id": "o9",
+         "producer": "case_rex"}
+raw4 = json.dumps({"parts": [_cov_case("p%d" % (i + 1))
+                              for i in range(4)]})
+raw4 = raw4.replace("T", "T\n", 1)
+rn = _tools._write_report(ctxs3, {"cases": raw4},
+                          "cases", _tools.validate_cases)
+ok(not rn.get("ok") and any("p5" in e for e in rn.get("errors", [])),
+   "raw newline in string arg is salvaged, then checked")
+shutil.rmtree(covdir3, ignore_errors=True)
+
+
 def boom(agent_dir, run_dir, brief, input_md):
     return {"ok": False, "error": "kaput"}
 
