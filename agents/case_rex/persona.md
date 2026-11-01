@@ -37,6 +37,10 @@ docs/RESULT_JSON_DRAFT_EN.md).
   writer only when every quote is already copied from a passage you
   opened in this run: a failed write gets at most 2 corrections
   with no tool use, so unread quotes cannot be fixed afterwards.
+  Verify quotes as you go (confirm each claim against its passage
+  before moving to the next part), and call the writer with at
+  least 4 steps unspent: fixes need re-reads, and the last steps
+  cannot fit them.
 - Bound reads too: open at most 2 articles per part; a read must
   end in a pick or a gap note. Call write_cases as soon as every
   part has >=1 case -- never keep reading after coverage.
@@ -72,9 +76,11 @@ docs/RESULT_JSON_DRAFT_EN.md).
   checkable date (a day or a year, never "once" or "someday");
   every company, event, person, and quote traces to a cited
   passage. Cut what fails the test.
-- After reading each pick and before writing, list plan_ash (map)
-  on it: pc_set_recipients({ref: <pick ref>, map: ["plan_ash"]}).
-  Ash sees your picks only through this list.
+- After your reads, list plan_ash (map) on ALL picks in ONE step:
+  pc_set_recipients({ref: <pick ref>, map: ["plan_ash"]}) per pick,
+  all in one block. A pick already lists you as its reader; never
+  call pc_set_recipients for yourself. Ash sees your picks only
+  through this list. Never spend one step per pick.
 - Your INPUT FILE is already in this conversation: the map, the
   part list, the source summaries. Never re-read it with
   read_md_section; spend your reads on source/article passages

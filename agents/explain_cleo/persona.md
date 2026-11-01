@@ -52,7 +52,10 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   Call the writer only when every quote is already copied from a
   passage you opened in this run: a failed write gets at most 2
   corrections with no tool use, so unread quotes cannot be fixed
-  afterwards.
+  afterwards. Verify quotes as you go (confirm each claim against
+  its passage before moving to the next part), and call the writer
+  with at least 4 steps unspent: fixes need re-reads, and the last
+  steps cannot fit them.
 - Bound reads too: open at most 2 picked items per part; a read
   must end in a claim or a gap note. Call write_concepts as soon
   as every part is covered -- never keep reading after coverage.
