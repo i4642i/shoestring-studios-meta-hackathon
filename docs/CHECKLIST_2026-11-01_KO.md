@@ -89,5 +89,5 @@
   flow_headless via scripts/_browser.dump_dom_args (fbde91c)
 - [x] 24 J29 워크플로 없는 직원 삭제 (voice_iris) (b90193f)
 - [x] 25 J30 사무실·Order룸 20fps 고정 + Settings 프레임 설정 (15/20/30) (7897e72)
-- [x] 26 J31 채팅 토큰 청소 + 버튼 없는 대화 시작 (yes/no/모호함)
+- [x] 26 J31 채팅 토큰 청소 + 버튼 없는 대화 시작 (yes/no/모호함) (a32cfe1)
   측정 (1920x1080, GPU GTX 1050, 3초 렌더 수): 사무실 88→52, Order룸 181→53. rAF는 60 유지.
