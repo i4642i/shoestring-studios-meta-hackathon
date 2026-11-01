@@ -1113,7 +1113,7 @@ _pdi.page_png = lambda pg: b"PNG"
 pc.formula_candidate_pages = lambda texts: []
 _wmod._order_pdf_bytes = lambda entry: b"fakepdf"
 _vcalls = []
-def _fake_vision(model, png, prompt, timeout=240):
+def _fake_vision(model, png, prompt, timeout=240, **kw):
     _vcalls.append(prompt)
     return {"columns": ["A"], "rows": [["1"]]}, 30, 40
 _wmod._vision_chat = _fake_vision

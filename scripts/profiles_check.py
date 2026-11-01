@@ -132,7 +132,7 @@ def main():
     real_chat = runner._chat
     seen = {}
 
-    def fake_chat(model, messages, tools, timeout=120):
+    def fake_chat(model, messages, tools, timeout=120, **kw):
         seen["system"] = messages[0]["content"]
         return {"choices": [{"message": {"role": "assistant",
                                          "content": "x"}}],

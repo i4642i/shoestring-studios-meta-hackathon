@@ -7,6 +7,7 @@ import time
 import urllib.request
 
 from . import profiles as _profiles
+from . import llmlog as _llmlog
 
 BASE_URL = "https://api.meta.ai/v1"
 BASETEN_URL = "https://inference.baseten.co/v1"
@@ -112,7 +113,8 @@ def _key(model=None):
     return key
 
 
-def _chat(model, messages, tools, max_tokens=None, timeout=300):
+def _chat(model, messages, tools, max_tokens=None, timeout=300,
+          caller=None, log_path=None):
     # No token cap by default (user decision 2026-10-28): the caller passes
     # max_tokens only when a bound is wanted. Step/loop bounds still apply.
     body = {"model": model, "messages": messages}
@@ -129,8 +131,32 @@ def _chat(model, messages, tools, max_tokens=None, timeout=300):
                 "Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode())
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            out = json.loads(resp.read().decode())
+    except Exception as exc:  # noqa: BLE001 - logged, then raised
+        if log_path:
+            _llmlog.append(log_path, {
+                "at": _llmlog.stamp(), "caller": caller or "",
+                "model": model, "seconds": round(time.time() - t0, 1),
+                "prompt_tokens": 0, "completion_tokens": 0,
+                "messages": _llmlog.drop_images(messages),
+                "tools": tools, "reply": None,
+                "error": "%s: %s" % (type(exc).__name__, exc)})
+        raise
+    if log_path:
+        usage = out.get("usage", {}) if isinstance(out, dict) else {}
+        _llmlog.append(log_path, {
+            "at": _llmlog.stamp(), "caller": caller or "",
+            "model": model, "seconds": round(time.time() - t0, 1),
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "messages": _llmlog.drop_images(messages),
+            "tools": tools,
+            "reply": out.get("choices", [{}])[0].get("message")
+            if isinstance(out, dict) else out})
+    return out
 
 
 def _retry_writer(agent, messages, ctx, play, writer, writer_arg,
@@ -172,7 +198,10 @@ def _retry_writer(agent, messages, ctx, play, writer, writer_arg,
     if last is not None:
         slim.append(last)
     slim.append({"role": "user", "content": ask})
-    resp = _chat(agent["model"], slim, None)
+    resp = _chat(agent["model"], slim, None,
+                   caller=agent["id"] + ":retry",
+                   log_path=os.path.join(ctx.get("run_dir", ""),
+                                         "llm_calls.jsonl"))
     usage = resp.get("usage", {})
     total["prompt"] += usage.get("prompt_tokens", 0)
     total["completion"] += usage.get("completion_tokens", 0)
@@ -327,7 +356,10 @@ def run(agent_dir, run_dir, brief, input_md):
                 "function": {"name": n, "description": d, "parameters": s}}
                for n, (_, d, s) in play.items()]
         try:
-            resp = _chat(agent["model"], messages, oai)
+            resp = _chat(agent["model"], messages, oai,
+                         caller=agent["id"],
+                         log_path=os.path.join(run_dir,
+                                               "llm_calls.jsonl"))
         except TimeoutError:
             emit({"ev": "run_fail",
                   "reason": "model call timed out after 300s; "
@@ -436,7 +468,10 @@ def _write_ko_summary(agent, run_dir, emit, total):
             {"role": "user", "content":
              "Summarize this crew result in ONE Korean paragraph "
              "(what was decided or written, key numbers). No lists, "
-             "no preamble.\n\n" + blob}], None, max_tokens=300)
+             "no preamble.\n\n" + blob}], None, max_tokens=300,
+                   caller=agent["id"] + ":summary_ko",
+                   log_path=os.path.join(run_dir,
+                                         "llm_calls.jsonl"))
         usage = resp.get("usage", {})
         total["prompt"] += usage.get("prompt_tokens", 0)
         total["completion"] += usage.get("completion_tokens", 0)

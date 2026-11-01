@@ -225,7 +225,7 @@ try:
     seen_system = {}
     runner.key_present = lambda model: True
 
-    def fake_chat(model, messages, tools, timeout=120):
+    def fake_chat(model, messages, tools, timeout=120, **kw):
         seen_system["system"] = messages[0]["content"]
         return {"choices": [{"message": {
             "content": "I remember this project."}}]}

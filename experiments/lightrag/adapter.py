@@ -367,33 +367,62 @@ def get_rag(eid, profile=None, working_dir=None):
     os.makedirs(wdir, exist_ok=True)
 
     async def llm_func(prompt, system_prompt=None, history_messages=None, **kw):
+        from agents._frame import llmlog as _llmlog
         t0 = time.time()
         out = await openai_complete_if_cache(
             lm["model"], prompt,
             system_prompt=system_prompt, history_messages=history_messages or [],
             api_key=llm_key, base_url=lm["base_url"], **kw)
+        secs = round(time.time() - t0, 1)
         _log_call(eid, prof, {"t": time.strftime("%H:%M:%S"),
                               "prompt_chars": len(prompt or ""),
                               "reply_chars": len(out or ""),
-                              "seconds": round(time.time() - t0, 1)},
+                              "seconds": secs},
                   wdir if working_dir else None)
+        _llmlog.append(os.path.join(wdir, "llm_calls.jsonl"), {
+            "at": _llmlog.stamp(), "caller": "lightrag:" + eid,
+            "model": lm["model"], "seconds": secs,
+            "prompt": prompt, "system_prompt": system_prompt,
+            "history_messages": history_messages or [],
+            "reply": out})
         return out
 
     if prof == "jetson":
         base, token = _jetson_auth()
 
         async def embed_func(texts):
-            return jetson_embed(base, token, list(texts))
+            from agents._frame import llmlog as _llmlog
+            t0 = time.time()
+            ts = list(texts)
+            vecs = jetson_embed(base, token, ts)
+            _llmlog.append(os.path.join(wdir, "llm_calls.jsonl"), {
+                "at": _llmlog.stamp(),
+                "caller": "lightrag:" + eid + ":embed",
+                "model": "jetson-embed",
+                "seconds": round(time.time() - t0, 1),
+                "texts": len(ts),
+                "chars": sum(len(t) for t in ts)})
+            return vecs
     else:
         mid = pcfg["model"]
 
         async def embed_func(texts):
+            from agents._frame import llmlog as _llmlog
             import numpy as np
             from sentence_transformers import SentenceTransformer
             if mid not in _ST:
                 _ST[mid] = SentenceTransformer(mid, device="cpu")
-            return np.asarray(_ST[mid].encode(
-                texts, normalize_embeddings=True, show_progress_bar=False))
+            t0 = time.time()
+            ts = list(texts)
+            vecs = np.asarray(_ST[mid].encode(
+                ts, normalize_embeddings=True, show_progress_bar=False))
+            _llmlog.append(os.path.join(wdir, "llm_calls.jsonl"), {
+                "at": _llmlog.stamp(),
+                "caller": "lightrag:" + eid + ":embed",
+                "model": mid, "seconds": round(time.time() - t0, 1),
+                "texts": len(ts),
+                "chars": sum(len(t) for t in ts)})
+            return vecs
 
     rag = LightRAG(
         working_dir=wdir,

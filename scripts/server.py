@@ -769,12 +769,15 @@ class Handler(BaseHTTPRequestHandler):
                        "what you received, decided, or used — reply "
                        "with EXACTLY this sentence and nothing else: "
                        "\"%s\"]" % (run_id, note))
+        mem_log = (os.path.join(flows.RUNS_DIR, run_id,
+                                "llm_calls.jsonl") if run_id else None)
         try:
             resp = runner._chat(
                 agent["model"],
                 [{"role": "system", "content": system}]
                 + [{"role": m["role"], "content": m["content"]} for m in msgs],
-                None, timeout=120)
+                None, timeout=120, caller=eid + ":memory_chat",
+                log_path=mem_log)
             reply = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
             if not isinstance(reply, str) or not reply.strip():
                 raise ValueError("empty reply")
@@ -2024,7 +2027,7 @@ class Handler(BaseHTTPRequestHandler):
         ready = not missing
         step = intake.confirm_step(ready, extra)
         if step == "ask" and ready:
-            judged = self._judge_confirm(agent["model"], extra)
+            judged = self._judge_confirm(agent["model"], extra, oid)
             if judged == "yes":
                 step = "start"
             elif judged == "no":
@@ -2060,7 +2063,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(code, out)
 
     @staticmethod
-    def _judge_confirm(model, user_text):
+    def _judge_confirm(model, user_text, oid=""):
         """One-word LLM verdict on an unclear ready-turn reply.
 
         Returns "yes", "no" or None (keep asking). Keywords stay the
@@ -2070,7 +2073,10 @@ class Handler(BaseHTTPRequestHandler):
                 model,
                 [{"role": "system",
                   "content": intake.JUDGE_PROMPT + user_text + "\""}],
-                None, timeout=30)
+                None, timeout=30, caller="sales_sam:judge",
+                log_path=(os.path.join(ROOT, "orders", oid,
+                                           "llm_calls.jsonl")
+                          if oid else None))
             word = ((resp.get("choices") or [{}])[0]
                     .get("message", {}).get("content", ""))
             return intake.parse_confirm_word(word)
@@ -2127,7 +2133,8 @@ class Handler(BaseHTTPRequestHandler):
                 agent["model"],
                 [{"role": "system", "content": system}]
                 + self._transcript_turns(d) + tail,
-                None, timeout=120)
+                None, timeout=120, caller="sales_sam:chat",
+                log_path=os.path.join(d, "llm_calls.jsonl"))
             reply = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
             if not isinstance(reply, str) or not reply.strip():
                 raise ValueError("empty reply")
@@ -3086,7 +3093,7 @@ def main():
         memstore._INDEXER = _mem_stub_indexer
         memstore._RETRIEVER = _mem_stub_retriever
 
-        def _stub_chat(model, messages, tools, timeout=120):
+        def _stub_chat(model, messages, tools, timeout=120, **kw):
             first = messages[0]["content"] if messages else ""
             has = "PROJECT MEMORY" in first \
                 and "UNAVAILABLE" not in first

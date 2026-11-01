@@ -258,6 +258,125 @@ ok(_rfails and "timed out" in _rfails[-1].get("reason", "")
 ok("_run_parse_stage" in _srv and "on_progress" in _srv
    and "parse failed before any model call" in _srv,
    "parse runs as its own stage before any model call")
+# ---- every LLM call is logged in full, keys never ----
+import json as _json
+import urllib.request as _urlreq
+from agents._frame import llmlog as _llmlog
+_nested = {"authorization": "Bearer sk-live", "ok": 1,
+           "deep": {"api_key": "x", "text": "keep me"}}
+_out = _llmlog.scrub(_nested)
+ok("authorization" not in _out and "api_key" not in _out["deep"]
+   and _out["deep"]["text"] == "keep me" and _out["ok"] == 1,
+   "key-shaped fields are dropped, text kept")
+_old_env = os.environ.get("BASETEN_API_KEY")
+os.environ["BASETEN_API_KEY"] = "sk-test-secret-12345"
+try:
+    _s = _llmlog.scrub({"msg": "key sk-test-secret-12345 here"})
+finally:
+    if _old_env is None:
+        del os.environ["BASETEN_API_KEY"]
+    else:
+        os.environ["BASETEN_API_KEY"] = _old_env
+ok(_s == {"msg": "key *** here"},
+   "configured key values are redacted from text")
+_img = {"role": "user", "content": [
+    {"type": "text", "text": "look"},
+    {"type": "image_url", "image_url": {
+        "url": "data:image/png;base64," + "QUJD" * 100}}]}
+_dropped = _llmlog.drop_images([_img])
+_u = _dropped[0]["content"][1]["image_url"]["url"]
+ok("base64," not in _u and "bytes" in _u
+   and _dropped[0]["content"][0]["text"] == "look",
+   "image bytes become a byte count, text kept")
+
+
+class _FakeResp:
+    def __init__(self, payload):
+        self._p = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return _json.dumps(self._p).encode()
+
+
+_real_open = _urlreq.urlopen
+
+
+def _fake_open(req, timeout=None):
+    return _FakeResp({"choices": [{"message": {"content": "hi there"}}],
+                      "usage": {"prompt_tokens": 10,
+                                "completion_tokens": 3}})
+
+
+_urlreq.urlopen = _fake_open
+_old_key = os.environ.get("BASETEN_API_KEY")
+os.environ["BASETEN_API_KEY"] = "test-dummy-key"
+try:
+    _ld = tempfile.mkdtemp(prefix="llmlog_")
+    _lp = os.path.join(_ld, "llm_calls.jsonl")
+    _msgs = [{"role": "system", "content": "be sam"},
+             {"role": "user", "content": "hello"}]
+    _tools = [{"type": "function",
+               "function": {"name": "f", "parameters": {}}}]
+    _got = _runner._chat("meta-models/muse-spark-open-1026", _msgs,
+                         _tools, caller="sam:test", log_path=_lp)
+    _line = open(_lp, encoding="utf-8").read()
+    _rec = _json.loads(_line.strip().splitlines()[-1])
+finally:
+    _urlreq.urlopen = _real_open
+    if _old_key is None:
+        del os.environ["BASETEN_API_KEY"]
+    else:
+        os.environ["BASETEN_API_KEY"] = _old_key
+    shutil.rmtree(_ld, ignore_errors=True)
+ok(_got["choices"][0]["message"]["content"] == "hi there",
+   "logged call still returns the reply")
+ok(_rec["caller"] == "sam:test"
+   and _rec["model"] == "meta-models/muse-spark-open-1026"
+   and _rec["prompt_tokens"] == 10 and _rec["completion_tokens"] == 3
+   and _rec["messages"] == _msgs and _rec["tools"] == _tools
+   and _rec["reply"] == {"content": "hi there"}
+   and isinstance(_rec["seconds"], (int, float))
+   and "Bearer" not in _line,
+   "one JSONL line holds the full request and reply, no keys")
+
+
+def _boom_open(req, timeout=None):
+    raise TimeoutError("timed out")
+
+
+_urlreq.urlopen = _boom_open
+_old_key2 = os.environ.get("BASETEN_API_KEY")
+os.environ["BASETEN_API_KEY"] = "test-dummy-key"
+try:
+    _ld2 = tempfile.mkdtemp(prefix="llmlog_err_")
+    _lp2 = os.path.join(_ld2, "llm_calls.jsonl")
+    try:
+        _runner._chat("meta-models/muse-spark-open-1026",
+                      [{"role": "user", "content": "x"}],
+                      None, caller="sam:err", log_path=_lp2)
+        _raised = False
+    except TimeoutError:
+        _raised = True
+    _rec2 = _json.loads(open(_lp2, encoding="utf-8").read().strip())
+finally:
+    _urlreq.urlopen = _real_open
+    if _old_key2 is None:
+        del os.environ["BASETEN_API_KEY"]
+    else:
+        os.environ["BASETEN_API_KEY"] = _old_key2
+    shutil.rmtree(_ld2, ignore_errors=True)
+ok(_raised and _rec2["reply"] is None
+   and "timed out" in (_rec2.get("error") or "")
+   and _rec2["caller"] == "sam:err",
+   "failed calls are logged too, then raised")
+ok("sales_sam:chat" in _srv and "llm_calls.jsonl" in _srv,
+   "sam chat turns land in the order log")
 
 
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")

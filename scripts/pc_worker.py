@@ -99,9 +99,10 @@ def _unlock(lockd):
     shutil.rmtree(lockd, ignore_errors=True)
 
 
-def _llm_json(model, prompt):
+def _llm_json(model, prompt, caller="pc_worker:map", log_path=None):
     resp = runner._chat(model, [{"role": "user", "content": prompt}],
-                        None, timeout=180)
+                        None, timeout=180, caller=caller,
+                        log_path=log_path)
     text = (resp.get("choices") or [{}])[0].get("message", {}).get(
         "content", "")
     obj, status = runner.parse_json_answer(text or "")
@@ -110,7 +111,7 @@ def _llm_json(model, prompt):
     return obj, len(prompt), len(text or "")
 
 
-def _section_map(model, n, heading, paras, stats):
+def _section_map(model, n, heading, paras, stats, log_path=None):
     numbered = "\n".join("p%d: %s" % (k + 1, p["text"])
                          for k, p in enumerate(paras))
     prompt = ("Summarize this document section for NAVIGATION (never quote "
@@ -123,7 +124,8 @@ def _section_map(model, n, heading, paras, stats):
     last = None
     for _ in range(2):
         try:
-            obj, pin, rout = _llm_json(model, prompt)
+            obj, pin, rout = _llm_json(model, prompt,
+                                         log_path=log_path)
             stats["calls"] += 1
             stats["prompt_chars"] += pin
             stats["reply_chars"] += rout
@@ -142,7 +144,8 @@ def _section_map(model, n, heading, paras, stats):
     return [], True
 
 
-def _vision_chat(model, png, prompt, timeout=240):
+def _vision_chat(model, png, prompt, timeout=240,
+                   caller="pc_worker:transcribe", log_path=None):
     """One vision call. Returns (obj, prompt_tokens,
     completion_tokens); raises on transport or JSON failure."""
     import base64
@@ -151,7 +154,8 @@ def _vision_chat(model, png, prompt, timeout=240):
         {"type": "image_url", "image_url": {
             "url": "data:image/png;base64," + base64.b64encode(png)
             .decode(), "detail": "auto"}}]}
-    resp = runner._chat(model, [msg], None, timeout=timeout)
+    resp = runner._chat(model, [msg], None, timeout=timeout,
+                         caller=caller, log_path=log_path)
     text = (resp.get("choices") or [{}])[0].get("message", {}).get(
         "content", "")
     obj, status = runner.parse_json_answer(text or "")
@@ -173,7 +177,7 @@ def _vision_models(primary):
     return out
 
 
-def _describe_one(model, blob, caption):
+def _describe_one(model, blob, caption, log_path=None):
     import base64
     prompt = ("Describe this document figure for NAVIGATION (never quote "
               "it as evidence). Reply with ONLY a JSON object, no other "
@@ -188,7 +192,9 @@ def _describe_one(model, blob, caption):
         {"type": "image_url", "image_url": {
             "url": "data:image/png;base64," + base64.b64encode(blob)
             .decode(), "detail": "auto"}}]}
-    resp = runner._chat(model, [msg], None, timeout=180)
+    resp = runner._chat(model, [msg], None, timeout=180,
+                         caller="pc_worker:describe",
+                         log_path=log_path)
     text = (resp.get("choices") or [{}])[0].get("message", {}).get(
         "content", "")
     obj, status = runner.parse_json_answer(text or "")
@@ -207,7 +213,8 @@ def _describe_one(model, blob, caption):
     return obj, toks or (len(prompt) + len(text or "")) // 4
 
 
-def describe_figures(entry, edir, model, progress=None):
+def describe_figures(entry, edir, model, progress=None,
+                       log_path=None):
     """Describe each figure once (table-images included). The first
     figure probes vision support; on failure the rest stay
     caption-only. Returns (described, failed, calls, tokens, backend).
@@ -235,8 +242,9 @@ def describe_figures(entry, edir, model, progress=None):
         for m in models if backend is None else [backend]:
             for _ in range(2):
                 try:
-                    obj, tk = _describe_one(m, blob,
-                                            fig.get("caption", ""))
+                    obj, tk = _describe_one(
+                        m, blob, fig.get("caption", ""), log_path=os.path.join(
+                            edir, "llm_calls.jsonl"))
                     calls += 1
                     toks += tk
                     fig["description"] = obj["description"].strip()
@@ -307,7 +315,8 @@ def _cache_io(edir, kind, page, put=None):
     return put
 
 
-def transcribe_entry(entry, edir, model, progress=None):
+def transcribe_entry(entry, edir, model, progress=None,
+                       log_path=None):
     """Vision re-reads: formulas on candidate pages + tables under
     captions. Cached by (page, kind, prompt version); at most
     VISION_CALL_CAP paid calls per document; every call logged with
@@ -358,8 +367,9 @@ def transcribe_entry(entry, edir, model, progress=None):
             for att in range(2):
                 t0 = time.time()
                 try:
-                    obj, pt, ct = _vision_chat(model, png_of[page],
-                                               prompt)
+                    obj, pt, ct = _vision_chat(
+                        model, png_of[page], prompt, log_path=os.path.join(
+                            edir, "llm_calls.jsonl"))
                     calls += 1
                     secs = round(time.time() - t0, 1)
                     log(edir, {"ev": "transcribe_call", "kind": kind,
@@ -414,7 +424,7 @@ def _sec_no(addr):
     return pc.sec_of_addr(addr)
 
 
-def build_map(entry, model, progress=None):
+def build_map(entry, model, progress=None, log_path=None):
     stats = {"calls": 0, "prompt_chars": 0, "reply_chars": 0}
     flat = entry["paragraphs"]
     pre = "s" if entry.get("pc", "source") == "source" else "g"
@@ -427,7 +437,7 @@ def build_map(entry, model, progress=None):
                "figures": entry.get("figures", []),
                "tables": entry.get("tables", [])}
         items, miss = _section_map(model, s["n"], s["heading"], paras,
-                                   stats)
+                                   stats, log_path=log_path)
         missing += 1 if miss else 0
         terms = pc.rank_key_terms(sec)[:pc.TERMS_PER_SECTION]
         has = pc.section_has(entry, s["n"])
@@ -463,7 +473,8 @@ def build_map(entry, model, progress=None):
                          "content": "Summarize this document in 3-5 "
                                     "sentences from its section summaries. "
                                     "Plain text, English.\n\n" + joined}],
-                None, timeout=180)
+                None, timeout=180, caller="pc_worker:map_summary",
+                log_path=log_path)
             stats["calls"] += 1
             entry_summary = ((resp.get("choices") or [{}])[0]
                              .get("message", {}).get("content", "")
@@ -554,7 +565,9 @@ def main(doc_id, mode="all", pcname="source"):
                "pct": stage_pct(stage, done, total), "stage": stage})
     if mode in ("all", "noindex"):
         t0 = time.time()
-        tsum = transcribe_entry(entry, edir, model, progress=pg)
+        tsum = transcribe_entry(entry, edir, model, progress=pg,
+                                log_path=os.path.join(
+                                    edir, "llm_calls.jsonl"))
         with open(os.path.join(edir, "entry.json"), "w",
                   encoding="utf-8") as f:
             json.dump(entry, f, ensure_ascii=False, indent=2)
@@ -567,7 +580,8 @@ def main(doc_id, mode="all", pcname="source"):
                  tsum["cached"]), flush=True)
         t0 = time.time()
         ok_n, fail_n, dcalls, dtoks, backend = describe_figures(
-            entry, edir, model, progress=pg)
+            entry, edir, model, progress=pg, log_path=os.path.join(
+                edir, "llm_calls.jsonl"))
         with open(os.path.join(edir, "entry.json"), "w",
                   encoding="utf-8") as f:
             json.dump(entry, f, ensure_ascii=False, indent=2)
@@ -581,7 +595,9 @@ def main(doc_id, mode="all", pcname="source"):
         print("describe %s: %d ok, %d failed (%s)"
               % (doc_id, ok_n, fail_n, backend), flush=True)
         t0 = time.time()
-        mapd, stats = build_map(entry, model, progress=pg)
+        mapd, stats = build_map(entry, model, progress=pg,
+                                log_path=os.path.join(
+                                    edir, "llm_calls.jsonl"))
         with open(os.path.join(edir, "map.json"), "w",
                   encoding="utf-8") as f:
             json.dump(mapd, f, ensure_ascii=False, indent=2)

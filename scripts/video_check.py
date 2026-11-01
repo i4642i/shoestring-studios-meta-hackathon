@@ -701,7 +701,7 @@ try:
     real_chat = _runner._chat
 
     def _canned(model, messages, tools, max_tokens=None,
-                timeout=300):
+                timeout=300, **kw):
         calls.append(json.loads(json.dumps(messages)))
         if len(calls) == 1:
             tc = {"id": "c1", "type": "function",
