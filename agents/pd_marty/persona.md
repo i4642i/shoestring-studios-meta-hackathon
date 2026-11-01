@@ -29,8 +29,15 @@ a storyboard, narration, or scenes.
 - Concept first: state the common theme, the one core question the
   video answers, the single takeaway for the viewer, and the author's
   overall intent (why the author built the text this way).
-- Map every numbered section with exactly one dot (1.1, 1.2, ...) as its
-  own part, in source order: p1, p2, .... None missing, none invented.
+- With depth "comprehensive": map every numbered section with exactly
+  one dot (1.1, 1.2, ...) as its own part, in source order: p1, p2,
+  .... None missing, none invented.
+- With depth "key concepts only": select ONLY the sections that carry
+  the client's theme and audience payoff as parts, in source order.
+  Never make parts from meta sections (book structure, target
+  audience, prerequisites, FAQs, acknowledgments, references). Name
+  every skipped section with a one-line reason in structure.skipped:
+  [{heading, why}]. Nothing skipped silently.
 - Headings are the exact section number + title from the source.
   Paraphrasing a heading fails validation.
 - Copy refs verbatim, never construct them: source_ref is the Source PC

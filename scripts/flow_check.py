@@ -1133,6 +1133,38 @@ ok(_tools._lenient_json('{"a": }') is None,
    "truncation still rejected")
 
 
+SRC3 = "# T\n## 1.1 Alpha\ntext\n## 1.2 Beta\ntext\n## 1.3 Gamma\ntext"
+
+
+def _struct3(parts, skipped):
+    return {"source_ref": "pc://source/ab12cd34ef56",
+            "parts": [{"id": p, "heading": h,
+                       "ref": "pc://source/ab12cd34ef56#s" + h.split()[0],
+                       "covers": "c", "keywords": ["k"]}
+                      for p, h in parts],
+            "skipped": skipped,
+            "links": [{"from": parts[0][0], "to": parts[1][0],
+                       "why": "w"}],
+            "duration": {"total_s": 600,
+                         "parts": [{"part_id": p, "seconds": 300,
+                                    "why": "w"} for p, h in parts]}}
+
+
+narrow = _struct3([("p1", "1.1 Alpha"), ("p2", "1.3 Gamma")],
+                  [{"heading": "1.2 Beta", "why": "meta"}])
+ok(_tools.validate_structure(narrow, SRC3) == [],
+   "narrowed structure passes with skipped reasons")
+silent = _struct3([("p1", "1.1 Alpha"), ("p2", "1.3 Gamma")], [])
+ok(any("not mapped" in e
+       for e in _tools.validate_structure(silent, SRC3)),
+   "silent drop still rejected")
+noreason = _struct3([("p1", "1.1 Alpha"), ("p2", "1.3 Gamma")],
+                    [{"heading": "1.2 Beta", "why": ""}])
+ok(any("non-empty why" in e
+       for e in _tools.validate_structure(noreason, SRC3)),
+   "skipped without reason rejected")
+
+
 def boom(agent_dir, run_dir, brief, input_md):
     return {"ok": False, "error": "kaput"}
 

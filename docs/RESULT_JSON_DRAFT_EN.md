@@ -173,6 +173,16 @@ exists in the input"):
           "why": {"type": "string"}
         }
       }
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["heading", "why"],
+        "properties": {
+          "heading": {"type": "string"}, "why": {"type": "string"}
+        }
+      }
     }
   }
 }
@@ -188,7 +198,11 @@ exists in the input"):
   (writer tool); `total_s` equals the request length parsed to
   exact seconds (Sam→Marty handoff check).
 - Coverage, order, neighbour links, and exact-heading rules are
-  unchanged from v1 (writer-enforced).
+  unchanged from v1 (writer-enforced). With depth "key concepts
+  only", Marty selects only payoff sections as parts and records
+  the rest in optional `skipped` [{heading, why}]: every input
+  section is either a part or skipped with a reason; nothing
+  dropped silently.
 
 ### Retired: `structure` v1 (replaced by `concept` v1 + `structure` v3)
 

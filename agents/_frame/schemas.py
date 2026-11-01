@@ -192,15 +192,40 @@ def validate_structure(obj, input_md_path):
             if (not isinstance(kws, list) or not kws
                     or any(not isinstance(k, str) or not k.strip() for k in kws)):
                 errors.append("parts[%s].keywords must be a non-empty string list" % (pid,))
+        skipped = obj.get("skipped", [])
+        skipped_heads = []
+        if skipped:
+            if not isinstance(skipped, list):
+                errors.append("skipped must be a list")
+            else:
+                for j, sk in enumerate(skipped):
+                    if not isinstance(sk, dict):
+                        errors.append("skipped[%d] must be an object" % j)
+                        continue
+                    sh = sk.get("heading")
+                    if not isinstance(sh, str) or not sh.strip():
+                        errors.append("skipped[%d] needs a non-empty heading" % j)
+                    else:
+                        skipped_heads.append(_norm(sh))
+                    if not isinstance(sk.get("why"), str) \
+                            or not sk["why"].strip():
+                        errors.append("skipped[%d] needs a non-empty why" % j)
         want_seq = [_norm(h) for h in expected]
+        accounted = set(got) | set(skipped_heads)
         for h in want_seq:
-            if h not in got:
+            if h not in accounted:
                 errors.append("section not mapped: %r" % (h,))
         for j, h in enumerate(got):
             if h not in want_seq:
                 errors.append("parts[%d].heading not found in input: %r" % (j, h))
-        if got != want_seq and not [e for e in errors
-                                     if "not mapped" in e or "not found in input" in e]:
+        for h in skipped_heads:
+            if h not in want_seq:
+                errors.append("skipped heading not found in input: %r" % (h,))
+            if h in set(got):
+                errors.append("section both part and skipped: %r" % (h,))
+        if [h for h in want_seq if h in set(got)] != got \
+                and not [e for e in errors
+                           if "not mapped" in e or "not found in input" in e]:
             errors.append("parts must follow source order")
         for num, title in deep_sections(input_text):
             parent = _parent_part(num, parts)
