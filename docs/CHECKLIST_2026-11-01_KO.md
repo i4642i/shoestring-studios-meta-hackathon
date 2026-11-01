@@ -60,7 +60,7 @@
 - [x] 6 J12 Menu order (93dd36d)
 - [x] 7 J6/J7 Run controls (9c62540)
 - [x] 8 J10/J11 Studio office live states + click to chat (d524896)
-- [ ] 9 J8/J9 Employee project memory + chat
+- [x] 9 J8/J9 Employee project memory + chat (ae9bae9)
 - [ ] 10 J13/J14 Input logs + spec check
 - [ ] 11 J15 Board verify view
 - [ ] 12 J16 Project folder logs
@@ -69,3 +69,9 @@
 - [ ] 15 J19/J20 All tabs width + Gallery
 - [ ] 16 J21 About tab layout + honest claims
 - [ ] 17 J22 Profile card + retire handbook RAG
+- [ ] 18 J23 Square portraits + faces on Flow nodes
+- [ ] 19 J24 Crew grouped by team + team on Add employee
+- [ ] 20 J25 Order tab received state
+- [ ] 21 J26 3D performance
+- [ ] 22 J27 Video toolchain install + smoke test
+- [ ] 23 J28 Check browsers use GPU (do right after 9)
