@@ -1183,6 +1183,52 @@ ok(any("invents parts" in e for e in rx.get("errors", [])),
 shutil.rmtree(covdir4, ignore_errors=True)
 
 
+import urllib.request as _urlreq
+from agents._frame import runner as _runner
+_saved_keys = {k: os.environ.get(k) for k in
+               ("BASETEN_API_KEY", "MODEL_API_KEY", "META_API_KEY")}
+os.environ["BASETEN_API_KEY"] = "t"
+os.environ["MODEL_API_KEY"] = "t"
+os.environ["META_API_KEY"] = "t"
+_caps = {}
+
+
+class _FakeResp:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return json.dumps({"choices": [{"message": {"role": "assistant",
+                                                   "content": "hi"}}],
+                         "usage": {}}).encode()
+
+
+def _cap(req, timeout=None):
+    _caps["body"] = json.loads(req.data.decode())
+    return _FakeResp()
+
+
+_real_open = _urlreq.urlopen
+_urlreq.urlopen = _cap
+try:
+    _runner._chat("m", [], None, caller="t")
+    ok("temperature" not in _caps["body"],
+       "default call sends no temperature")
+    _runner._chat("m", [], None, temperature=0, caller="t")
+    ok(_caps["body"].get("temperature") == 0,
+       "temperature=0 reaches the body")
+finally:
+    _urlreq.urlopen = _real_open
+    for _k, _v in _saved_keys.items():
+        if _v is None:
+            os.environ.pop(_k, None)
+        else:
+            os.environ[_k] = _v
+
+
 def boom(agent_dir, run_dir, brief, input_md):
     return {"ok": False, "error": "kaput"}
 
