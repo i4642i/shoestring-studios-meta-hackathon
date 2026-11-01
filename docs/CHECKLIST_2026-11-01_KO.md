@@ -52,29 +52,39 @@
 - [x] J5 카드 1600·방 높이 자동·말풍선 55%·입력창 전체·1920/1280/390 캡처
 
 ## 대기열 (2026-11-01 오후)
-- [x] 1 J3 Order lounge sign + default camera (10ac785)
-- [x] 2 J4 PDF button inside Sam's bubble (a39b108)
-- [x] 3 J5 Order tab adaptive (0180077)
-- [x] 4 Flow box (B1/B3/B5 re-test) (c11651b)
-- [x] 5 J1/J2 Crew portraits (dda766c)
-- [x] 6 J12 Menu order (93dd36d)
-- [x] 7 J6/J7 Run controls (9c62540)
-- [x] 8 J10/J11 Studio office live states + click to chat (d524896)
-- [x] 9 J8/J9 Employee project memory + chat (ae9bae9)
-- [x] 10 J13/J14 Input logs + spec check (3fa6b80)
-- [x] 11 J15 Board verify view (9024280)
-- [x] 12 J16 Project folder logs (d3efb37)
-- [x] 13 J17 Settings layout (e93dacf)
-- [x] 14 J18 PC tab layout + real rights (f70c709)
-- [x] 15 J19/J20 All tabs width + Gallery (1302c52)
-- [x] 16 J21 About tab layout + honest claims (6daa397)
-- [x] 17 J22 Profile card + retire handbook RAG (8be1c97)
-- [x] 18 J23 Square portraits + faces on Flow nodes (60b1325)
-- [x] 19 J24 Crew grouped by team + team on Add employee
-- [x] 20 J25 Order tab received state
-- [x] 21 J26 3D performance
-- [x] 22 J27 Video toolchain install + smoke test (143cb13)
-- [x] 23 J28 Check browsers use GPU (do right after 9) (034da5c)
-- [x] 24 J29 Delete employees not in the workflow (voice_iris) (b90193f)
+## 대기열 (2026-11-01 오후)
+- [x] 1 J3 Order 휴게실 간판 + 기본 카메라 (10ac785)
+- [x] 2 J4 Sam 말풍선 속 PDF 버튼 (a39b108)
+- [x] 3 J5 Order 탭 적응형 (0180077)
+- [x] 4 Flow 박스 (B1/B3/B5 재검사) (c11651b)
+- [x] 5 J1/J2 직원 초상화 (dda766c)
+- [x] 6 J12 메뉴 순서 (93dd36d)
+- [x] 7 J6/J7 실행 제어 (9c62540)
+- [x] 8 J10/J11 사무실 실시간 상태 + 클릭 채팅 (d524896)
+- [x] 9 J8/J9 직원 프로젝트 메모리 + 채팅 (ae9bae9)
+- [x] 10 J13/J14 입력 로그 + 스펙 검사 (3fa6b80)
+- [x] 11 J15 Board 검증 화면 (9024280)
+- [x] 12 J16 프로젝트 폴더 로그 (d3efb37)
+- [x] 13 J17 설정 화면 배치 (e93dacf)
+- [x] 14 J18 PC 탭 배치 + 실제 권한 (f70c709)
+- [x] 15 J19/J20 전체 탭 너비 + 갤러리 (1302c52)
+- [x] 16 J21 About 탭 + 정직한 표기 (6daa397)
+- [x] 17 J22 프로필 카드 + handbook RAG 제거 (8be1c97)
+- [x] 18 J23 네모 초상화 + Flow 노드 얼굴 (60b1325)
+- [x] 19 J24 팀별 직원 묶음 + 직원 추가에 팀 (6a76e5e)
+- [x] 20 J25 Order 접수 완료 상태 (2596620)
+- [x] 21 J26 3D 성능 (1e99c16)
+  측정 (1920x1080, GPU GTX 1050, window.__perf 3초):
+  장면 | fps | draw calls | 삼각형 | 그림자 | 픽셀비
+  사무실 전 | 29.6~35.3 | 565 | 48,582 | 4096 | 1
+  사무실 후 | 58.9 (rAF) / 렌더 30fps 고정 | 425 | 37,182 | 2048 | 1
+  Order룸 전 | 60.2 | 102 | 4,820 | 2048 | 1
+  Order룸 후 | 60.1 | 102 | 4,820 | 2048 | 1 (변경 없음)
+  전 측정은 2596620을 임시 worktree에 받아 측정용 __perf만 얹어 측정 (동작 변경 없음, worktree 삭제됨).
+  렌더 fps가 그대로인 것은 30fps 고정 때문. 여유는 rAF 29.6→58.9Hz, calls −25%, 삼각형 −23%, 그림자 1/4로 확인.
+- [x] 22 J27 영상 도구 설치 + 스모크 (143cb13)
+  B5 실제 경로 시간: still 7.3초 / 음성 15.5초 (오디오 6.4초) / MP4 0.7초. still은 헤드리스 브라우저(GPU), 음성과 MP4 인코딩은 CPU.
+- [x] 23 J28 검사 브라우저 GPU 사용 (9번 다음) (034da5c)
   office_live_check: gpu 32.4 s vs software 93.2 s, both ALL PASS
   flow_headless via scripts/_browser.dump_dom_args (fbde91c)
+- [x] 24 J29 워크플로 없는 직원 삭제 (voice_iris) (b90193f)
