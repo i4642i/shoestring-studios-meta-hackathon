@@ -40,7 +40,30 @@
   .page.wide { max-width: none; padding: 16px 0; }
   .page.wide > .card { width: min(1600px, calc(100% - 32px));
     margin: 0 auto; }
-  #p-about.wide > .card > * { max-width: 860px; }
+  #p-about .card > p, #p-about .card > ul { max-width: 860px; }
+  .about3 { display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 12px; }
+  .about3c { border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; background: #fff; }
+  .about3c h3 { margin: 0 0 8px; }
+  .about3c p { margin: 0; }
+  @media (max-width: 1000px) {
+    .about3 { grid-template-columns: 1fr; }
+  }
+  .credwrap { overflow-x: auto; }
+  .credtab { width: 100%; border-collapse: collapse;
+    font-size: 13px; }
+  .credtab th, .credtab td { text-align: left; padding: 7px 10px;
+    border-top: 1px solid var(--line); vertical-align: top; }
+  .credtab th { font-size: 11px; letter-spacing: 1px;
+    color: var(--dim); border-top: none; white-space: nowrap; }
+  .credtab td:nth-child(2), .credtab td:nth-child(3) {
+    white-space: nowrap; }
+  .crednote { color: var(--dim); font-size: 13px; }
+  ul.credits { font-size: 14px; padding-left: 20px;
+    line-height: 1.6; margin: 0; }
+  ul.credits li { margin-bottom: 8px; }
+  #p-about ul.log { max-width: 860px; }
   /* hero */
   #p-order { max-width: none; padding: 0 0 16px; }
 
@@ -2059,63 +2082,64 @@ button.linklike { background: none; border: none; padding: 0;
 <div class="page wide" id="p-about">
   <div class="card">
     <h2>ABOUT — WHY WE BUILD THIS</h2>
+    <div class="about3">
+    <div class="about3c">
     <h3>MOTIVATION</h3>
     <p>Built for the Meta Global AI Developer Hackathon 2026 (Indie track — Build for Your World): a working AI video crew, assembled in days on Meta models, that turns dense knowledge into videos worth publishing.</p>
+    </div>
+    <div class="about3c">
     <h3>THE PROBLEM</h3>
     <p>Dense papers and technical documents are hard to share as video. NotebookLM-class auto-summarizers drop key points, skip what matters, and their videos are not good enough to publish. A busy domain expert who wants to become a solo knowledge creator cannot afford a video team — so knowledge worth sharing never ships.</p>
+    </div>
+    <div class="about3c">
     <h3>THE ANSWER</h3>
-    <p>Shoestring Studios is a full AI video crew on a shoestring budget: brief-driven explainer videos, gated by producer QA (accuracy + coverage, revise until pass), built in the open like a cooking show. Publish-grade, not summary-grade.</p>
+    <p>Shoestring Studios is a full AI video crew on a shoestring budget: brief-driven explainer videos, checked at every stage — each report must pass its schema and citation checks, and nothing moves on until the owner approves the stage. Built in the open like a cooking show. Publish-grade, not summary-grade.</p>
+    </div>
+    </div>
   </div>
   <div class="card">
     <h2>OPEN SOURCE</h2>
     <!-- CREDITS:BEGIN -->
     <p>Built on free software (open source except the Remotion slide renderer, which is proprietary source-available under its Free License). Licenses below were read from the installed packages; run scripts/list_licenses.py to re-check.</p>
-    <h3>PYTHON 3.11 STANDARD LIBRARY — PSF License</h3>
-    <p>The backend is stdlib-only: HTTP serving and the JSON API run with no framework.</p>
-    <h3>PDFPLUMBER 0.11.10 — MIT</h3>
-    <p>PDF text/image extraction for handbook uploads (Crew training) and order intake (consultation PDFs). Imported directly by our code. <a href="https://pypi.org/project/pdfplumber/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>LIGHTRAG (LIGHTRAG-HKU) 1.5.7 — MIT</h3>
-    <p>Knowledge-graph index behind the PC search (one index per PC and embedding profile). Imported directly by our code; CPU-only. <a href="https://pypi.org/project/lightrag-hku/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>SENTENCE-TRANSFORMERS 6.2.0 — Apache-2.0</h3>
-    <p>Local embedding model runner (local profile). Imported directly by our code. <a href="https://pypi.org/project/sentence-transformers/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>NUMPY 2.4.6 — BSD-3-Clause</h3>
-    <p>Embedding math in the LightRAG adapter. Imported directly by our code. <a href="https://pypi.org/project/numpy/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>PILLOW 13.0.0 — MIT-CMU</h3>
-    <p>Figure thumbnails on the PC pages. Imported directly by our code (installed version shown; unpinned in requirements.txt). <a href="https://pypi.org/project/pillow/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>TORCH (CPU) 2.14.1+cpu — BSD-3-Clause</h3>
-    <p>CPU tensors behind sentence-transformers. <a href="https://pypi.org/project/torch/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>TRANSFORMERS 5.21.0 — Apache-2.0</h3>
-    <p>Model loading behind sentence-transformers. <a href="https://pypi.org/project/transformers/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>PDFMINER.SIX 20260107 — MIT</h3>
-    <p>PDF parsing behind pdfplumber (installed version shown; unpinned in requirements.txt). <a href="https://pypi.org/project/pdfminer-six/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>NETWORKX 3.6.1 — BSD-3-Clause</h3>
-    <p>Graph store behind LightRAG. <a href="https://pypi.org/project/networkx/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>NANO-VECTORDB 0.0.4.3 — MIT</h3>
-    <p>Vector store behind LightRAG. <a href="https://pypi.org/project/nano-vectordb/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>TIKTOKEN 0.14.0 — MIT</h3>
-    <p>Token counting behind LightRAG. <a href="https://pypi.org/project/tiktoken/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>SCIKIT-LEARN 1.9.1 — BSD-3-Clause</h3>
-    <p>Behind sentence-transformers. <a href="https://pypi.org/project/scikit-learn/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>HUGGINGFACE_HUB 2.3.0 — Apache-2.0</h3>
-    <p>Model download behind sentence-transformers/transformers. <a href="https://pypi.org/project/huggingface-hub/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>PYTHON-DOTENV 1.2.4 — BSD-3-Clause</h3>
-    <p>Pinned in requirements.txt but not imported: our code loads .env with its own stdlib loader. <a href="https://pypi.org/project/python-dotenv/" target="_blank" rel="noopener">PyPI</a></p>
-    <h3>ALL-MINILM-L6-V2 — Apache-2.0</h3>
-    <p>Local embedding model for the LightRAG index (384-dim vectors, CPU). License read from its Hugging Face model card. <a href="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2" target="_blank" rel="noopener">Hugging Face</a></p>
-    <h3>BAAI/BGE-M3 — MIT</h3>
-    <p>Multilingual embedding model served by the Jetson profile over LAN. License read from its Hugging Face model card. <a href="https://huggingface.co/BAAI/bge-m3" target="_blank" rel="noopener">Hugging Face</a></p>
-    <h3>THREE.JS 0.186.1 — MIT</h3>
-    <p>3D engine behind the Studio office and the Crew character viewer. Vendored with its license in vendor/three/. © three.js authors. <a href="https://threejs.org" target="_blank" rel="noopener">threejs.org</a></p>
-    <h3>KENNEY MINI CHARACTERS 1.0 + FURNITURE KIT 2.0 — CC0</h3>
-    <p>Crew avatars and office furniture. Public-domain dedication, no attribution required (credited here anyway). © Kenney (kenney.nl). <a href="https://kenney.nl/assets/mini-characters" target="_blank" rel="noopener">Mini Characters</a> · <a href="https://kenney.nl/assets/furniture-kit" target="_blank" rel="noopener">Furniture Kit</a></p>
-    <h3>REMOTION 4.0.539 — Remotion Free License (proprietary)</h3>
-    <p>Cut-slide still renderer (video/remotion/, installed via npm, never bundled). Proprietary source-available software under the Remotion Free License (free for up to 3 people) — NOT open source. <a href="https://www.remotion.dev/" target="_blank" rel="noopener">remotion.dev</a></p>
-    <h3>KATEX 0.19.1 — MIT</h3>
-    <p>Formula rendering inside the Remotion cut-slide composition. <a href="https://www.npmjs.com/package/katex" target="_blank" rel="noopener">npm</a></p>
-    <h3>REACT 19.2.3 — MIT</h3>
-    <p>UI library behind the Remotion cut-slide composition. <a href="https://www.npmjs.com/package/react" target="_blank" rel="noopener">npm</a></p>
-    <h3>VERIFICATION ONLY (NOT SHIPPED)</h3>
-    <p>Headless Edge drives the automated Flow tab check (scripts/flow_headless.py). Never bundled, never required to run the app.</p>
+    <h3>BACKEND</h3>
+    <div class="credwrap"><table class="credtab">
+    <tr><th>Name</th><th>Version</th><th>License</th><th>What we use it for</th><th>Link</th></tr>
+    <tr><td>Python 3.11 Standard Library</td><td>—</td><td>PSF License</td><td>The backend is stdlib-only: HTTP serving and the JSON API run with no framework.</td><td>—</td></tr>
+    <tr><td>pdfplumber</td><td>0.11.10</td><td>MIT</td><td>PDF text/image extraction for handbook uploads (Crew training) and order intake (consultation PDFs). Imported directly by our code.</td><td><a href="https://pypi.org/project/pdfplumber/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>Pillow</td><td>13.0.0</td><td>MIT-CMU</td><td>Figure thumbnails on the PC pages. Imported directly by our code (installed version shown; unpinned in requirements.txt).</td><td><a href="https://pypi.org/project/pillow/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>pdfminer.six</td><td>20260107</td><td>MIT</td><td>PDF parsing behind pdfplumber (installed version shown; unpinned in requirements.txt).</td><td><a href="https://pypi.org/project/pdfminer-six/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>python-dotenv</td><td>1.2.4</td><td>BSD-3-Clause</td><td>Pinned in requirements.txt but not imported: our code loads .env with its own stdlib loader.</td><td><a href="https://pypi.org/project/python-dotenv/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    </table></div>
+    <h3>AI &amp; RAG</h3>
+    <div class="credwrap"><table class="credtab">
+    <tr><th>Name</th><th>Version</th><th>License</th><th>What we use it for</th><th>Link</th></tr>
+    <tr><td>LightRAG (lightrag-hku)</td><td>1.5.7</td><td>MIT</td><td>Knowledge-graph index (CPU-only): queried today by the handbook tool and the Studio project-memory chat. PC entries get an index too, but no tool searches it yet — PC tools read the stored text.</td><td><a href="https://pypi.org/project/lightrag-hku/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>sentence-transformers</td><td>6.2.0</td><td>Apache-2.0</td><td>Local embedding model runner (local profile). Imported directly by our code.</td><td><a href="https://pypi.org/project/sentence-transformers/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>numpy</td><td>2.4.6</td><td>BSD-3-Clause</td><td>Embedding math in the LightRAG adapter. Imported directly by our code.</td><td><a href="https://pypi.org/project/numpy/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>torch (CPU)</td><td>2.14.1+cpu</td><td>BSD-3-Clause</td><td>CPU tensors behind sentence-transformers.</td><td><a href="https://pypi.org/project/torch/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>transformers</td><td>5.21.0</td><td>Apache-2.0</td><td>Model loading behind sentence-transformers.</td><td><a href="https://pypi.org/project/transformers/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>networkx</td><td>3.6.1</td><td>BSD-3-Clause</td><td>Graph store behind LightRAG.</td><td><a href="https://pypi.org/project/networkx/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>nano-vectordb</td><td>0.0.4.3</td><td>MIT</td><td>Vector store behind LightRAG.</td><td><a href="https://pypi.org/project/nano-vectordb/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>tiktoken</td><td>0.14.0</td><td>MIT</td><td>Token counting behind LightRAG.</td><td><a href="https://pypi.org/project/tiktoken/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>scikit-learn</td><td>1.9.1</td><td>BSD-3-Clause</td><td>Behind sentence-transformers.</td><td><a href="https://pypi.org/project/scikit-learn/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>huggingface_hub</td><td>2.3.0</td><td>Apache-2.0</td><td>Model download behind sentence-transformers/transformers.</td><td><a href="https://pypi.org/project/huggingface-hub/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>all-MiniLM-L6-v2</td><td>—</td><td>Apache-2.0</td><td>Local embedding model for the LightRAG index (384-dim vectors, CPU). License read from its Hugging Face model card.</td><td><a href="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2" target="_blank" rel="noopener">Hugging Face</a></td></tr>
+    <tr><td>BAAI/bge-m3</td><td>—</td><td>MIT</td><td>Multilingual embedding model served by the Jetson profile over LAN. License read from its Hugging Face model card.</td><td><a href="https://huggingface.co/BAAI/bge-m3" target="_blank" rel="noopener">Hugging Face</a></td></tr>
+    </table></div>
+    <h3>VIDEO</h3>
+    <div class="credwrap"><table class="credtab">
+    <tr><th>Name</th><th>Version</th><th>License</th><th>What we use it for</th><th>Link</th></tr>
+    <tr><td>Remotion</td><td>4.0.539</td><td>Remotion Free License (proprietary)</td><td>Cut-slide still renderer (video/remotion/, installed via npm, never bundled). Proprietary source-available software under the Remotion Free License (free for up to 3 people) — NOT open source.</td><td><a href="https://www.remotion.dev/" target="_blank" rel="noopener">remotion.dev</a></td></tr>
+    <tr><td>KaTeX</td><td>0.19.1</td><td>MIT</td><td>Formula rendering inside the Remotion cut-slide composition.</td><td><a href="https://www.npmjs.com/package/katex" target="_blank" rel="noopener">npm</a></td></tr>
+    <tr><td>React</td><td>19.2.3</td><td>MIT</td><td>UI library behind the Remotion cut-slide composition.</td><td><a href="https://www.npmjs.com/package/react" target="_blank" rel="noopener">npm</a></td></tr>
+    </table></div>
+    <h3>3D &amp; ASSETS</h3>
+    <div class="credwrap"><table class="credtab">
+    <tr><th>Name</th><th>Version</th><th>License</th><th>What we use it for</th><th>Link</th></tr>
+    <tr><td>Three.js</td><td>0.186.1</td><td>MIT</td><td>3D engine behind the Studio office and the Crew character viewer. Vendored with its license in vendor/three/. © three.js authors.</td><td><a href="https://threejs.org" target="_blank" rel="noopener">threejs.org</a></td></tr>
+    <tr><td>Kenney Mini Characters 1.0 + Furniture Kit 2.0</td><td>—</td><td>CC0</td><td>Crew avatars and office furniture. Public-domain dedication, no attribution required (credited here anyway). © Kenney (kenney.nl).</td><td><a href="https://kenney.nl/assets/mini-characters" target="_blank" rel="noopener">Mini Characters</a> &middot; <a href="https://kenney.nl/assets/furniture-kit" target="_blank" rel="noopener">Furniture Kit</a></td></tr>
+    </table></div>
+    <p class="crednote"><i>Verification only (not shipped):</i> Headless Edge drives the automated browser checks. Never bundled, never required to run the app.</p>
     <!-- CREDITS:END -->
   </div>
   <div class="card">
@@ -2134,11 +2158,13 @@ button.linklike { background: none; border: none; padding: 0;
   </div>
   <div class="card">
     <h2>DEVELOPER</h2>
-    <p><b>Sangho Kim</b> — solo developer, Mechanical Engineering major. Loves studying and wants to share hard-won knowledge with the world. Building the video team one person cannot afford.</p>
-    <p>Company: NexTopologix · Representative: Sangho Kim<br>
+    <ul class="credits">
+    <li><b>Sangho Kim</b> — solo developer, Mechanical Engineering major. Loves studying and wants to share hard-won knowledge with the world. Building the video team one person cannot afford.</li>
+    <li>Company: NexTopologix · Representative: Sangho Kim<br>
     Business Registration No. 896-01-04011 · Mail-Order Sales Registration No. 2026-Changwon Seongsan-0365<br>
     #202, 46-14 Bieum-ro 27beon-gil, Seongsan-gu, Changwon-si, Gyeongsangnam-do, Republic of Korea<br>
-    Phone: +82-10-2533-4642 · Email: <a href="mailto:ksh4642@nextopologix.com">ksh4642@nextopologix.com</a> · GitHub: <a href="https://github.com/i4642i/shoestring-studios-meta-hackathon">i4642i/shoestring-studios-meta-hackathon</a></p>
+    Phone: +82-10-2533-4642 · Email: <a href="mailto:ksh4642@nextopologix.com">ksh4642@nextopologix.com</a> · GitHub: <a href="https://github.com/i4642i/shoestring-studios-meta-hackathon">i4642i/shoestring-studios-meta-hackathon</a></li>
+    </ul>
   </div>
 </div>
 

@@ -3,71 +3,46 @@
 
 Built on free software (open source except the Remotion slide renderer, which is proprietary source-available under its Free License). Licenses below were read from the installed packages; run scripts/list_licenses.py to re-check.
 
-## PYTHON 3.11 STANDARD LIBRARY — PSF License
-The backend is stdlib-only: HTTP serving and the JSON API run with no framework.
+## Backend
 
-## PDFPLUMBER 0.11.10 — MIT
-PDF text/image extraction for handbook uploads (Crew training) and order intake (consultation PDFs). Imported directly by our code. [PyPI](https://pypi.org/project/pdfplumber/)
+| Name | Version | License | What we use it for | Link |
+| --- | --- | --- | --- | --- |
+| Python 3.11 Standard Library | — | PSF License | The backend is stdlib-only: HTTP serving and the JSON API run with no framework. |  |
+| pdfplumber | 0.11.10 | MIT | PDF text/image extraction for handbook uploads (Crew training) and order intake (consultation PDFs). Imported directly by our code. | [PyPI](https://pypi.org/project/pdfplumber/) |
+| Pillow | 13.0.0 | MIT-CMU | Figure thumbnails on the PC pages. Imported directly by our code (installed version shown; unpinned in requirements.txt). | [PyPI](https://pypi.org/project/pillow/) |
+| pdfminer.six | 20260107 | MIT | PDF parsing behind pdfplumber (installed version shown; unpinned in requirements.txt). | [PyPI](https://pypi.org/project/pdfminer-six/) |
+| python-dotenv | 1.2.4 | BSD-3-Clause | Pinned in requirements.txt but not imported: our code loads .env with its own stdlib loader. | [PyPI](https://pypi.org/project/python-dotenv/) |
 
-## LIGHTRAG (LIGHTRAG-HKU) 1.5.7 — MIT
-Knowledge-graph index behind the PC search (one index per PC and embedding profile). Imported directly by our code; CPU-only. [PyPI](https://pypi.org/project/lightrag-hku/)
+## AI & RAG
 
-## SENTENCE-TRANSFORMERS 6.2.0 — Apache-2.0
-Local embedding model runner (local profile). Imported directly by our code. [PyPI](https://pypi.org/project/sentence-transformers/)
+| Name | Version | License | What we use it for | Link |
+| --- | --- | --- | --- | --- |
+| LightRAG (lightrag-hku) | 1.5.7 | MIT | Knowledge-graph index (CPU-only): queried today by the handbook tool and the Studio project-memory chat. PC entries get an index too, but no tool searches it yet — PC tools read the stored text. | [PyPI](https://pypi.org/project/lightrag-hku/) |
+| sentence-transformers | 6.2.0 | Apache-2.0 | Local embedding model runner (local profile). Imported directly by our code. | [PyPI](https://pypi.org/project/sentence-transformers/) |
+| numpy | 2.4.6 | BSD-3-Clause | Embedding math in the LightRAG adapter. Imported directly by our code. | [PyPI](https://pypi.org/project/numpy/) |
+| torch (CPU) | 2.14.1+cpu | BSD-3-Clause | CPU tensors behind sentence-transformers. | [PyPI](https://pypi.org/project/torch/) |
+| transformers | 5.21.0 | Apache-2.0 | Model loading behind sentence-transformers. | [PyPI](https://pypi.org/project/transformers/) |
+| networkx | 3.6.1 | BSD-3-Clause | Graph store behind LightRAG. | [PyPI](https://pypi.org/project/networkx/) |
+| nano-vectordb | 0.0.4.3 | MIT | Vector store behind LightRAG. | [PyPI](https://pypi.org/project/nano-vectordb/) |
+| tiktoken | 0.14.0 | MIT | Token counting behind LightRAG. | [PyPI](https://pypi.org/project/tiktoken/) |
+| scikit-learn | 1.9.1 | BSD-3-Clause | Behind sentence-transformers. | [PyPI](https://pypi.org/project/scikit-learn/) |
+| huggingface_hub | 2.3.0 | Apache-2.0 | Model download behind sentence-transformers/transformers. | [PyPI](https://pypi.org/project/huggingface-hub/) |
+| all-MiniLM-L6-v2 | — | Apache-2.0 | Local embedding model for the LightRAG index (384-dim vectors, CPU). License read from its Hugging Face model card. | [Hugging Face](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) |
+| BAAI/bge-m3 | — | MIT | Multilingual embedding model served by the Jetson profile over LAN. License read from its Hugging Face model card. | [Hugging Face](https://huggingface.co/BAAI/bge-m3) |
 
-## NUMPY 2.4.6 — BSD-3-Clause
-Embedding math in the LightRAG adapter. Imported directly by our code. [PyPI](https://pypi.org/project/numpy/)
+## Video
 
-## PILLOW 13.0.0 — MIT-CMU
-Figure thumbnails on the PC pages. Imported directly by our code (installed version shown; unpinned in requirements.txt). [PyPI](https://pypi.org/project/pillow/)
+| Name | Version | License | What we use it for | Link |
+| --- | --- | --- | --- | --- |
+| Remotion | 4.0.539 | Remotion Free License (proprietary) | Cut-slide still renderer (video/remotion/, installed via npm, never bundled). Proprietary source-available software under the Remotion Free License (free for up to 3 people) — NOT open source. | [remotion.dev](https://www.remotion.dev/) |
+| KaTeX | 0.19.1 | MIT | Formula rendering inside the Remotion cut-slide composition. | [npm](https://www.npmjs.com/package/katex) |
+| React | 19.2.3 | MIT | UI library behind the Remotion cut-slide composition. | [npm](https://www.npmjs.com/package/react) |
 
-## TORCH (CPU) 2.14.1+cpu — BSD-3-Clause
-CPU tensors behind sentence-transformers. [PyPI](https://pypi.org/project/torch/)
+## 3D & assets
 
-## TRANSFORMERS 5.21.0 — Apache-2.0
-Model loading behind sentence-transformers. [PyPI](https://pypi.org/project/transformers/)
+| Name | Version | License | What we use it for | Link |
+| --- | --- | --- | --- | --- |
+| Three.js | 0.186.1 | MIT | 3D engine behind the Studio office and the Crew character viewer. Vendored with its license in vendor/three/. © three.js authors. | [threejs.org](https://threejs.org) |
+| Kenney Mini Characters 1.0 + Furniture Kit 2.0 | — | CC0 | Crew avatars and office furniture. Public-domain dedication, no attribution required (credited here anyway). © Kenney (kenney.nl). | [Mini Characters](https://kenney.nl/assets/mini-characters) &middot; [Furniture Kit](https://kenney.nl/assets/furniture-kit) |
 
-## PDFMINER.SIX 20260107 — MIT
-PDF parsing behind pdfplumber (installed version shown; unpinned in requirements.txt). [PyPI](https://pypi.org/project/pdfminer-six/)
-
-## NETWORKX 3.6.1 — BSD-3-Clause
-Graph store behind LightRAG. [PyPI](https://pypi.org/project/networkx/)
-
-## NANO-VECTORDB 0.0.4.3 — MIT
-Vector store behind LightRAG. [PyPI](https://pypi.org/project/nano-vectordb/)
-
-## TIKTOKEN 0.14.0 — MIT
-Token counting behind LightRAG. [PyPI](https://pypi.org/project/tiktoken/)
-
-## SCIKIT-LEARN 1.9.1 — BSD-3-Clause
-Behind sentence-transformers. [PyPI](https://pypi.org/project/scikit-learn/)
-
-## HUGGINGFACE_HUB 2.3.0 — Apache-2.0
-Model download behind sentence-transformers/transformers. [PyPI](https://pypi.org/project/huggingface-hub/)
-
-## PYTHON-DOTENV 1.2.4 — BSD-3-Clause
-Pinned in requirements.txt but not imported: our code loads .env with its own stdlib loader. [PyPI](https://pypi.org/project/python-dotenv/)
-
-## ALL-MINILM-L6-V2 — Apache-2.0
-Local embedding model for the LightRAG index (384-dim vectors, CPU). License read from its Hugging Face model card. [Hugging Face](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
-
-## BAAI/BGE-M3 — MIT
-Multilingual embedding model served by the Jetson profile over LAN. License read from its Hugging Face model card. [Hugging Face](https://huggingface.co/BAAI/bge-m3)
-
-## THREE.JS 0.186.1 — MIT
-3D engine behind the Studio office and the Crew character viewer. Vendored with its license in vendor/three/. © three.js authors. [threejs.org](https://threejs.org)
-
-## KENNEY MINI CHARACTERS 1.0 + FURNITURE KIT 2.0 — CC0
-Crew avatars and office furniture. Public-domain dedication, no attribution required (credited here anyway). © Kenney (kenney.nl). [Mini Characters](https://kenney.nl/assets/mini-characters) [Furniture Kit](https://kenney.nl/assets/furniture-kit)
-
-## REMOTION 4.0.539 — Remotion Free License (proprietary)
-Cut-slide still renderer (video/remotion/, installed via npm, never bundled). Proprietary source-available software under the Remotion Free License (free for up to 3 people) — NOT open source. [remotion.dev](https://www.remotion.dev/)
-
-## KATEX 0.19.1 — MIT
-Formula rendering inside the Remotion cut-slide composition. [npm](https://www.npmjs.com/package/katex)
-
-## REACT 19.2.3 — MIT
-UI library behind the Remotion cut-slide composition. [npm](https://www.npmjs.com/package/react)
-
-## VERIFICATION ONLY (NOT SHIPPED)
-Headless Edge drives the automated Flow tab check (scripts/flow_headless.py). Never bundled, never required to run the app.
+*Verification only (not shipped):* Headless Edge drives the automated browser checks. Never bundled, never required to run the app.
