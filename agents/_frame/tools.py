@@ -2153,16 +2153,20 @@ def write_slide_draft(ctx, args):
     blocks copying Max's values exactly, source figures readable,
     image boxes matching material aspect."""
     obj = (args or {}).get("slide_draft")
+    if isinstance(obj, str):
+        obj = _lenient_json(obj)
     if not isinstance(obj, dict):
         return {"ok": False, "errors": [
-            "call with {slide_draft: {...}}"]}
+            "call with {slide_draft: {...}} -- pass the object "
+            "itself, not a JSON string"]}
     narr = _received_data(ctx, "narration")
     if not narr:
         return {"ok": False, "errors": [
             "no narration received in this run"]}
     errors = validate_slide_draft(obj, narr)
     if errors:
-        return {"ok": False, "errors": errors}
+        return {"ok": False, "errors": errors +
+                _omitted_hints(ctx, errors)}
     from . import media as _media
     views = {}
     try:

@@ -1238,6 +1238,22 @@ norow = {"recipients": [{"agent": "board_penn",
 ok(_tools._recipients_error(pctx, norow, "pc://source/abcd")
    == {"error": "no access to this item"},
    "rowless refusal keeps the old message")
+vdir = tempfile.mkdtemp()
+with open(os.path.join(vdir,
+                       "received.voice_wren.narration.json"),
+          "w", encoding="utf-8") as f:
+    json.dump({"sender": "voice_wren", "category":
+               "narration", "version": 2,
+               "data": {"cuts": []}}, f)
+vctx = {"run_dir": vdir, "order_id": "o9",
+        "producer": "board_vera"}
+rv = _tools.write_slide_draft(
+    vctx, {"slide_draft": json.dumps({"cuts": "x"})})
+ok(not rv.get("ok")
+   and any("cuts must be a list" in e
+           for e in rv.get("errors", [])),
+   "string-wrapped slide draft is parsed, then shape-checked")
+shutil.rmtree(vdir, ignore_errors=True)
 ok(_runner._exhaust_reason(
     [{"ev": "tool", "errors": ["total_s None != plan 720"]}])
    == "max_steps exhausted (last: total_s None != plan 720)",
