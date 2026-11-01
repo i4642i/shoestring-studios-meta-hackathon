@@ -1450,9 +1450,15 @@ def _run_cost(run_dir):
             "completion_tokens": 0}
     if not os.path.isdir(run_dir):
         return cost
+    mdir = os.path.join(run_dir, "memory")
+    if os.path.isdir(mdir):
+        for agent in os.listdir(mdir):
+            adir = os.path.join(mdir, agent)
+            if os.path.isdir(adir):
+                _sum_usage(adir, cost)
     for nid in os.listdir(run_dir):
         ndir = os.path.join(run_dir, nid)
-        if not os.path.isdir(ndir):
+        if not os.path.isdir(ndir) or nid == "memory":
             continue
         dirs = [ndir]
         for sub in os.listdir(ndir):
@@ -1464,18 +1470,22 @@ def _run_cost(run_dir):
                     continue
                 dirs.append(sdir)
         for d in dirs:
-            try:
-                with open(os.path.join(d, "usage.json"),
-                          encoding="utf-8") as f:
-                    u = json.load(f)
-            except (OSError, ValueError):
-                continue
-            if not isinstance(u, dict):
-                continue
-            for k in cost:
-                if isinstance(u.get(k), int):
-                    cost[k] += u[k]
+            _sum_usage(d, cost)
     return cost
+
+
+def _sum_usage(d, cost):
+    try:
+        with open(os.path.join(d, "usage.json"),
+                  encoding="utf-8") as f:
+            u = json.load(f)
+    except (OSError, ValueError):
+        return
+    if not isinstance(u, dict):
+        return
+    for k in cost:
+        if isinstance(u.get(k), int):
+            cost[k] += u[k]
 
 
 def log_run_event(run_dir, ev):
@@ -1866,6 +1876,26 @@ def approve_node(run_id, node, runs_root=None):
             approved.append(cid)
     st.update({"approved": approved, "state": "step_paused"})
     _write_json(_step_status_path(run_dir), st)
+    from . import memory as _memory
+    base, _no = parts.parse_clone_id(node)
+    if node in parts.CLONE_NODES or _no is not None:
+        base = base if _no is not None else node
+        if _node_approved(run_dir, base, approved):
+            plan = parts.load_split(run_dir)
+            nos = [p.get("no") for p in
+                   ((plan or {}).get("parts") or [])]
+            _memory.queue_build(
+                run_id, base,
+                lambda: _memory.collect_agent_docs(
+                    run_dir, base, nos or None),
+                runs_root=runs_root)
+    elif base not in (FINAL_NODE, CODE_NODE, parts.SPLIT_NODE) \
+            and not _is_draft(base):
+        _memory.queue_build(
+            run_id, base,
+            lambda: _memory.collect_agent_docs(run_dir, base,
+                                               None),
+            runs_root=runs_root)
     return {"ok": True, "run_id": run_id, "approved": approved}
 
 

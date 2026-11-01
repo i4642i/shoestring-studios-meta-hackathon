@@ -22,8 +22,8 @@ import time
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SERVER_PORT = 8765
-CDP_PORT = 9444
+SERVER_PORT = int(os.environ.get("CHECK_PORT", 8765))
+CDP_PORT = int(os.environ.get("CHECK_CDP_PORT", 9444))
 EDGE = (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 RUNS = os.path.join(ROOT, "runs")
 PNG1920 = os.path.join(RUNS, "flow_1920.png")
@@ -386,6 +386,35 @@ def box_overlaps(boxes):
     return bad
 
 
+def drain_dialogs(ws, seconds):
+    """Dismiss any JS dialog. Headless has no UI to close one:
+    without this the renderer deadlocks and CDP goes silent."""
+    try:
+        ws.s.settimeout(1.0)
+    except OSError:
+        pass
+    t0 = time.time()
+    try:
+        while time.time() - t0 < seconds:
+            try:
+                msg = json.loads(ws.recv_msg())
+            except Exception:
+                continue
+            if msg.get("method") == "Page.javascriptDialogOpening":
+                try:
+                    ws.call("Page.handleJavaScriptDialog",
+                            {"accept": False}, timeout=10)
+                except Exception:
+                    pass
+            elif "id" not in msg:
+                ws.events.append(msg)
+    finally:
+        try:
+            ws.s.settimeout(30)
+        except OSError:
+            pass
+
+
 def console_errors(events):
     n = 0
     for m in events:
@@ -488,8 +517,12 @@ def main():
         host, _, port = hostport.partition(":")
         ws = WS(host, int(port or 80), "/" + path)
         ws.call("Runtime.enable")
+        ws.call("Page.enable")  # neuter + dialog events need this
+        ws.call("Page.addScriptToEvaluateOnNewDocument",
+                {"source": "window.confirm=()=>false;"})
         ws.call("Page.navigate",
                 {"url": "http://localhost:%d/" % SERVER_PORT})
+        drain_dialogs(ws, 12)
         t0 = time.time()
         while time.time() - t0 < 40:
             if js_eval(ws, "document.readyState") == "complete":

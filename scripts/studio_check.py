@@ -28,7 +28,7 @@ EDGE_PATHS = (
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
 )
-SRV_PORT, CDP_PORT = 8765, 9333
+SRV_PORT, CDP_PORT = int(os.environ.get("CHECK_PORT", 8765)), int(os.environ.get("CHECK_CDP_PORT", 9333))
 SIZES = [(1280, 720), (1920, 1080), (390, 844)]
 
 fails = 0
@@ -146,6 +146,27 @@ class CDP:
             self.sock.close()
         except OSError:
             pass
+
+
+def drain_dialogs(cdp, sid, seconds):
+    """Dismiss any JS dialog. Headless has no UI to close one:
+    without this the renderer deadlocks and CDP goes silent."""
+    end = time.time() + seconds
+    while time.time() < end:
+        try:
+            m = cdp.recv_msg(
+                timeout=max(0.05, end - time.time()))
+        except (TimeoutError, RuntimeError):
+            break
+        if m.get("method") == "Page.javascriptDialogOpening":
+            try:
+                cdp.call("Page.handleJavaScriptDialog",
+                         {"accept": False}, session=sid,
+                         timeout=10)
+            except (TimeoutError, RuntimeError):
+                pass
+        elif "id" not in m:
+            cdp.events.append(m)
 
 
 def console_errors(events):
@@ -296,9 +317,13 @@ def main():
                           "deviceScaleFactor": 1,
                           "mobile": False}, session=sid)
                 ev0 = len(cdp.events)
+                cdp.call("Page.addScriptToEvaluateOnNewDocument",
+                         {"source": "window.confirm=()=>false;"},
+                         session=sid)
                 cdp.call("Page.navigate",
                          {"url": "http://127.0.0.1:%d/index.html"
                           % SRV_PORT}, session=sid)
+                drain_dialogs(cdp, sid, 12)
                 ok(wait_for(cdp, sid,
                             "document.readyState === 'complete'", 30),
                    "%s page loads" % name)
@@ -345,9 +370,13 @@ def main():
                      {"width": 1280, "height": 720,
                       "deviceScaleFactor": 1, "mobile": False},
                      session=sid)
+            cdp.call("Page.addScriptToEvaluateOnNewDocument",
+                     {"source": "window.confirm=()=>false;"},
+                     session=sid)
             cdp.call("Page.navigate",
                      {"url": "http://127.0.0.1:%d/index.html" % SRV_PORT},
                      session=sid)
+            drain_dialogs(cdp, sid, 12)
             wait_for(cdp, sid, "document.readyState === 'complete'",
                      30)
             js_eval(cdp, sid,

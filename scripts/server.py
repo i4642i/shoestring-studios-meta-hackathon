@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from agents._frame import board  # noqa: E402
 from agents._frame import flow as flows  # noqa: E402
 from agents._frame import office as liveoffice  # noqa: E402
+from agents._frame import memory as memstore  # noqa: E402
 from agents._frame import graph  # noqa: E402
 from agents._frame import pdfingest  # noqa: E402
 from agents._frame import runner  # noqa: E402
@@ -236,6 +237,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 5 \
                 and parts[2] == "runs" and parts[4] == "office":
             return self._api_flow_office(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "memory":
+            return self._api_run_memory(parts[3])
         return self._static(parts)
 
     def do_PUT(self):
@@ -310,6 +314,15 @@ class Handler(BaseHTTPRequestHandler):
         if parts[:2] == ["api", "flows"] and len(parts) == 5 \
                 and parts[2] == "runs" and parts[4] == "control":
             return self._api_flow_control(parts[3])
+        if parts[:2] == ["api", "flows"] and len(parts) == 6 \
+                and parts[2] == "runs" and parts[4] == "memory":
+            return self._api_run_memory_retry(parts[3], parts[5])
+        if parts[:2] == ["api", "flows"] and len(parts) == 5 \
+                and parts[2] == "runs" and parts[4] == "close":
+            return self._api_run_close(parts[3])
+        if parts[:2] == ["api", "orders"] and len(parts) == 4 \
+                and parts[3] == "close":
+            return self._api_order_close(parts[2])
         return self._json(404, {"error": "not found"})
 
     def do_DELETE(self):
@@ -647,6 +660,18 @@ class Handler(BaseHTTPRequestHandler):
         agent = self._load_agent(path)
         with open(os.path.join(path, "persona.md"), encoding="utf-8") as f:
             persona = f.read()
+        mem_ctx = ""
+        run_id = body.get("run_id") if isinstance(body, dict) else ""
+        if run_id:
+            last_q = ""
+            for m in reversed(msgs):
+                if m.get("role") == "user":
+                    last_q = m["content"]
+                    break
+            code, obj, mem_ctx = self._memory_gate(
+                eid, run_id, last_q)
+            if code != 200:
+                return self._json(code, obj)
         if not runner.key_present(agent["model"]):
             return self._json(503, {"error": "%s missing: add it to .env"
                                     % runner.key_var(agent["model"])})
@@ -656,6 +681,15 @@ class Handler(BaseHTTPRequestHandler):
                   "Keep replies to 1-3 short sentences. Stay in character; "
                   "you work at Shoestring Studios.]"
                   % (agent["name"], agent["title"]))
+        if mem_ctx:
+            system += ("\n\n[PROJECT MEMORY — run %s. Answer ONLY "
+                       "from this memory about THIS project: what you "
+                       "received, decided and why, sources and "
+                       "licenses used. If it is not in the memory, say "
+                       "you don't know. 1-4 sentences, no JSON, no "
+                       "tool calls, no promises to change results "
+                       "(changes go through Re-run with note).]\n%s"
+                       % (run_id, mem_ctx[:4000]))
         try:
             resp = runner._chat(
                 agent["model"],
@@ -668,6 +702,145 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001 - surfaced as 502, key never leaks
             return self._json(502, {"error": "model API error: %s" % exc})
         return self._json(200, {"reply": reply.strip()})
+
+    # ---- project memories (item 9) ----
+    def _run_dir(self, rid):
+        if not self._run_id_ok(rid):
+            return None
+        d = os.path.join(flows.RUNS_DIR, rid)
+        return d if os.path.isdir(d) else None
+
+    def _api_run_memory(self, rid):
+        if not self._run_dir(rid):
+            return self._json(404, {"error": "no such run"})
+        return self._json(200, {
+            "run_id": rid,
+            "closed": memstore.is_closed(rid, flows.RUNS_DIR),
+            "agents": memstore.run_memory_states(
+                rid, flows.RUNS_DIR)})
+
+    def _api_run_memory_retry(self, rid, agent):
+        if not self._run_dir(rid):
+            return self._json(404, {"error": "no such run"})
+        if not self._employee(agent):
+            return self._json(404, {"error": "no such employee"})
+        if memstore.is_closed(rid, flows.RUNS_DIR):
+            return self._json(409, {"error": "project closed"})
+        if memstore._INDEXER is None:
+            return self._json(503, {"error": "memory indexer "
+                                             "not configured"})
+        out = memstore.queue_build(
+            rid, agent,
+            memstore.default_docs_fn(rid, agent, flows.RUNS_DIR),
+            runs_root=flows.RUNS_DIR)
+        if not out.get("ok"):
+            return self._json(409, out)
+        return self._json(202, out)
+
+    def _order_of_run(self, rid):
+        try:
+            with open(os.path.join(flows.RUNS_DIR, rid,
+                                   "STATUS.json"),
+                      encoding="utf-8") as f:
+                st = json.load(f)
+        except (OSError, ValueError):
+            return ""
+        return st.get("order_id", "") if isinstance(st, dict) \
+            else ""
+
+    def _runs_for_order(self, oid):
+        rdir = flows.RUNS_DIR
+        out = []
+        if not os.path.isdir(rdir):
+            return out
+        for n in sorted(os.listdir(rdir)):
+            if os.path.isdir(os.path.join(rdir, n)) \
+                    and self._order_of_run(n) == oid:
+                out.append(n)
+        return out
+
+    def _api_run_close(self, rid):
+        if not self._run_dir(rid):
+            return self._json(404, {"error": "no such run"})
+        gone = memstore.close_run_memory(rid, flows.RUNS_DIR)
+        oid = self._order_of_run(rid)
+        if oid:
+            d = self._order_dir(oid)
+            if d:
+                meta = self._order_meta(d)
+                meta["closed"] = True
+                self._order_save_meta(d, meta)
+        print("run %s closed (memory deleted: %s)" % (rid, gone),
+              flush=True)
+        return self._json(200, {"ok": True, "run_id": rid,
+                                "order_id": oid,
+                                "memory_deleted": gone})
+
+    def _api_order_close(self, oid):
+        d = self._order_dir(oid)
+        if not d:
+            return self._json(404, {"error": "no such order"})
+        runs = self._runs_for_order(oid)
+        for rid in runs:
+            memstore.close_run_memory(rid, flows.RUNS_DIR)
+        meta = self._order_meta(d)
+        meta["closed"] = True
+        self._order_save_meta(d, meta)
+        print("order %s closed (%d runs)" % (oid, len(runs)),
+              flush=True)
+        return self._json(200, {"ok": True, "order_id": oid,
+                                "runs": runs})
+
+    def _open_orders(self):
+        odir = os.path.join(ROOT, "orders")
+        out = []
+        if not os.path.isdir(odir):
+            return out
+        for oid in sorted(os.listdir(odir)):
+            d = os.path.join(odir, oid)
+            mp = os.path.join(d, "meta.json")
+            if not os.path.isfile(mp):
+                continue
+            try:
+                with open(mp, encoding="utf-8") as f:
+                    meta = json.load(f)
+            except ValueError:
+                continue
+            if isinstance(meta, dict) \
+                    and meta.get("status") in (
+                        "complete", "in_production") \
+                    and not meta.get("closed"):
+                out.append(oid)
+        return out
+
+    def _memory_gate(self, eid, run_id, question):
+        """Item 9 chat gate. Returns (code, obj, mem_ctx)."""
+        if not self._run_dir(run_id):
+            return (404, {"error": "no such run",
+                          "memory": "none"}, "")
+        if memstore.is_closed(run_id, flows.RUNS_DIR):
+            return (409, {"error": "This project is closed.",
+                          "memory": "closed"}, "")
+        st = memstore.memory_state(run_id, eid, flows.RUNS_DIR)
+        if st["state"] == "building":
+            return (409, {"error": "Memory building…",
+                          "memory": "building"}, "")
+        if st["state"] == "failed":
+            return (409, {"error": "Memory build failed: %s"
+                                   % (st["error"]
+                                      or "unknown reason"),
+                          "memory": "failed"}, "")
+        if st["state"] != "ready":
+            return (409, {"error": "No project memory yet — my "
+                                   "report has not been approved.",
+                          "memory": "not yet"}, "")
+        try:
+            ctx = memstore.query_memory(run_id, eid, question,
+                                        flows.RUNS_DIR)
+        except RuntimeError as exc:
+            return (409, {"error": str(exc),
+                          "memory": "failed"}, "")
+        return (200, {"memory": "ready"}, ctx)
 
     def _api_start_prompt(self, eid):
         """Preview the recipients-gated PC input preloaded for one
@@ -1088,6 +1261,11 @@ class Handler(BaseHTTPRequestHandler):
         assignee = body.get("assignee") or "sales_sam"
         if not self._employee(assignee):
             return self._json(400, {"error": "unknown assignee: " + str(assignee)})
+        if not body.get("force"):
+            open_orders = self._open_orders()
+            if open_orders:
+                return self._json(200, {"created": False,
+                                        "open_orders": open_orders})
         day = time.strftime("%Y%m%d")
         odir = os.path.join(ROOT, "orders")
         os.makedirs(odir, exist_ok=True)
@@ -1106,7 +1284,7 @@ class Handler(BaseHTTPRequestHandler):
                 "status": "consulting", "answers": {}, "files": {}}
         self._order_save_meta(d, meta)
         print("order create %s (%s)" % (oid, assignee), flush=True)
-        return self._json(201, meta)
+        return self._json(201, dict(meta, created=True))
 
     def _api_order_get(self, oid):
         d = self._order_dir(oid)
@@ -1721,6 +1899,11 @@ class Handler(BaseHTTPRequestHandler):
             out["run_id"] = run_id
             if auto_err:
                 out["auto_run_error"] = auto_err
+            elif run_id and memstore._INDEXER is not None:
+                memstore.queue_build(
+                    run_id, "sales_sam",
+                    lambda: memstore.collect_sam_docs(
+                        d, self._order_meta(d)))
         return (200, out)
 
     def _latest_run_for_order(self, oid):
@@ -2285,11 +2468,45 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _mem_stub_indexer(docs, store_dir, log_id, profile):
+    """Deterministic stand-in for headless checks only (never fakes
+    a real memory: active only with SHOESTRING_MEM_STUB=1)."""
+    os.makedirs(store_dir, exist_ok=True)
+    with open(os.path.join(store_dir, "index.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"stub": True, "log_id": log_id,
+                   "docs": [n for n, _ in docs]}, f)
+    return {"llm_calls": 0, "profile": profile or "stub"}
+
+
+def _mem_stub_retriever(store_dir, question, log_id, profile):
+    return ("From my project memory: I received %s and wrote my "
+            "report from it. (stub answer for headless checks)"
+            % question[:60])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8000)
     args = ap.parse_args()
     load_dotenv(os.path.join(ROOT, ".env"))
+    if os.environ.get("SHOESTRING_MEM_STUB") == "1":
+        memstore._INDEXER = _mem_stub_indexer
+        memstore._RETRIEVER = _mem_stub_retriever
+
+        def _stub_chat(model, messages, tools, timeout=120):
+            first = messages[0]["content"] if messages else ""
+            has = "PROJECT MEMORY" in first
+            return {"choices": [{"message": {
+                "content": "Stub reply from memory "
+                           "(project ctx: %s)." % has}}]}
+
+        runner._chat = _stub_chat
+        runner.key_present = lambda model: True
+        print("memory: STUB indexer (headless check mode)",
+              flush=True)
+    else:
+        memstore._INDEXER = memstore._real_indexer
     last = None
     for port in range(args.port, args.port + 6):
         try:

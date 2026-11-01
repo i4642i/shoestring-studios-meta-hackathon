@@ -398,13 +398,14 @@
       <button id="st-pause">Pause</button>
       <button id="st-step">One step</button>
       <button id="st-stop">Stop</button>
+      <button id="st-close">Close project</button>
       <label id="st-eachlab"><input type="checkbox" id="st-each"> Pause after each employee</label>
       <span id="st-err"></span>
     </div>
     <div class="studiowrap">
       <div class="officebox"><iframe class="office" src="office_3d.html" title="3D office"></iframe><button id="chatopen" type="button">CHAT</button></div>
       <div class="chatbox">
-        <div class="chead"><span>CHAT</span><select id="chatwho" aria-label="Talk to"></select><button id="chatcollapse" type="button" title="Collapse chat" aria-label="Collapse chat">&raquo;</button></div>
+        <div class="chead"><span>CHAT</span><select id="chatwho" aria-label="Talk to"></select><button id="chatretry" type="button" title="Retry memory build" style="display:none">Retry build</button><button id="chatcollapse" type="button" title="Collapse chat" aria-label="Collapse chat">&raquo;</button></div>
         <div class="cmsgs" id="chatmsgs" aria-live="polite"></div>
         <form class="cform" id="chatform" autocomplete="off">
           <input id="chatinput" maxlength="500" placeholder="Say hi to the crew…" aria-label="Message">
@@ -2296,6 +2297,75 @@ button.linklike { background: none; border: none; padding: 0;
     const history = [];
     const histories = {};
     let curWho = "";
+    /* Item 9 memory badges. MEM_CHAT_OPEN=false: chat needs memory
+       ready (item 17 re-opens interviews without memory). */
+    const MEM_CHAT_OPEN = false;
+    const MEM_BADGE = { ready: "memory ready", building: "building…",
+      failed: "failed", none: "not yet", closed: "closed" };
+    let memStates = { closed: false, agents: {} };
+    let memTimer = 0;
+    const retryBtn = document.getElementById("chatretry");
+    function runId() {
+      const s = document.getElementById("st-run");
+      return s && s.value ? s.value : "";
+    }
+    function memOf(id) {
+      if (memStates.closed) return "closed";
+      const a = (memStates.agents || {})[id];
+      return a && a.state ? a.state : "none";
+    }
+    function paintBadges() {
+      Array.from(who.options).forEach((o) => {
+        const c = roster.find((x) => x.id === o.value);
+        const nm = c ? c.name + " — " + c.title : o.value;
+        o.textContent = runId() ? nm + " [" +
+          (MEM_BADGE[memOf(o.value)] || "?") + "]" : nm;
+      });
+    }
+    function applyGate() {
+      const rid = runId();
+      const badge = rid ? memOf(who.value) : "none";
+      const err = ((memStates.agents || {})[who.value] || {}).error || "";
+      if (retryBtn)
+        retryBtn.style.display =
+          (rid && badge === "failed") ? "" : "none";
+      if (!rid || MEM_CHAT_OPEN || badge === "ready") {
+        input.disabled = false;
+        input.placeholder = "Say hi to the crew…";
+        return;
+      }
+      input.disabled = true;
+      input.placeholder =
+        badge === "building" ? "Memory building…" :
+        badge === "failed" ? "Memory build failed: " + err :
+        badge === "closed" ? "This project is closed." :
+        "No project memory yet — approve the report first.";
+    }
+    async function refreshMem() {
+      const rid = runId();
+      if (!rid) {
+        memStates = { closed: false, agents: {} };
+        paintBadges();
+        applyGate();
+        return;
+      }
+      try {
+        const r = await fetch("api/flows/runs/" +
+          encodeURIComponent(rid) + "/memory", { cache: "no-store" });
+        if (!r.ok) throw new Error("memory " + r.status);
+        memStates = await r.json();
+      } catch (e) { /* keep last states */ }
+      paintBadges();
+      applyGate();
+      const anyBuilding = Object.keys(memStates.agents || {})
+        .some((k) => memStates.agents[k].state === "building");
+      if (memTimer) { clearTimeout(memTimer); memTimer = 0; }
+      if (anyBuilding)
+        memTimer = setTimeout(refreshMem, 5000);
+    }
+    window.__chatRunRefresh = refreshMem;
+    document.getElementById("st-run")
+      .addEventListener("change", refreshMem);
     function addMsg(cls, text) {
       const d = document.createElement("div");
       d.className = "cmsg " + cls;
@@ -2327,10 +2397,27 @@ button.linklike { background: none; border: none; padding: 0;
         if (roster.length) addMsg("them", "Hey! I'm " + roster[0].name + ". Ask me anything about my work.");
         else addMsg("sys", "No crew yet.");
         curWho = who.value;
+        refreshMem();
       } catch (e) {
         addMsg("sys", "Crew list unavailable — is the server running?");
       }
     }
+    if (retryBtn) retryBtn.addEventListener("click", async () => {
+      const rid = runId();
+      if (!rid || !who.value) return;
+      addMsg("sys", "Retrying memory build for " +
+        memberName(who.value) + "…");
+      try {
+        const r = await fetch("api/flows/runs/" +
+          encodeURIComponent(rid) + "/memory/" +
+          encodeURIComponent(who.value), { method: "POST" });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || ("retry " + r.status));
+        refreshMem();
+      } catch (err) {
+        addMsg("sys", "Error: " + err.message);
+      }
+    });
     who.addEventListener("change", () => {
       if (curWho) {
         histories[curWho] = {
@@ -2352,6 +2439,7 @@ button.linklike { background: none; border: none; padding: 0;
           ". Ask me anything about my work.");
       }
       curWho = who.value;
+      applyGate();
     });
     addEventListener("message", (e) => {
       if (e.origin !== location.origin) return;
@@ -2374,13 +2462,19 @@ button.linklike { background: none; border: none; padding: 0;
       input.value = "";
       const typing = addMsg("them typing", "…");
       try {
+        const payload = { messages: history };
+        if (runId()) payload.run_id = runId();
         const r = await fetch("api/crew/" + encodeURIComponent(who.value) + "/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: history }),
+          body: JSON.stringify(payload),
         });
         const data = await r.json().catch(() => ({}));
         typing.remove();
+        if (r.status === 409 && data.memory) {
+          refreshMem();
+          throw new Error(data.error || "memory not ready");
+        }
         if (!r.ok) throw new Error(data.error || ("chat " + r.status));
         addMsg("them", data.reply);
         history.push({ role: "assistant", content: data.reply });
@@ -2424,6 +2518,7 @@ button.linklike { background: none; border: none; padding: 0;
       pause: document.getElementById("st-pause"),
       step: document.getElementById("st-step"),
       stop: document.getElementById("st-stop"),
+      close: document.getElementById("st-close"),
     };
     let roster = [];
     let timer = 0;
@@ -2456,6 +2551,7 @@ button.linklike { background: none; border: none; padding: 0;
       btns.step.disabled = state !== "paused";
       btns.stop.disabled = state !== "running" &&
         state !== "pausing" && state !== "paused";
+      btns.close.disabled = !runSel.value;
       eachBox.disabled = !runSel.value;
       if (st && typeof st.pause_each_stage === "boolean" &&
           document.activeElement !== eachBox)
@@ -2498,16 +2594,21 @@ button.linklike { background: none; border: none; padding: 0;
       if (!runSel.value) return;
       if (which === "stop" && !window.confirm(
         "Stop this run? It cannot be resumed.")) return;
+      if (which === "close" && !window.confirm(
+        "Close this project? Employee memories for it will be deleted.")) return;
       try {
         await api.send("POST", "api/flows/runs/" +
           encodeURIComponent(runSel.value) + "/" + which, {});
         await refresh();
+        if (which === "close" && window.__chatRunRefresh)
+          window.__chatRunRefresh();
       } catch (e) { errEl.textContent = "Error: " + e.message; }
     }
     btns.resume.onclick = () => act("resume");
     btns.pause.onclick = () => act("pause");
     btns.step.onclick = () => act("step");
     btns.stop.onclick = () => act("stop");
+    btns.close.onclick = () => act("close");
     runSel.onchange = () => {
       errEl.textContent = "";
       tellOfficeRun();
@@ -2776,7 +2877,9 @@ button.linklike { background: none; border: none; padding: 0;
         if (!roster.length) throw new Error("no crew yet");
         const sales = roster.find((c) => (c.tools || []).indexOf("write_request") >= 0);
         whoId = sales ? sales.id : roster[0].id;
-        const stored = sessionStorage.getItem("shoestring_order");
+        let stored = null;
+        try { stored = sessionStorage.getItem("shoestring_order"); }
+        catch (e) { stored = null; }
         if (stored) {
           try {
             const o = await api.get("api/orders/" + encodeURIComponent(stored));
@@ -2811,9 +2914,21 @@ button.linklike { background: none; border: none; padding: 0;
             }
           } catch (e) { /* fall through to a fresh order */ }
         }
-        const r = await api.send("POST", "api/orders", { assignee: whoId });
+        let r = await api.send("POST", "api/orders", { assignee: whoId });
+        if (r.created === false && r.open_orders && r.open_orders.length) {
+          const first = r.open_orders[0];
+          const closeIt = window.confirm("Project " + first +
+            " is still open. Close it first? Its employee memories will be deleted.\n\nOK = Close it \u00b7 Cancel = Keep open");
+          if (closeIt) {
+            await api.send("POST", "api/orders/" +
+              encodeURIComponent(first) + "/close", {});
+          }
+          r = await api.send("POST", "api/orders",
+            { assignee: whoId, force: true });
+        }
         oid = r.id;
-        sessionStorage.setItem("shoestring_order", oid);
+        try { sessionStorage.setItem("shoestring_order", oid); }
+        catch (e) { /* storage blocked: skip resume */ }
         const m = member(whoId);
         repName = String(m.name || whoId).toUpperCase();
         statusEl.textContent = "Order " + oid + " — consulting with " + m.name + ".";
@@ -2946,7 +3061,8 @@ button.linklike { background: none; border: none; padding: 0;
       } else {
         q.textContent = "Production started.";
       }
-      sessionStorage.removeItem("shoestring_order");
+      try { sessionStorage.removeItem("shoestring_order"); }
+      catch (e) { /* storage blocked: nothing stored */ }
     }
     document.getElementById("o-yes").onclick = async () => {
       showConfirm(false);

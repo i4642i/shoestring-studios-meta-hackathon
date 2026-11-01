@@ -16,6 +16,7 @@ and deletes the fixture orders (try/finally). Stdlib only.
 import base64
 import json
 import os
+import re
 import shutil
 import socket
 import struct
@@ -26,8 +27,8 @@ import time
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SERVER_PORT = 8765
-CDP_PORT = 9444
+SERVER_PORT = int(os.environ.get("CHECK_PORT", 8765))
+CDP_PORT = int(os.environ.get("CHECK_CDP_PORT", 9444))
 EDGE = (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
 RUNS = os.path.join(ROOT, "runs")
 PNG = os.path.join(RUNS, "order_pdf_bubble.png")
@@ -155,6 +156,120 @@ def js_eval(ws, expr, timeout=30):
     return (r.get("result") or {}).get("value")
 
 
+def open_edge(seed_oid=None):
+    """Fresh headless Edge on the Order tab. A seed oid is written
+    into sessionStorage before any page script runs, so newOrder
+    takes its resume path. One Edge per phase: storage access in a
+    long-lived headless page can die mid-run (SecurityError), and
+    neither a reload nor a re-navigate brings it back."""
+    profile = os.path.join(tempfile.gettempdir(), "order_pdf_profile")
+    shutil.rmtree(profile, ignore_errors=True)
+    edge = subprocess.Popen(
+        [EDGE, "--headless", "--no-sandbox", "--disable-gpu",
+         "--use-angle=swiftshader", "--no-first-run",
+         "--disable-extensions",
+         "--remote-debugging-port=%d" % CDP_PORT,
+         "--user-data-dir=" + profile,
+         "--window-size=1280,720", "about:blank"])
+    ws = None
+    try:
+        t0 = time.time()
+        targets = None
+        while time.time() - t0 < 40:
+            try:
+                with urllib.request.urlopen(
+                        "http://127.0.0.1:%d/json/list" % CDP_PORT,
+                        timeout=3) as r:
+                    targets = json.load(r)
+                if targets:
+                    break
+            except OSError:
+                time.sleep(1)
+        page = next((t for t in (targets or [])
+                     if t.get("type") == "page"), None)
+        if page is None:
+            stop_proc(edge, "edge")
+            return None, None, profile
+        wsu = page["webSocketDebuggerUrl"]
+        hostport, _, path = wsu.split("://", 1)[1].partition("/")
+        host, _, port = hostport.partition(":")
+        ws = WS(host, int(port or 80), "/" + path)
+        ws.call("Runtime.enable")
+        ws.call("Page.enable")  # neuter + dialog events need this
+        ws.call("Page.addScriptToEvaluateOnNewDocument",
+                {"source": "window.confirm=()=>false;"})
+        if seed_oid:
+            ws.call("Page.addScriptToEvaluateOnNewDocument",
+                    {"source": "try { sessionStorage.setItem("
+                               "'shoestring_order', '%s'); }"
+                               "catch (e) {}" % seed_oid})
+        ws.call("Page.navigate",
+                {"url": "http://localhost:%d/#order" % SERVER_PORT})
+        drain_dialogs(ws, 12)
+    except Exception:
+        if ws is not None:
+            ws.close()
+        stop_proc(edge, "edge")
+        raise
+    return edge, ws, profile
+
+
+def close_edge(edge, ws, profile, all_events):
+    if ws is not None:
+        all_events.extend(ws.events)
+        ws.close()
+    stop_proc(edge, "edge")
+    shutil.rmtree(profile or "", ignore_errors=True)
+
+
+OID_RE = re.compile(r"ord-[0-9]{8}-[0-9]{3}")
+
+
+def oid_of(ws):
+    m = OID_RE.search(js_eval(
+        ws, "document.getElementById('o-status').textContent") or "")
+    return m.group(0) if m else None
+
+
+def wait_oid(ws, timeout=25):
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        oid = oid_of(ws)
+        if oid:
+            return oid
+        time.sleep(0.5)
+    return None
+
+
+def drain_dialogs(ws, seconds):
+    """Dismiss any JS dialog. Headless has no UI to close one:
+    without this the renderer deadlocks and CDP goes silent."""
+    try:
+        ws.s.settimeout(1.0)
+    except OSError:
+        pass
+    t0 = time.time()
+    try:
+        while time.time() - t0 < seconds:
+            try:
+                msg = json.loads(ws.recv_msg())
+            except Exception:
+                continue
+            if msg.get("method") == "Page.javascriptDialogOpening":
+                try:
+                    ws.call("Page.handleJavaScriptDialog",
+                            {"accept": False}, timeout=10)
+                except Exception:
+                    pass
+            elif "id" not in msg:
+                ws.events.append(msg)
+    finally:
+        try:
+            ws.s.settimeout(30)
+        except OSError:
+            pass
+
+
 def console_errors(events):
     n = 0
     for m in events:
@@ -214,11 +329,10 @@ def main():
         ok(False, "edge binary found")
         print("1 FAILURES")
         return 1
-    server, edge, ws = None, None, None
-    profile = os.path.join(tempfile.gettempdir(), "order_pdf_profile")
+    server, edge, ws, profile = None, None, None, ""
     pdfpath = os.path.join(tempfile.gettempdir(), "order_pdf_drop.pdf")
     fixtures = []
-    shutil.rmtree(profile, ignore_errors=True)
+    all_events = []
     try:
         with open(pdfpath, "wb") as f:
             f.write(b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>"
@@ -246,59 +360,19 @@ def main():
             print("1 FAILURES")
             return 1
         ok(True, "server answers on %d" % SERVER_PORT)
-        edge = subprocess.Popen(
-            [EDGE, "--headless", "--no-sandbox", "--disable-gpu",
-             "--use-angle=swiftshader", "--no-first-run",
-             "--disable-extensions",
-             "--remote-debugging-port=%d" % CDP_PORT,
-             "--user-data-dir=" + profile,
-             "--window-size=1280,720", "about:blank"])
-        t0 = time.time()
-        targets = None
-        while time.time() - t0 < 40:
-            try:
-                with urllib.request.urlopen(
-                        "http://127.0.0.1:%d/json/list" % CDP_PORT,
-                        timeout=3) as r:
-                    targets = json.load(r)
-                if targets:
-                    break
-            except OSError:
-                time.sleep(1)
-        if not targets:
-            ok(False, "edge cdp answers")
-            print("1 FAILURES")
-            return 1
-        page = next((t for t in targets
-                     if t.get("type") == "page"), None)
-        if page is None:
+        # Phase A: fresh order + intake answers.
+        edge, ws, profile = open_edge()
+        if ws is None:
             ok(False, "edge page target found")
             print("1 FAILURES")
             return 1
-        wsu = page["webSocketDebuggerUrl"]
-        hostport, _, path = wsu.split("://", 1)[1].partition("/")
-        host, _, port = hostport.partition(":")
-        ws = WS(host, int(port or 80), "/" + path)
-        ws.call("Runtime.enable")
-        ws.call("Page.navigate",
-                {"url": "http://localhost:%d/#order" % SERVER_PORT})
-        t0 = time.time()
-        while time.time() - t0 < 40:
-            if js_eval(ws, "document.readyState") == "complete":
-                break
-            time.sleep(0.5)
-        t0 = time.time()
-        while time.time() - t0 < 60:
-            if js_eval(ws, "!!document.querySelector("
-                            "'#o-scene canvas')"):
-                break
-            time.sleep(1)
-        ok(js_eval(ws, "!!document.querySelector("
-                        "'#o-scene canvas')") is True,
+        ok(wait_for(ws, "!!document.querySelector("
+                        "'#o-scene canvas')", timeout=60),
            "reception canvas mounted")
 
         # use the order the page itself created, so resume is the real flow
-        oid1 = js_eval(ws, "sessionStorage.getItem('shoestring_order')")
+        oid1 = wait_oid(ws)
+        ok(bool(oid1), "fresh order id in the status (%s)" % oid1)
         fixtures.append(oid1)
         api("PUT", "api/orders/%s/intake" % oid1,
             {"answers": ANSWERS})
@@ -307,17 +381,21 @@ def main():
            "GET order returns missing==['source PDF'] (%s)"
            % (g1.get("missing"),))
 
-        # resume -> Sam's bubble must show the Attach PDF button
-        js_eval(ws, "location.reload()")
+        close_edge(edge, ws, profile, all_events)
+        edge, ws, profile = None, None, ""
+        # Phase B: resume oid1 in a fresh Edge -> Attach PDF button.
+        edge, ws, profile = open_edge(seed_oid=oid1)
         has_btn = wait_for(
             ws, "!!document.querySelector('#o-sambub .pdfbtn')")
         if not has_btn:
-            print("sam bubble html: %r" % js_eval(
+            print(("sam bubble html: %r" % js_eval(
                 ws, "document.getElementById('o-sambub')"
-                    ".innerHTML"), flush=True)
-            print("order status: %r" % js_eval(
+                    ".innerHTML")).encode("ascii", "replace")
+                .decode(), flush=True)
+            print(("order status: %r" % js_eval(
                 ws, "document.getElementById('o-status')"
-                    ".textContent"), flush=True)
+                    ".textContent")).encode("ascii", "replace")
+                .decode(), flush=True)
         ok(has_btn, "bubble shows Attach PDF on missing==['source PDF']")
         ok(js_eval(ws, "(document.querySelector('#o-sambub .pdfbtn')"
                        "||{}).textContent") == "Attach PDF",
@@ -354,9 +432,11 @@ def main():
         g2 = api("GET", "api/orders/" + oid1)
         ok(g2.get("missing") == [],
            "missing is [] after upload")
+        close_edge(edge, ws, profile, all_events)
+        edge, ws, profile = None, None, ""
 
-        # resume with the PDF stored: no button, label persists
-        js_eval(ws, "location.reload()")
+        # Phase C: resume with the PDF stored: no button, label persists.
+        edge, ws, profile = open_edge(seed_oid=oid1)
         has_done2 = wait_for(
             ws, "!!document.querySelector('#o-sambub .pdfdone')")
         ok(has_done2, "resume keeps the done-label")
@@ -364,16 +444,23 @@ def main():
                         "'#o-sambub .pdfbtn')") is None,
            "resume shows no button when PDF attached")
 
-        # drag-drop onto the 3D room, on a second order without a PDF
-        js_eval(ws, "sessionStorage.removeItem('shoestring_order');"
-                    "location.reload()")
-        ok(wait_for(ws, "sessionStorage.getItem('shoestring_order')"),
-           "fresh order created for the drop test")
-        oid2 = js_eval(ws, "sessionStorage.getItem('shoestring_order')")
+        close_edge(edge, ws, profile, all_events)
+        edge, ws, profile = None, None, ""
+        # Phase D: fresh second order without a PDF.
+        edge, ws, profile = open_edge()
+        oid2 = wait_oid(ws)
+        ok(bool(oid2), "fresh order created for the drop test (%s)"
+           % oid2)
         fixtures.append(oid2)
-        api("PUT", "api/orders/%s/intake" % oid2,
-            {"answers": ANSWERS})
-        js_eval(ws, "location.reload()")
+        if oid2:
+            api("PUT", "api/orders/%s/intake" % oid2,
+                {"answers": ANSWERS})
+        else:
+            ok(False, "second order id available for the drop test")
+        close_edge(edge, ws, profile, all_events)
+        edge, ws, profile = None, None, ""
+        # Phase E: resume oid2 -> button -> drop onto the 3D room.
+        edge, ws, profile = open_edge(seed_oid=oid2 or oid1)
         ok(wait_for(ws, "!!document.querySelector('#o-sambub .pdfbtn')"),
            "second order resumes with the button")
         box = js_eval(ws, "(() => { const r = document.getElementById("
@@ -393,7 +480,7 @@ def main():
             dropped = wait_for(
                 ws, "!!document.querySelector('#o-sambub .pdfdone')",
                 timeout=20)
-        except RuntimeError as exc:
+        except Exception as exc:  # noqa: BLE001 - fall back below
             print("drag cdp note: %s" % exc, flush=True)
         if dropped:
             ok(True, "drop onto the room attaches the PDF")
@@ -418,22 +505,21 @@ def main():
                        " && document.getElementById('o-q').style.display"
                        " !== 'none'") is True,
            "guided form + Choose PDF unchanged")
-        ws.call("Runtime.disable")
-        nerr = console_errors(ws.events)
+        close_edge(edge, ws, profile, all_events)
+        edge, ws, profile = None, None, ""
+        nerr = console_errors(all_events)
         ok(nerr == 0, "zero console errors (got %d)" % nerr)
     finally:
         for oid in fixtures:
-            shutil.rmtree(os.path.join(ROOT, "orders", oid),
-                          ignore_errors=True)
+            if oid:
+                shutil.rmtree(os.path.join(ROOT, "orders", oid),
+                              ignore_errors=True)
         try:
             os.remove(pdfpath)
         except OSError:
             pass
-        if ws is not None:
-            ws.close()
-        stop_proc(edge, "edge")
+        close_edge(edge, ws, profile, all_events)
         stop_proc(server, "server")
-        shutil.rmtree(profile, ignore_errors=True)
     if fails:
         print("%d FAILURES" % fails)
         return 1

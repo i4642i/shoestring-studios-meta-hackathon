@@ -507,3 +507,56 @@ def _count_log(eid, profile):
         return 0
     with open(p, encoding="utf-8") as f:
         return sum(1 for _ in f)
+
+
+def query_dir(working_dir, question, log_id, profile=None):
+    """Query a LightRAG that lives at an explicit working dir
+    (project memories). The index.json marker there must match the
+    active profile, like query_agent."""
+    pcfg = profile_config(profile)
+    prof = pcfg["profile"]
+    mark = None
+    mp = os.path.join(working_dir, "index.json")
+    if os.path.isfile(mp):
+        try:
+            with open(mp, encoding="utf-8") as f:
+                mark = json.load(f)
+        except ValueError:
+            mark = None
+    if not isinstance(mark, dict):
+        raise RuntimeError("no LightRAG index at %s; build it first"
+                           % working_dir)
+    if mark.get("model") != pcfg["model"] or mark.get("dim") != pcfg["dim"]:
+        raise RuntimeError(
+            "LightRAG index was built with %s (%sd); active profile '%s' "
+            "uses %s (%sd). Rebuild the index or switch profile."
+            % (mark.get("model"), mark.get("dim"), prof,
+               pcfg["model"], pcfg["dim"]))
+    if prof == "jetson":
+        jetson_health()  # fail fast, never silently local
+    q = query_settings()
+    rag = get_rag(log_id, prof, working_dir)
+    from lightrag import QueryParam
+    out = _run(rag.aquery(question, param=QueryParam(mode=q["mode"],
+                                                    top_k=q["top_k"])))
+    return {"mode": "lightrag", "profile": prof, "model": pcfg["model"],
+            "dim": pcfg["dim"], "query_mode": q["mode"], "top_k": q["top_k"],
+            "answer": str(out)}
+
+
+def count_llm_log(working_dir):
+    """LLM call count for one working dir (cost logging)."""
+    p = os.path.join(working_dir, "llm_log.jsonl")
+    if not os.path.isfile(p):
+        return 0, 0, 0
+    calls, pin, rout = 0, 0, 0
+    with open(p, encoding="utf-8") as f:
+        for ln in f.read().splitlines():
+            try:
+                rec = json.loads(ln)
+            except ValueError:
+                continue
+            calls += 1
+            pin += rec.get("prompt_chars", 0) or 0
+            rout += rec.get("reply_chars", 0) or 0
+    return calls, pin, rout
