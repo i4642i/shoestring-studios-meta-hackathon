@@ -452,12 +452,13 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide, o
             position: "absolute",
             left: 0,
             right: 0,
-            bottom: onScreenTextPosition === "top" ? undefined : 24,
-            top: onScreenTextPosition === "top" ? 24 : undefined,
+            bottom: onScreenTextPosition === "top" ? undefined : 0,
+            top: onScreenTextPosition === "top" ? 0 : undefined,
             textAlign: "center",
             fontSize: onScreenTextFont || 36,
             fontWeight: heading.fontWeight,
-            padding: "0 80px",
+            padding: "12px 80px",
+            background: "rgba(0, 0, 0, 0.55)",
           }}
         >
           {bottomLines.map((t, i) => (
