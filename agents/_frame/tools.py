@@ -2177,7 +2177,7 @@ def _values_trace(errors, template, values, quotes, where):
             pass
     for s in want:
         t = _norm_ws(s)
-        if t and t in hay:
+        if t in hay:  # '' is a blank source cell, copied verbatim
             continue
         try:
             f = float(str(s).replace(",", ""))
