@@ -194,16 +194,17 @@ def _vision_thumb(path, mime):
         return None
     try:
         import io
+        import os
         im = Image.open(path)
         im.thumbnail((768, 768), Image.LANCZOS)
+        if im.mode in ("RGBA", "LA", "P"):
+            im = im.convert("RGB")
         buf = io.BytesIO()
-        if mime == "image/jpeg":
-            if im.mode in ("RGBA", "LA", "P"):
-                im = im.convert("RGB")
-            im.save(buf, format="JPEG")
-            return buf.getvalue(), "image/jpeg"
-        im.save(buf, format="PNG")
-        return buf.getvalue(), "image/png"
+        im.save(buf, format="JPEG", quality=75)
+        blob = buf.getvalue()
+        if len(blob) >= os.path.getsize(path):
+            return None
+        return blob, "image/jpeg"
     except Exception:
         return None
 
