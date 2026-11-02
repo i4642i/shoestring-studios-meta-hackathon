@@ -18,8 +18,10 @@ tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import pc as _pc
 from agents._frame import results, tools, video
 from agents._frame.schemas import (validate_anim_picks,
+                                   validate_cut_layout,
                                    validate_gen_picks,
                                    validate_photo_picks,
+                                   render_photo_picks_md,
                                    validate_render_log,
                                    validate_slide_draft,
                                    validate_style_guide)
@@ -378,6 +380,32 @@ try:
                     "source_url": "https://example.org/pick-1",
                     "license": "cc0", "reason": "Plains photo"}]}
     ok(validate_photo_picks(PH, BOARD) == [], "photo picks accept")
+    PHD = {"cuts": [{"cut_id": "s1c1", "decision": "use",
+                     "kind": "source_figure",
+                     "ref": "pc://source/0123456789ab#fig1.1.1",
+                     "file": "fig1.png",
+                     "source_url": "pc://source/0123456789ab#fig1.1.1",
+                     "license": "cc0", "reason": "Figure",
+                     "width": 800, "height": 600, "aspect": 1.33}]}
+    ok("- Size: 800x600 (aspect 1.33)" in render_photo_picks_md(PHD),
+       "pick markdown carries figure size")
+    ok(tools._fit_hint(680, 380, 1130, 1000)
+       == "fit w~429 at h=380 or h~602 at w=680",
+       "aspect error names a fitting box")
+    bad_reveal = {"cut_id": "s1c1", "preset": "main_side",
+                  "blocks": [
+                      {"kind": "table",
+                       "box": {"x": 64, "y": 96, "w": 1088, "h": 300},
+                       "order": 0, "appear_s": 0, "font_size": 24,
+                       "reason": "Numbers",
+                       "data": {"headers": ["Year"],
+                                "rows": [["2024"]],
+                                "reveal": "bogus"}}],
+                  "on_screen_text": ["Hi"], "transitions": [],
+                  "why": "stub"}
+    ok(any("must be 'all' or 'rows'" in e
+           for e in validate_cut_layout(bad_reveal, 20)),
+       "reveal error names the allowed values")
     ok("cut set" in " ".join(validate_photo_picks(
         {"cuts": PH["cuts"][:1]}, BOARD)),
        "photo dropped cut refuses")

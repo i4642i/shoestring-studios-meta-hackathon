@@ -1506,7 +1506,8 @@ def validate_cut_layout(cut, dur_s):
                                       % bw)
                         break
             if data.get("reveal", "all") not in ("all", "rows"):
-                errors.append("%s.data.reveal all|rows" % bw)
+                errors.append("%s.data.reveal must be 'all' or 'rows' "
+                              "(got %r)" % (bw, data.get("reveal")))
             elif data.get("reveal") == "rows":
                 reveal_n = len(rows)
             if font_ok and w is not None and heads:
@@ -1781,15 +1782,27 @@ def _render_pick_cuts_md(title, cuts, fmt):
     return "\n".join(lines)
 
 
+def _pick_size(c):
+    """'WxH (aspect A)' for a stamped pick, else 'unknown'."""
+    w, h = c.get("width"), c.get("height")
+    good = all(isinstance(v, (int, float))
+               and not isinstance(v, bool) and v > 0
+               for v in (w, h))
+    if not good:
+        return "unknown"
+    return "%sx%s (aspect %s)" % (w, h, round(w / h, 2))
+
+
 def render_photo_picks_md(obj):
     """Pia's picks as markdown."""
     def fmt(c):
         if c.get("decision") == "none":
             return "No photo for this cut."
         return "- Kind: %s\n- File: %s\n- Source: %s\n- License: " \
-               "%s\n- Why: %s" % (c.get("kind"), c.get("file"),
+               "%s\n- Size: %s\n- Why: %s" % (c.get("kind"), c.get("file"),
                                   c.get("source_url"),
-                                  c.get("license"), c.get("reason"))
+                                  c.get("license"), _pick_size(c),
+                                  c.get("reason"))
     return _render_pick_cuts_md("Photo picks",
                                 obj.get("cuts", []), fmt)
 

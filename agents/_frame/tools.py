@@ -1925,6 +1925,13 @@ def write_photo_picks(ctx, args):
                                  entry.get("license")))
     if errors:
         return {"ok": False, "errors": errors}
+    for cut in obj["cuts"]:
+        if isinstance(cut, dict) and cut.get("decision") == "use" \
+                and cut.get("kind") == "source_figure":
+            fw, fh = _figure_dims(cut.get("ref"))
+            if fw and fh:
+                cut["width"], cut["height"] = fw, fh
+                cut["aspect"] = round(fw / fh, 2)
     return _save_category(ctx, "photo_picks", obj)
 
 
@@ -2113,6 +2120,45 @@ def _figure_kind(errors, ref, where):
                       % (where, ref, passage.get("kind")))
 
 
+def _fit_hint(bw, bh, w, h):
+    """Box sizes that fit material aspect w/h: keep the height
+    and take this width, or keep the width and take this height."""
+    return ("fit w~%d at h=%d or h~%d at w=%d"
+            % (round(bh * w / h), bh, round(bw * h / w), bw))
+
+
+def _figure_dims(ref):
+    """(width, height) for a source_figure ref, or (None, None)
+    when unknown. Same resolution as the aspect check below."""
+    try:
+        rpc, rid, frag = pc.parse_ref(ref)
+    except ValueError:
+        return None, None
+    if rpc != "source" or not frag:
+        return None, None
+    try:
+        entry = pc.load_entry_by_ref(pc.entry_ref(rpc, rid))
+    except (OSError, ValueError, KeyError):
+        return None, None
+    fig = next((f for f in entry.get("figures", [])
+                if f.get("addr") == frag), None)
+    if fig is None:
+        return None, None
+    w, h = fig.get("w"), fig.get("h")
+    if not (w and h) and fig.get("file"):
+        try:
+            dims = pc.media_dims(os.path.join(
+                pc.entry_dir(rpc, rid), "figures", fig["file"]))
+        except (OSError, ValueError, KeyError):
+            dims = None
+        if dims:
+            w, h = dims
+    good = all(isinstance(v, (int, float))
+               and not isinstance(v, bool) and v > 0
+               for v in (w, h))
+    return (w, h) if good else (None, None)
+
+
 def _material_aspect(errors, ref, box, where):
     """Box aspect matches the stored material within 50%. Unknown
     dims (old entries, parser figures without w/h) skip quietly."""
@@ -2159,7 +2205,10 @@ def _material_aspect(errors, ref, box, where):
     rel = abs(bw / bh - w / h) / (w / h)
     if rel > 0.5:
         errors.append("%s: box aspect %.2f vs material %.2f "
-                      "(over 50%% off)" % (where, bw / bh, w / h))
+                      "(over 50%% off); %s"
+                      % (where, bw / bh, w / h,
+                         _fit_hint(bw, bh, w, h)))
+                      # (fit hint merged into the message above)
 
 
 def _values_trace(errors, template, values, quotes, where):
