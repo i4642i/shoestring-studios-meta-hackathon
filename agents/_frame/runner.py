@@ -13,7 +13,7 @@ BASE_URL = "https://api.meta.ai/v1"
 BASETEN_URL = "https://inference.baseten.co/v1"
 LLM_MODELS = ["meta-models/muse-spark-open-1026", "muse-spark-1.3",
               "muse-spark-1.2", "muse-spark-1.1", "muse-wonder-1.0"]
-MAX_JSON_RETRIES = 3  # failed writer calls per RUN (errors go back with tools on)
+MAX_JSON_RETRIES = 5  # failed writer calls per RUN (errors go back with tools on)
 MAX_TOOL_FAILS = 5  # consecutive failures before a tool is closed for the run
 
 DATA_TAG = ("<external-data tool=\"%s\">\n"
