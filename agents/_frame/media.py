@@ -20,6 +20,17 @@ from . import pc
 from . import readlog
 
 OPENVERSE_URL = "https://api.openverse.org/v1/images/"
+COMMONS_URL = "https://commons.wikimedia.org/w/api.php"
+USER_AGENT = "ShoestringStudios/1.0 (AI video crew demo)"
+
+
+def _json_headers():
+    return {"Accept": "application/json",
+            "User-Agent": USER_AGENT}
+
+
+def _bytes_headers():
+    return {"Accept": "image/*", "User-Agent": USER_AGENT}
 OPENVERSE_LICENSES = "by,by-sa,cc0,pdm"  # minus by-nd (we crop)
 IMAGE_QUERY_CAP = 2  # Openverse queries per cut per run
 OPENVERSE_PER_MIN = 20  # shared Openverse queue default
@@ -123,7 +134,7 @@ def _owns(ctx, base):
 def _get_json(url):
     if _HTTP_JSON is not None:
         return _HTTP_JSON(url)
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    req = urllib.request.Request(url, headers=_json_headers())
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             return json.load(r)
@@ -136,7 +147,7 @@ def _get_json(url):
 def _get_bytes(url, cap):
     if _HTTP_BYTES is not None:
         return _HTTP_BYTES(url, cap)
-    req = urllib.request.Request(url, headers={"Accept": "image/*"})
+    req = urllib.request.Request(url, headers=_bytes_headers())
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             blob = r.read(cap + 1)
@@ -187,14 +198,72 @@ def openverse_search(query, limit=5, per_min=None):
         "license_type": "commercial", "page_size": limit,
         "fields": "id,title,url,foreign_landing_url,license,"
                   "license_version,thumbnail"})
-    data = _get_json(OPENVERSE_URL + "?" + qs)
+    try:
+        data = _get_json(OPENVERSE_URL + "?" + qs)
+    except RuntimeError as exc:
+        falls = commons_search(query, limit)
+        for h in falls:
+            h["source"] = "commons"
+            h["fallback"] = str(exc)
+        return falls
     out = []
     for h in (data.get("results", []) or [])[:limit]:
         out.append({"title": h.get("title", ""),
                     "image_url": h.get("url", ""),
                     "page_url": h.get("foreign_landing_url", ""),
                     "license": (h.get("license") or "").lower(),
-                    "license_version": h.get("license_version", "")})
+                    "license_version": h.get("license_version", ""),
+                    "source": "openverse"})
+    return out
+
+
+def _commons_license(short):
+    """(license, version) for a Commons LicenseShortName, or
+    None when not reusable (NC/ND/unknown)."""
+    import re as _re
+    s = (short or "").lower()
+    if not s or "nc" in s or "nd" in s:
+        return None
+    m = _re.search(r"(\d+\.\d+)", s)
+    ver = m.group(1) if m else ""
+    if "public domain" in s or "cc0" in s:
+        return ("pdm", ver)
+    if "by-sa" in s or ("by" in s and "sa" in s):
+        return ("by-sa", ver)
+    if "by" in s:
+        return ("by", ver)
+    return None
+
+
+def commons_search(query, limit=5):
+    """Wikimedia Commons fallback: freely licensed images, no
+    key, same hit shape as openverse_search."""
+    qs = urllib.parse.urlencode({
+        "action": "query", "format": "json",
+        "generator": "search", "gsrsearch": query,
+        "gsrnamespace": 6, "gsrlimit": limit,
+        "prop": "imageinfo", "iiprop": "url|extmetadata"})
+    data = _get_json(COMMONS_URL + "?" + qs)
+    out = []
+    pages = (data.get("query", {}) or {}).get("pages", {}) or {}
+    for _id in sorted(pages, key=str):
+        pg = pages[_id] or {}
+        info = (pg.get("imageinfo") or [{}])[0] or {}
+        meta = info.get("extmetadata") or {}
+        short = ((meta.get("LicenseShortName") or {}).get("value")
+                 or "")
+        lic = _commons_license(short)
+        if lic is None:
+            continue
+        license, ver = lic
+        out.append({"title": pg.get("title", ""),
+                    "image_url": info.get("url", ""),
+                    "page_url": info.get("descriptionurl", ""),
+                    "license": license,
+                    "license_version": ver,
+                    "source": "commons"})
+        if len(out) >= limit:
+            break
     return out
 
 

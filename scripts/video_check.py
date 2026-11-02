@@ -665,6 +665,41 @@ try:
     ok("error" in _media.pc_search_images(
         ctx_for(wdir("x"), "image_gene"), {"cut_id": "c", "query": "q"}),
        "image search is Pia-only")
+    ok(_media._json_headers().get("User-Agent")
+       and _media._bytes_headers().get("User-Agent"),
+       "outbound media calls identify the app")
+    ok(_media._commons_license("Public domain") == ("pdm", "")
+       and _media._commons_license("CC BY-SA 4.0")
+       == ("by-sa", "4.0")
+       and _media._commons_license("CC BY 3.0") == ("by", "3.0")
+       and _media._commons_license("CC BY-NC 4.0") is None
+       and _media._commons_license("CC BY-ND 4.0") is None
+       and _media._commons_license("") is None,
+       "commons licenses map to reusable or refused")
+    def _fake_down(url):
+        if url.startswith(_media.OPENVERSE_URL):
+            raise RuntimeError("openverse 403: Forbidden")
+        return {"query": {"pages": {
+            "7": {"title": "File:Mill.jpg", "imageinfo": [{
+                "url": "https://up.test/mill.jpg",
+                "descriptionurl": "https://commons.test/mill",
+                "extmetadata": {"LicenseShortName": {
+                    "value": "CC BY-SA 4.0"}}}]},
+            "9": {"title": "File:Rent.jpg", "imageinfo": [{
+                "url": "https://up.test/rent.jpg",
+                "descriptionurl": "https://commons.test/rent",
+                "extmetadata": {"LicenseShortName": {
+                    "value": "CC BY-NC 4.0"}}}]}}}}
+    _media._HTTP_JSON = _fake_down
+    try:
+        fb = _media.openverse_search("old mill", 5)
+    finally:
+        _media._HTTP_JSON = _fake_search
+    ok(len(fb) == 1 and fb[0]["source"] == "commons"
+       and fb[0]["license"] == "by-sa"
+       and fb[0]["image_url"] == "https://up.test/mill.jpg"
+       and "fallback" in fb[0],
+       "dead openverse falls back to commons, nc refused")
     pk = _media.pc_pick_image(pia, {"image_url": "https://img.test/h1.jpg",
                                    "page_url": "https://page.test/h1",
                                    "license": "by-4.0",
