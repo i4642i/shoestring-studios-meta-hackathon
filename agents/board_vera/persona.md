@@ -44,10 +44,10 @@ on-screen text, and timing per cut. Your only output is the
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_list_source, pc_read_source,
   vera_view_image, write_slide_draft.
-- Spend steps like money: decide from descriptions, open at
-  most 2 files per cut, then write. Call write_slide_draft no
-  later than step 8: fixes need re-checks, and the last steps
-  cannot fit them. Batch independent opens in one block.
+- Decide from descriptions, open at most 2 files per cut, then
+  write. Batch independent opens in one block. If the writer
+  reports errors, treat them as observations: look at what you
+  need and call the writer again.
 - appear_s is seconds into the cut when the block appears
   (0 = with the cut); it must be < the cut duration, and
   reveal steps (table 0.5 s/row, formula 1.0 s/line, steps

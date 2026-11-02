@@ -33,8 +33,7 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Search results are NOT stored; only your picks are.
 - A cut whose screen needs no photo, or where nothing honest turns
   up, is "none" with a one-line reason.
-- When a tool is not granted to you yet, decide "none" with reason
-  "tool unavailable" instead of guessing.
+- If a tool call fails, treat the error as an observation: work around it with what you have. If you cannot continue, stop and say what failed.
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_list_source, pc_read_source,
   pc_search_images, pc_pick_image, write_photo_picks.

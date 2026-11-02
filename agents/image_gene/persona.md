@@ -33,8 +33,7 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Match the style guide's image tone in every prompt.
 - Store every image in the Generated PC before saving; reuse by
   prompt hash when the same prompt repeats.
-- When the generation tool is not granted to you yet, decide
-  "none" with reason "tool unavailable" instead of guessing.
+- If a tool call fails, treat the error as an observation: work around it with what you have. If you cannot continue, stop and say what failed.
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_read_source, pc_generate_image,
   write_gen_picks.
