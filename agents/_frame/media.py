@@ -43,6 +43,7 @@ GEN_IMAGE_CAP = 6  # generated images per run
 GEN_IMAGE_COST = 0.01  # USD per muse-image, flat
 VERA_VIEW_CAP = 2  # candidate files viewed per cut per run
 IMAGE_FETCH_CAP = 20 * 1024 * 1024  # 20 MB per download
+IMAGE_PICK_GAP = 15  # seconds between pick downloads per run
 LICENSE_OK = ("cc0", "pdm", "by", "by-sa")
 
 _HTTP_JSON = None  # fn(url) -> parsed JSON (tests inject fixtures)
@@ -150,9 +151,9 @@ def _get_json(url, timeout=60):
 
 
 def _retry_after(headers, default=10):
-    """Seconds to wait on HTTP 429 (Retry-After, capped at 60)."""
+    """Seconds to wait on HTTP 429 (Retry-After, capped at 600)."""
     try:
-        return min(60, max(1, int(str(
+        return min(600, max(1, int(str(
             (headers or {}).get("retry-after", default)).strip())))
     except (TypeError, ValueError, AttributeError):
         return default
@@ -271,6 +272,20 @@ def _commons_license(short):
     return None
 
 
+def _clean_url(url):
+    """Drop tracking query params (utm_*) from a file URL."""
+    try:
+        u = urllib.parse.urlsplit(url or "")
+        q = urllib.parse.parse_qsl(u.query, keep_blank_values=True)
+        q = [(k, v) for k, v in q
+             if not k.lower().startswith("utm_")]
+        return urllib.parse.urlunsplit(
+            (u.scheme, u.netloc, u.path,
+             urllib.parse.urlencode(q), u.fragment))
+    except ValueError:
+        return url
+
+
 def commons_search(query, limit=5):
     """Wikimedia Commons fallback: freely licensed images, no
     key, same hit shape as openverse_search."""
@@ -298,7 +313,7 @@ def commons_search(query, limit=5):
             continue
         license, ver = lic
         out.append({"title": pg.get("title", ""),
-                    "image_url": info.get("url", ""),
+                    "image_url": _clean_url(info.get("url", "")),
                     "page_url": info.get("descriptionurl", ""),
                     "license": license,
                     "license_version": ver,
@@ -370,6 +385,27 @@ def pc_search_images(ctx, args):
             "queries_used": n}
 
 
+def _pace_pick(ctx):
+    """One pick download per IMAGE_PICK_GAP seconds per run:
+    bursts get upload.wikimedia.org throttling the whole IP."""
+    try:
+        run_dir = (ctx or {}).get("run_dir", "")
+        if not run_dir:
+            return
+        mark = os.path.join(run_dir, "last_pick_download.json")
+        now = time.time()
+        try:
+            last = float(_counter(mark).get("at", 0))
+        except (TypeError, ValueError):
+            last = 0
+        wait = IMAGE_PICK_GAP - (now - last)
+        if wait > 0:
+            time.sleep(wait)
+        _counter_save(mark, {"at": time.time()})
+    except OSError:
+        pass
+
+
 @readlog.logged("image")
 def pc_pick_image(ctx, args):
     """Pia's pick: download one licensed photo into the Image PC
@@ -387,6 +423,7 @@ def pc_pick_image(ctx, args):
         return {"error": "license %r is not reuse-permitted "
                 "(want cc0/pdm/by/by-sa, never nd/nc)" % lic}
     try:
+        _pace_pick(ctx)
         blob = _get_bytes(args["image_url"].strip(),
                           IMAGE_FETCH_CAP)
     except RuntimeError as exc:

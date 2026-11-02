@@ -729,9 +729,21 @@ try:
        "commons fallback asks bitmaps only, drops pdf hits")
     ok(_media._retry_after({"retry-after": "10"}) == 10
        and _media._retry_after({}) == 10
-       and _media._retry_after({"retry-after": "999"}) == 60
+       and _media._retry_after({"retry-after": "999"}) == 600
        and _media._retry_after({"retry-after": "junk"}) == 10,
-       "429 retry honors retry-after, capped at 60")
+       "429 retry honors retry-after, capped at 600")
+    ok(_media._clean_url("https://up.test/f.jpg?utm_source=x&a=1")
+       == "https://up.test/f.jpg?a=1",
+       "tracking params stripped from file urls")
+    _media.IMAGE_PICK_GAP = 0
+    try:
+        _media._pace_pick(pia)
+        _media._pace_pick(pia)
+    finally:
+        _media.IMAGE_PICK_GAP = 15
+    ok(os.path.isfile(os.path.join(wdir("photo_pia2"),
+                                  "last_pick_download.json")),
+       "paced picks record the last download")
     ok(_media._commons_license("Public domain") == ("pdm", "")
        and _media._commons_license("CC BY-SA 4.0")
        == ("by-sa", "4.0")
