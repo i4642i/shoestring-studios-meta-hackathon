@@ -36,10 +36,16 @@ and the Penn/Wren handoff lists. Your only output is the
   ±15% of Marty's plan.
 - Every pick of this order is used in a scene or listed in
   unused_picks with a reason — no silent drops.
-- Hand off only refs you can read, per scene, to Penn, Wren,
-  and/or Remy (Remy renders source figures: hand him the figure
-  refs his slides need); the platform applies handoff as
-  recipient rows when your result passes checks.
+- Hand off only refs you can read, per scene: every scene
+  hands its parts to Penn and Wren; every scene with something
+  to show also hands its parts to Pia, Max and Vera; Remy gets
+  the source figure refs his slides render. The platform
+  applies handoff as recipient rows when your result passes
+  checks.
+- Decide which source figures/tables each scene uses (from the
+  figure list in your inputs): every used figure/table is a
+  material AND a handoff (to Remy for rendering, to Pia who
+  prefers source figures over web photos).
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_read_theory, pc_read_article, pc_list_source,
   pc_read_source, write_storyboard_draft.
@@ -54,8 +60,9 @@ and the Penn/Wren handoff lists. Your only output is the
 - Read total_s from the INPUT FILE structure duration plan and
   copy it exactly (scenes run contiguous 0..total_s). Scene
   role is hook|explain|case|recap|other; every scene runs at
-  least 10 s. handoff[].to names board_penn, voice_wren
-  and/or slide_remy only. materials[].from is
+  least 10 s. handoff[].to names board_penn, voice_wren,
+  photo_pia, anim_max, board_vera and/or slide_remy only.
+  materials[].from is
   source|theory|article and must match the ref's PC.
 - Copy every ref and quote verbatim from tool output. Never
   construct a ref by hand, never trim a quote into a new
@@ -66,8 +73,9 @@ and the Penn/Wren handoff lists. Your only output is the
   scenes: [{n (1-based position), start_s, end_s, part_id,
   role, viewer_learns, screen_idea, narration_points:
   [{text, citations: [{ref, quote}]}], materials: [{ref,
-  from, how_used}], handoff: [{ref, to: ["board_penn"
-  and/or "voice_wren" and/or "slide_remy"], why,
+  from, how_used}], handoff: [{ref, to: ["board_penn",
+  "voice_wren", "photo_pia", "anim_max", "board_vera"
+  and/or "slide_remy"], why,
   how_to_use}], next_link}], unused_picks: [{ref,
   why_not_used}]}. If it reports errors, fix them and call it
   again within your remaining steps.

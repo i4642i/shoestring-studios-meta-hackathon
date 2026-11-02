@@ -604,12 +604,17 @@ try:
     ok(rrow is not None and rrow.get("kind") == "map"
        and rrow.get("parts") == [sref + "#s2.1/p2"],
        "remy base row is kind=map + parts")
+    good = json.loads(json.dumps(D))
+    good["scenes"][0]["handoff"][0]["to"] = ["photo_pia"]
+    ok(write_storyboard_draft(
+        actx, {"storyboard_draft": good}).get("ok") is True,
+       "handoff to pia passes")
     bad = json.loads(json.dumps(D))
-    bad["scenes"][0]["handoff"][0]["to"] = ["photo_pia"]
-    ok("Penn, Wren and/or Remy" in " ".join(
+    bad["scenes"][0]["handoff"][0]["to"] = ["sales_sam"]
+    ok("Pia, Max," in " ".join(
         write_storyboard_draft(
             actx, {"storyboard_draft": bad}).get("errors", [])),
-       "handoff to pia refuses")
+       "handoff to a stranger refuses")
     bad = json.loads(json.dumps(D))
     bad["scenes"][0]["end_s"] = 5
     bad["scenes"][1]["start_s"] = 5

@@ -232,6 +232,16 @@ try:
     ok(ap3.get("grants") == 1 and arow.get("kind") == "map"
        and arow.get("parts") == [aref + "#p3"],
        "handoff row on article is kind=map + parts")
+    ap4 = pc.apply_handoff(
+        "ord-20261030-001",
+        {"scenes": [{"n": 9, "handoff": [
+            {"ref": p["ref"] + "#p1", "to": ["photo_pia"],
+             "why": "w", "how_to_use": "h"}]}]})
+    prow = pc.entry_access(pc.load_entry_by_ref(p["ref"]),
+                           "photo_pia", "ord-20261030-001")
+    ok(ap4.get("grants") == 1 and prow.get("kind") == "map"
+       and prow.get("parts") == [p["ref"] + "#p1"],
+       "handoff grants pia a map+parts row on theory")
     ptext, pmeta2 = pc.prompt_chunks_for(
         "board_penn", "ord-20261030-001", [src["ref"]],
         os.path.join(tmp, "runs"))
