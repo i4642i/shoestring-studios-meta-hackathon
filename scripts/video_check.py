@@ -764,6 +764,14 @@ try:
        and fb[0]["image_url"] == "https://up.test/mill.jpg"
        and "fallback" in fb[0],
        "dead openverse falls back to commons, nc refused")
+    nt = []
+    _media._HTTP_JSON = _fake_down
+    try:
+        _media.openverse_search("old mill", 5, _note=nt)
+    finally:
+        _media._HTTP_JSON = _fake_search
+    ok(len(nt) == 1 and "403" in nt[0],
+       "fallback recorded in _note for the breaker")
     pk = _media.pc_pick_image(pia, {"image_url": "https://img.test/h1.jpg",
                                    "page_url": "https://page.test/h1",
                                    "license": "by-4.0",

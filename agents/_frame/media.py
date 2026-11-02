@@ -219,7 +219,7 @@ def _get_openverse(url):
     return None, err
 
 
-def openverse_search(query, limit=5, per_min=None):
+def openverse_search(query, limit=5, per_min=None, _note=None):
     """Openverse image search (commercial reuse set, no nd). Hits
     are never stored; only picks are. Calls queue through the
     shared per-minute limiter."""
@@ -239,6 +239,8 @@ def openverse_search(query, limit=5, per_min=None):
         for h in falls:
             h["source"] = "commons"
             h["fallback"] = str(exc)
+        if _note is not None:
+            _note.append(str(exc))
         return falls
     out = []
     for h in (data.get("results", []) or [])[:limit]:
@@ -327,8 +329,9 @@ def _search_with_breaker(ctx, query, limit, per_min):
         for h in hits:
             h["fallback"] = "openverse skipped (failed twice)"
         return hits
-    hits = openverse_search(query, limit, per_min)
-    if hits and all("fallback" in h for h in hits):
+    fb_note = []
+    hits = openverse_search(query, limit, per_min, _note=fb_note)
+    if fb_note or (hits and all("fallback" in h for h in hits)):
         _counter_save(deadp, {"n": dead + 1})
     return hits
 
