@@ -150,6 +150,14 @@
     {
      "kind": "map",
      "pc": "source"
+    },
+    {
+     "kind": "full",
+     "pc": "image"
+    },
+    {
+     "kind": "full",
+     "pc": "generated"
     }
    ]
   },
@@ -425,7 +433,20 @@
      "optional": true
     }
    ],
-   "pc_rows": []
+   "pc_rows": [
+    {
+     "kind": "full",
+     "pc": "image"
+    },
+    {
+     "kind": "full",
+     "pc": "generated"
+    },
+    {
+     "kind": "map",
+     "pc": "source"
+    }
+   ]
   },
   "video_production": {
    "items": [
@@ -502,6 +523,10 @@
     {
      "kind": "map",
      "pc": "article"
+    },
+    {
+     "kind": "full",
+     "pc": "voice"
     }
    ]
   }

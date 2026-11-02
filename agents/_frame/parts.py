@@ -606,6 +606,7 @@ def write_clone_rows(order_id, plan, root=None):
                 "errors": herr}
     parts = (plan or {}).get("parts") or []
     by_entry = {}
+    pw_rows = {}
     for p in parts:
         for ref in (p.get("materials") or []):
             try:
@@ -630,8 +631,10 @@ def write_clone_rows(order_id, plan, root=None):
                            clone_id("board_vera", no)], figs),
                           ([clone_id("anim_max", no)], tabs)]
             elif rpc in ("theory", "article"):
-                groups = [([clone_id(b, no)
-                           for b in PENN_WREN_CLONES], refs)]
+                for b in PENN_WREN_CLONES:
+                    pw_rows.setdefault((rpc, rid, b),
+                                      []).extend(refs)
+                groups = []
             elif rpc in ("image", "generated"):
                 groups = [([clone_id(b, no)
                            for b in IMAGE_CLONE_READERS], refs)]
@@ -651,6 +654,21 @@ def write_clone_rows(order_id, plan, root=None):
                 granted.append("%s p%d (%s)"
                                % (pc.entry_ref(rpc, rid), no,
                                   ",".join(agents)))
+    for (rpc, rid, b), part_refs in sorted(pw_rows.items()):
+        seen = sorted(set(part_refs))
+        if not seen:
+            continue
+        try:
+            pc.set_recipients(rpc, rid, order_id, [b],
+                              SPLIT_NODE, kind="map",
+                              parts=seen, root=root)
+        except (OSError, ValueError) as exc:
+            skipped.append("%s %s (%s)"
+                           % (pc.entry_ref(rpc, rid), b, exc))
+            continue
+        granted.append("%s %s (%s)"
+                       % (pc.entry_ref(rpc, rid), b, b))
+
     remy_by_entry = {}
     for p in parts:
         for ref in (p.get("remy_handoff") or []):

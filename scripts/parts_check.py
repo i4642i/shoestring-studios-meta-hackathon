@@ -1150,20 +1150,16 @@ try:
     r3t = _pc.entry_access(tentry, "photo_pia@p1", ORDER)
     r3a = _pc.entry_access(aentry, "anim_max@p2", ORDER)
     r3s = _pc.entry_access(sentry3, "board_vera@p1", ORDER)
-    ok(r3t is None
-       and _pc.entry_access(tentry, "board_penn@p1",
-                            ORDER) is not None
-       and _pc.entry_access(tentry, "voice_wren@p1",
-                            ORDER) is not None
-       and _pc.entry_access(tentry, "board_penn@p2",
-                            ORDER) is None,
-       "theory rows go to penn and wren of the part only")
-    ok(r3a is None
-       and _pc.entry_access(aentry, "board_penn@p2",
-                            ORDER) is not None
-       and _pc.entry_access(aentry, "voice_wren@p2",
-                            ORDER) is not None,
-       "article rows go to penn and wren of the part only")
+    tpenn = _pc.entry_access(tentry, "board_penn", ORDER)
+    twren = _pc.entry_access(tentry, "voice_wren", ORDER)
+    ok(r3t is None and tpenn is not None and twren is not None
+       and tpenn.get("parts") == [TREF + "#p1"],
+       "theory rows go to penn and wren, never helpers")
+    apenn = _pc.entry_access(aentry, "board_penn", ORDER)
+    awren = _pc.entry_access(aentry, "voice_wren", ORDER)
+    ok(r3a is None and apenn is not None and awren is not None
+       and apenn.get("parts") == [AREF + "#p2"],
+       "article rows go to penn and wren, never helpers")
     ok(r3s is not None and r3s.get("kind") == "map"
        and SRC + "#s1.1/p1" not in (r3s.get("parts") or [])
        and SRC + "#fig1.1" in (r3s.get("parts") or [])
@@ -1223,10 +1219,11 @@ try:
     r9t = acc(_pc.load_entry_by_ref(t9["ref"]),
               "photo_pia@p1", ORDER)
     r9pw = acc(_pc.load_entry_by_ref(t9["ref"]),
-               "board_penn@p1", ORDER)
+               "board_penn", ORDER)
     r9ww = acc(_pc.load_entry_by_ref(t9["ref"]),
-               "voice_wren@p1", ORDER)
-    ok(r9t is None and r9pw is not None and r9ww is not None,
+               "voice_wren", ORDER)
+    ok(r9t is None and r9pw is not None and r9ww is not None
+       and r9pw.get("parts") == [t9["ref"] + "#p1"],
        "theory skips helpers, lists penn and wren")
     r9vv = acc(_pc.load_entry_by_ref(V9), "photo_pia@p1",
              ORDER)
