@@ -1238,6 +1238,24 @@ norow = {"recipients": [{"agent": "board_penn",
 ok(_tools._recipients_error(pctx, norow, "pc://source/abcd")
    == {"error": "no access to this item"},
    "rowless refusal keeps the old message")
+specp = os.path.join(ROOT, "docs", "spec",
+                     "expected_inputs.json")
+full = [{"item": "brief", "category": "brief",
+         "from": "order"},
+        {"item": "received.sales_sam.request",
+         "category": "request", "from": "sales_sam"}]
+rows = [{"pc": "source", "kind": "full"}]
+ck = flow._check_inputs_spec("pd_marty", full, rows,
+                             spec_path=specp)
+ok(ck.get("ok") is True and ck.get("spec") != "no spec"
+   and not ck.get("missing"),
+   "matching inputs pass against the spec")
+ck2 = flow._check_inputs_spec("pd_marty", full[:1], [],
+                              spec_path=specp)
+ok(ck2.get("ok") is False
+   and "received.sales_sam.request" in ck2.get("missing", [])
+   and "pc_row:source" in ck2.get("missing", []),
+   "missing transfer and source row are flagged")
 vdir = tempfile.mkdtemp()
 with open(os.path.join(vdir,
                        "received.voice_wren.narration.json"),
