@@ -297,18 +297,6 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide}) 
           <div key={i}>{t}</div>
         ))}
       </div>
-      <div
-        style={{
-          position: "absolute",
-          left: 48,
-          top: 40,
-          fontSize: 24,
-          color: accent,
-          fontFamily: fonts.heading || body,
-        }}
-      >
-        {cutId} {preset ? `· ${preset}` : ""}
-      </div>
     </div>
   );
 };

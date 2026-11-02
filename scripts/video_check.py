@@ -285,6 +285,40 @@ try:
        and os.path.isfile(side)
        and json.load(open(side, encoding="utf-8"))["cutId"] == "s1c1",
        "skipped render still records its props")
+    idir = os.path.join(tmp, "storage", "_pc", "image",
+                        "entries", "0123456789ab")
+    os.makedirs(os.path.join(idir, "files"))
+    with open(os.path.join(idir, "files", "pic.jpg"), "wb") as f:
+        f.write(b"\xff\xd8fakejpeg")
+    with open(os.path.join(idir, "entry.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"ref": "pc://image/0123456789ab",
+                   "doc_id": "0123456789ab", "file": "pic.jpg"}, f)
+    gd = {"cuts": [{"cut_id": "s9c9", "start_s": 0, "end_s": 20,
+                    "preset": "full",
+                    "blocks": [{"kind": "photo",
+                                "box": {"x": 64, "y": 64, "w": 560,
+                                        "h": 378},
+                                "order": 0, "appear_s": 0,
+                                "reason": "t",
+                                "ref": "pc://image/0123456789ab"}],
+                    "on_screen_text": []}]}
+    rdir2 = wdir("slide_remy_img")
+    rctx2 = ctx_for(rdir2, "slide_remy")
+    received(rdir2, "board_vera", "slide_draft", 2, gd)
+    received(rdir2, "board_penn", "style_guide", 1, GUIDE)
+    tools._have_remotion = lambda: False
+    try:
+        ri = render_slide(rctx2, {"cut_id": "s9c9"})
+    finally:
+        tools._have_remotion = real_have
+    pj = json.load(open(os.path.join(rdir2, "slides",
+                                     "s9c9.props.json"),
+                        encoding="utf-8"))
+    ok(ri.get("ok") and pj["blocks"][0].get("file") == "s9c9-img0.jpg"
+       and os.path.isfile(os.path.join(rdir2, "slides",
+                                       "s9c9-img0.jpg")),
+       "render copies the picked image into the public dir")
     render_slide(rctx, {"cut_id": "s1c1"})
     render_slide(rctx, {"cut_id": "s1c1"})
     r4 = render_slide(rctx, {"cut_id": "s1c1"})

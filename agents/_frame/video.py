@@ -164,6 +164,7 @@ def cut_slide_props(cut, guide):
               "data": b.get("data") or {}}
         if b.get("kind") in ("photo", "generated", "source_figure"):
             ref = b.get("ref") or ""
+            nb["ref"] = ref
             nb["file"] = "" if ref.startswith("pc://") else ref
         blocks.append(nb)
     return {"cutId": cut.get("cut_id"), "seconds": dur,

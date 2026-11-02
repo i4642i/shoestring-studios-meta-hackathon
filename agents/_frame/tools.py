@@ -2490,6 +2490,31 @@ def render_slide(ctx, args):
     sdir = os.path.join(ctx["run_dir"], "slides")
     os.makedirs(sdir, exist_ok=True)
     props = video.cut_slide_props(cut, guide)
+    for j, nb in enumerate(props.get("blocks") or []):
+        if not isinstance(nb, dict):
+            continue
+        if nb.get("kind") not in ("photo", "generated",
+                                  "source_figure"):
+            continue
+        ref = nb.get("ref") or ""
+        if not ref.startswith("pc://"):
+            continue
+        try:
+            full, _e, _f = pc.resolve_material_file(ref)
+        except (OSError, ValueError, KeyError) as exc:
+            return {"ok": False, "errors": [
+                "cut %s image missing for %r (%s)"
+                % (cut_id, ref, exc)]}
+        ext = os.path.splitext(full)[1].lower() or ".png"
+        if ext not in (".png", ".jpg", ".jpeg", ".webp"):
+            ext = ".png"
+        dest = os.path.join(sdir, "%s-img%d%s" % (cut_id, j, ext))
+        try:
+            shutil.copyfile(full, dest)
+        except OSError as exc:
+            return {"ok": False, "errors": [
+                "cut %s image copy failed (%s)" % (cut_id, exc)]}
+        nb["file"] = os.path.basename(dest)
     sidecar = os.path.join(sdir, "%s.props.json" % cut_id)
     try:
         with open(sidecar, "w", encoding="utf-8") as f:
