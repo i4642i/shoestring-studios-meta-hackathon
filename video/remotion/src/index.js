@@ -4,7 +4,7 @@ import "katex/dist/katex.min.css";
 
 const EMPTY_GUIDE = {
   palette: {background: "#101418", text: "#f5f2ea", accent: "#e0a458"},
-  fonts: {heading: "sans-serif", body: "sans-serif"},
+  fonts: {heading: "Inter SemiBold", body: "Inter Regular"},
 };
 
 export const RemotionRoot = () => {

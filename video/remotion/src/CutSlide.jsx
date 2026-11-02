@@ -1,6 +1,39 @@
 import React from "react";
-import {Img, staticFile, useCurrentFrame} from "remotion";
+import {
+  Img,
+  continueRender,
+  delayRender,
+  staticFile,
+  useCurrentFrame,
+} from "remotion";
+import {loadFont} from "@remotion/google-fonts/Inter";
 import katex from "katex";
+
+// House font (style guide: Inter Regular / Inter SemiBold).
+// waitUntilDone resolves when the faces are ready; the render
+// waits for it (max 10 s) so slides never fall back to serif.
+const {fontFamily: INTER, waitUntilDone: waitForInter} = loadFont(
+  "normal",
+  {weights: ["400", "500", "600", "700"], subsets: ["latin"]},
+);
+
+const FONT_TIMEOUT_MS = 10000;
+
+// "Inter SemiBold" -> {Inter, 600}; anything else -> {Inter, weight}.
+export const mapGuideFont = (name, fallbackWeight) => {
+  const n = String(name || "");
+  const weight = /semibold|600/i.test(n)
+    ? 600
+    : /\bbold\b|700/i.test(n)
+      ? 700
+      : /medium|500/i.test(n)
+        ? 500
+        : 400;
+  return {
+    fontFamily: INTER,
+    fontWeight: /inter/i.test(n) ? weight : fallbackWeight,
+  };
+};
 
 export const CUT_W = 1280;
 export const CUT_H = 720;
@@ -255,13 +288,29 @@ function Block({b, frame, fps, guide}) {
 // on-screen text, style guide colors and fonts). No free code.
 export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide}) => {
   const frame = useCurrentFrame();
+  const [fontHandle] = React.useState(() => delayRender("inter font"));
+  React.useEffect(() => {
+    let alive = true;
+    const done = () => {
+      if (alive) continueRender(fontHandle);
+    };
+    const timer = setTimeout(done, FONT_TIMEOUT_MS);
+    Promise.resolve()
+      .then(() => waitForInter())
+      .then(done, done);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [fontHandle]);
   const g = guide || {};
   const pal = g.palette || {};
   const fonts = g.fonts || {};
   const bg = pal.background || "#101418";
   const fg = pal.text || "#f5f2ea";
   const accent = pal.accent || "#e0a458";
-  const body = fonts.body || "sans-serif";
+  const body = mapGuideFont(fonts.body, 400);
+  const heading = mapGuideFont(fonts.heading, 600);
   const shown = (blocks || []).filter((b) => frame >= b.appear_s * CUT_FPS);
   return (
     <div
@@ -270,7 +319,8 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide}) 
         height: CUT_H,
         background: bg,
         color: fg,
-        fontFamily: body,
+        fontFamily: `${body.fontFamily}, sans-serif`,
+        fontWeight: body.fontWeight,
         position: "relative",
         overflow: "hidden",
       }}
@@ -290,6 +340,7 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide}) 
           bottom: 24,
           textAlign: "center",
           fontSize: 30,
+          fontWeight: heading.fontWeight,
           padding: "0 80px",
         }}
       >

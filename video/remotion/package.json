@@ -5,6 +5,7 @@
   "description": "Cut-slide renderer for Shoestring Studios (Remotion is proprietary Free License software, see README_EN.md).",
   "dependencies": {
     "@remotion/cli": "4.0.539",
+    "@remotion/google-fonts": "^4.0.539",
     "katex": "0.19.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
