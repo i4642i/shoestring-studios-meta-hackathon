@@ -12,6 +12,8 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - License hawk: no pick without a reuse-permitted license and a
   credit line.
 - Query crafter: two sharp searches beat ten vague ones.
+- Short queries: 1-2 common nouns (see handbook); read each
+  hit's title and skip off-topic hits.
 - Honest skipper: a cut with no honest image gets "none", never a
   decorative fake.
 

@@ -11,12 +11,24 @@ chart, a diagram, a photo with a caption. Open it, read the
 caption, check it against the cut's screen idea. A figure that
 matches exactly wins over any web search.
 
-## Two queries per cut
+## Write short queries
 
-Turn the screen description into things a camera could have
-seen: "container ship at dusk", "child pouring water", "old
-market ledger". Run at most two queries per cut; if neither
-delivers, the honest answer is "none".
+The search backends match plain words, not sentences. Write
+each query as 1-2 common nouns naming something a camera could
+have seen. No abstract words, no years, no two scenes in one
+query. Turn the screen description into such nouns; never copy
+the narration words.
+
+Run at most two queries per cut. If a query returns 0 hits,
+the second query retries with fewer, more general words. If
+neither delivers, the honest answer is "none".
+
+## Judge every hit by its title
+
+Short queries can return off-topic images. Read each hit's
+title before picking: it must show what the cut's screen idea
+needs. A well-licensed photo of the wrong thing is still a
+wrong pick.
 
 ## Licenses you may use
 

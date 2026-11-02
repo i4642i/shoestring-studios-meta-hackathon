@@ -762,14 +762,72 @@ try:
     s1 = _media.pc_search_images(pia, {"cut_id": "s1c1",
                                       "query": "harbor cranes"})
     ok(len(s1["hits"]) == 2 and s1["queries_used"] == 1
-       and "license_type=commercial" in seen_urls[0]
-       and "license=" in seen_urls[0].replace("license_type", ""),
-       "openverse query filters commercial reuse set")
+       and seen_urls[0].startswith(_media.COMMONS_URL)
+       and "license_type=commercial" in seen_urls[1]
+       and "license=" in seen_urls[1].replace("license_type", ""),
+       "commons tried first, openverse second filters reuse set")
     _media.pc_search_images(pia, {"cut_id": "s1c1", "query": "again"})
     s3 = _media.pc_search_images(pia, {"cut_id": "s1c1",
                                       "query": "third"})
     ok("error" in s3 and "2 image queries" in s3["error"],
        "third image query refused")
+    def _fake_commons_hit(url):
+        seen_urls.append(url)
+        if url.startswith(_media.COMMONS_URL):
+            return {"query": {"pages": {
+                "11": {"title": "File:Dock.jpg", "imageinfo": [{
+                    "url": "https://up.test/dock.jpg",
+                    "descriptionurl": "https://commons.test/dock",
+                    "extmetadata": {"LicenseShortName": {
+                        "value": "CC BY 4.0"}}}]}}}}
+        return {"results": [
+            {"title": "OV", "url": "https://img.test/o1.jpg",
+             "foreign_landing_url": "https://page.test/o1",
+             "license": "by", "license_version": "4.0"}]}
+    _media._HTTP_JSON = _fake_commons_hit
+    n_seen = len(seen_urls)
+    try:
+        cb = _media._search_with_breaker(
+            ctx_for(wdir("photo_pia3"), "photo_pia"), "dock", 5, 1000)
+    finally:
+        _media._HTTP_JSON = _fake_search
+    ok(len(cb) == 1 and cb[0]["source"] == "commons"
+       and not [u for u in seen_urls[n_seen:]
+                if u.startswith(_media.OPENVERSE_URL)],
+       "commons hit answers first, openverse never called")
+    got_timeout = {}
+    _real_get = _media._get_json
+    def _rec_get(url, timeout=60):
+        got_timeout[url] = timeout
+        if url.startswith(_media.OPENVERSE_URL):
+            raise RuntimeError("openverse slow: timeout")
+        return {"query": {"pages": {}}}
+    _media._get_json = _rec_get
+    try:
+        to = _media._search_with_breaker(
+            ctx_for(wdir("photo_pia4"), "photo_pia"), "nodock", 5, 1000)
+    finally:
+        _media._get_json = _real_get
+    ov_urls = [u for u in got_timeout
+               if u.startswith(_media.OPENVERSE_URL)]
+    ok(to == [] and len(ov_urls) == 1
+       and got_timeout[ov_urls[0]] == _media.OPENVERSE_QUICK_TIMEOUT,
+       "openverse second leg uses the short timeout")
+    def _fake_empty(url):
+        seen_urls.append(url)
+        if url.startswith(_media.COMMONS_URL):
+            return {"query": {"pages": {}}}
+        return {"results": []}
+    _media._HTTP_JSON = _fake_empty
+    try:
+        em = _media.pc_search_images(
+            ctx_for(wdir("photo_pia5"), "photo_pia"),
+            {"cut_id": "s9c9", "query": "zzz nothing here"})
+    finally:
+        _media._HTTP_JSON = _fake_search
+    ok(em.get("hits") == [] and "tip" in em
+       and "fewer" in em["tip"] and em["queries_used"] == 1,
+       "0-hit search tells Pia to retry with fewer words")
     ok("error" in _media.pc_search_images(
         ctx_for(wdir("x"), "image_gene"), {"cut_id": "c", "query": "q"}),
        "image search is Pia-only")

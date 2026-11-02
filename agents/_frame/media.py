@@ -210,23 +210,30 @@ def _log_research(ctx, obj):
 
 OPENVERSE_TIMEOUT = 70  # live: success takes ~60 s here
 OPENVERSE_TRIES = 2
+OPENVERSE_QUICK_TIMEOUT = 25  # Commons-first: Openverse is the slow leg
 
 
-def _get_openverse(url):
-    """GET with one retry. Returns (data, error)."""
+def _get_openverse(url, timeout=None, tries=None):
+    """GET with retry. Returns (data, error)."""
+    if timeout is None:
+        timeout = OPENVERSE_TIMEOUT
+    if tries is None:
+        tries = OPENVERSE_TRIES
     err = RuntimeError("openverse unreachable: no attempt")
-    for _ in range(OPENVERSE_TRIES):
+    for _ in range(max(1, tries)):
         try:
-            return _get_json(url, timeout=OPENVERSE_TIMEOUT), None
+            return _get_json(url, timeout=timeout), None
         except RuntimeError as exc:
             err = exc
     return None, err
 
 
-def openverse_search(query, limit=5, per_min=None, _note=None):
+def openverse_search(query, limit=5, per_min=None, _note=None,
+                     _timeout=None, _tries=None, _fallback=True):
     """Openverse image search (commercial reuse set, no nd). Hits
     are never stored; only picks are. Calls queue through the
-    shared per-minute limiter."""
+    shared per-minute limiter. With _fallback=False an Openverse
+    failure raises instead of falling back to Commons. See _search_with_breaker."""
     _acquire_openverse_slot(
         OPENVERSE_PER_MIN if per_min is None else per_min)
     qs = urllib.parse.urlencode({
@@ -235,10 +242,13 @@ def openverse_search(query, limit=5, per_min=None, _note=None):
         "fields": "id,title,url,foreign_landing_url,license,"
                   "license_version,thumbnail"})
     try:
-        data, exc = _get_openverse(OPENVERSE_URL + "?" + qs)
+        data, exc = _get_openverse(OPENVERSE_URL + "?" + qs,
+                                   timeout=_timeout, tries=_tries)
         if data is None:
             raise exc
     except RuntimeError as exc:
+        if not _fallback:
+            raise
         falls = commons_search(query, limit)
         for h in falls:
             h["source"] = "commons"
@@ -335,28 +345,34 @@ def _license_ok(lic):
 
 
 def _search_with_breaker(ctx, query, limit, per_min):
-    """Openverse first; after 2 failed searches in this run go
-    straight to Commons so a dead API cannot stall the run."""
+    """Commons first (~1 s a call); Openverse second with a short
+    timeout. After 2 failed Openverse calls in this run skip it
+    so a dead API cannot stall the run."""
+    try:
+        first = commons_search(query, limit)
+    except RuntimeError:
+        first = []
+    if first:
+        return first
     deadp = os.path.join(ctx["run_dir"], "openverse_dead.json")
     try:
         dead = int(_counter(deadp).get("n", 0))
     except (TypeError, ValueError):
         dead = 0
     if dead >= 2:
-        hits = commons_search(query, limit)
-        for h in hits:
-            h["fallback"] = "openverse skipped (failed twice)"
-        return hits
-    fb_note = []
-    hits = openverse_search(query, limit, per_min, _note=fb_note)
-    if fb_note or (hits and all("fallback" in h for h in hits)):
+        return first  # Commons already empty; nothing more to try
+    try:
+        return openverse_search(query, limit, per_min,
+                                _timeout=OPENVERSE_QUICK_TIMEOUT,
+                                _tries=1, _fallback=False)
+    except RuntimeError:
         _counter_save(deadp, {"n": dead + 1})
-    return hits
+        return first
 
 
 @readlog.logged("image")
 def pc_search_images(ctx, args):
-    """Pia's photo search: Openverse hits into the run log (never
+    """Pia's photo search: Commons-first hits into the run log (never
     stored). At most 2 queries per cut per run."""
     if not _owns(ctx, "photo_pia"):
         return {"error": "pc_search_images is Pia's tool"}
@@ -384,8 +400,12 @@ def pc_search_images(ctx, args):
     _log_research(ctx, {"ev": "search", "query": q,
                         "tool": "pc_search_images", "cut_id": cut_id,
                         "hits": hits})
-    return {"query": q, "cut_id": cut_id, "hits": hits,
-            "queries_used": n}
+    out = {"query": q, "cut_id": cut_id, "hits": hits,
+           "queries_used": n}
+    if not hits:
+        out["tip"] = ("0 hits: retry with fewer, more general words "
+                      "(1-2 common nouns naming something visible)")
+    return out
 
 
 def _pace_pick(ctx):
