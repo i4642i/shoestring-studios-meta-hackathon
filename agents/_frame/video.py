@@ -186,9 +186,63 @@ def build_table(narration, storyboard, slide_draft, scene_part=None):
     return {"rows": rows}
 
 
-def cut_slide_props(cut, guide):
+OVERRIDE_BLOCK_KEYS = ("font_size", "x", "y", "w", "h",
+                        "align")
+
+
+def _int_or_none(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) \
+        else None
+
+
+def apply_overrides(props, overrides):
+    """Remy's layout-only pass over rendered props: per-block
+    font_size/x/y/w/h/align (blocks addressed by index) and
+    on_screen_text font/position. Unknown keys are ignored, so a
+    stray field never breaks a render."""
+    if not isinstance(overrides, dict):
+        return props
+    blocks = props.get("blocks")
+    bov = overrides.get("blocks")
+    if isinstance(blocks, list) and isinstance(bov, dict):
+        for j, nb in enumerate(blocks):
+            if not isinstance(nb, dict):
+                continue
+            bo = bov.get(str(j))
+            if not isinstance(bo, dict):
+                continue
+            for k in OVERRIDE_BLOCK_KEYS:
+                if k not in bo:
+                    continue
+                if k == "align":
+                    if isinstance(bo[k], str) and bo[k].strip():
+                        nb["align"] = bo[k].strip()[:16]
+                elif k == "font_size":
+                    v = _int_or_none(bo[k])
+                    if v is not None and v > 0:
+                        nb["font_size"] = v
+                else:
+                    v = _int_or_none(bo[k])
+                    if v is not None and v >= 0:
+                        nb["box"][k] = v
+    oov = overrides.get("on_screen_text")
+    if isinstance(oov, dict):
+        v = _int_or_none(oov.get("font"))
+        if v is not None and v > 0:
+            props["onScreenTextFont"] = v
+        pos = oov.get("position")
+        if isinstance(pos, str) and pos.strip().lower() \
+                in ("top", "bottom"):
+            props["onScreenTextPosition"] = pos.strip().lower()
+    return props
+
+
+def cut_slide_props(cut, guide, overrides=None):
     """Cut (slide_draft v2) + style guide -> Remotion CutSlide
-    props. Shared by render_slide and the assembly records."""
+    props. Remy's overrides (when given) are applied here, so
+    the sidecar render_slide writes is exactly what
+    video_production assembles. Shared by render_slide and the
+    assembly records."""
     dur = 20
     try:
         dur = int(round(float(cut.get("end_s", 20))
@@ -213,10 +267,13 @@ def cut_slide_props(cut, guide):
             nb["ref"] = ref
             nb["file"] = "" if ref.startswith("pc://") else ref
         blocks.append(nb)
-    return {"cutId": cut.get("cut_id"), "seconds": dur,
-            "preset": cut.get("preset", "full"), "blocks": blocks,
-            "onScreenText": cut.get("on_screen_text") or [],
-            "guide": guide if isinstance(guide, dict) else {}}
+    props = {"cutId": cut.get("cut_id"), "seconds": dur,
+               "preset": cut.get("preset", "full"), "blocks": blocks,
+               "onScreenText": cut.get("on_screen_text") or [],
+               "onScreenTextFont": 36,
+               "onScreenTextPosition": "bottom",
+               "guide": guide if isinstance(guide, dict) else {}}
+    return apply_overrides(props, overrides)
 
 
 def build_cut_records(narration, slide_files, audio_files,

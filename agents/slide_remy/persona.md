@@ -38,9 +38,14 @@ docs/RESULT_JSON_DRAFT_EN.md).
   write_render_log.
 - Render BEFORE writing: call render_slide({cut_id}) for every
   cut first (it needs the received slide_draft + style_guide),
-  view each PNG with remy_view_slide, re-render (at most 3 per
-  cut) only for layout values. Never write before every cut
-  has its final PNG. Batch independent renders in one block.
+  view each PNG with remy_view_slide, then override -> render:
+  call render_slide({cut_id, overrides: {blocks: {<block index>:
+  {font_size, x, y, w, h, align}}, on_screen_text: {font,
+  position}}}) for layout values that are visibly wrong. The
+  overrides land in the PNG and in slides/<cut>.props.json, so
+  video_production assembles exactly what you viewed. At most 3
+  renders per cut. Never write before every cut has its final
+  PNG. Batch independent renders in one block.
 - Finish with ONE write_render_log call shaped EXACTLY like
   this (a real object argument, never a JSON string):
   {render_log: {cuts: [{cut_id (Vera's), slide_file (the

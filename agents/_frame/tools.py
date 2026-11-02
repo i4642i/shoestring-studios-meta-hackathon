@@ -2566,15 +2566,22 @@ def _remotion_cmd(out, props, last_frame, sdir):
 def render_slide(ctx, args):
     """Render one cut's slide PNG via the Remotion CutSlide
     composition (last frame of the cut). Max 3 renders per cut per
-    run. Every call records slides/<cut>.props.json (the exact
-    render inputs, guide included) for the assembly records.
-    Without Remotion the render is skipped honestly: ok True
-    with status remotion_unavailable (the 3-render cap still
-    applies)."""
+    run. Optional overrides ({blocks: {<i>: {font_size, x, y, w,
+    h, align}}, on_screen_text: {font, position}}) move layout
+    only; they land in the props and in slides/<cut>.props.json
+    (the exact render inputs, guide included) so the assembly
+    records match the PNG Remy viewed. Without Remotion the
+    render is skipped honestly: ok True with status
+    remotion_unavailable (the 3-render cap still applies)."""
     from . import video
     cut_id = ((args or {}).get("cut_id") or "").strip()
     if not cut_id:
         return {"ok": False, "errors": ["call with {cut_id}"]}
+    overrides = (args or {}).get("overrides")
+    if overrides is not None and not isinstance(overrides, dict):
+        return {"ok": False, "errors": [
+            "overrides must be {blocks: {<i>: {font_size, x, y, "
+            "w, h, align}}, on_screen_text: {font, position}}"]}
     draft = _received_data(ctx, "slide_draft")
     guide = _received_data(ctx, "style_guide")
     if not draft or not guide:
@@ -2594,7 +2601,7 @@ def render_slide(ctx, args):
             % (cut_id, video.RENDER_MAX)]}
     sdir = os.path.join(ctx["run_dir"], "slides")
     os.makedirs(sdir, exist_ok=True)
-    props = video.cut_slide_props(cut, guide)
+    props = video.cut_slide_props(cut, guide, overrides)
     for j, nb in enumerate(props.get("blocks") or []):
         if not isinstance(nb, dict):
             continue
@@ -2809,9 +2816,10 @@ TOOLS = {
         render_slide,
         "Render one cut's slide PNG via Remotion from the "
         "received slide draft + style guide. Max 3 renders per cut "
-        "per run.",
+        "per run. Optional overrides adjust layout only.",
         {"type": "object",
-         "properties": {"cut_id": {"type": "string"}},
+         "properties": {"cut_id": {"type": "string"},
+                        "overrides": {"type": "object"}},
          "required": ["cut_id"], "additionalProperties": False},
     ),
     "research_status": (

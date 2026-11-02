@@ -271,6 +271,7 @@ function TextBlock({b, order}) {
       style={{
         ...boxStyle(b, order),
         fontSize: font,
+        textAlign: b.align || "left",
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
@@ -304,7 +305,7 @@ function Block({b, frame, fps, guide}) {
 
 // One cut slide: data-only props (layout preset, blocks with boxes,
 // on-screen text, style guide colors and fonts). No free code.
-export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide}) => {
+export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide, onScreenTextFont, onScreenTextPosition}) => {
   const frame = useCurrentFrame();
   const [fontHandle] = React.useState(() => delayRender("inter font"));
   React.useEffect(() => {
@@ -359,9 +360,10 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide}) 
             position: "absolute",
             left: 0,
             right: 0,
-            bottom: 24,
+            bottom: onScreenTextPosition === "top" ? undefined : 24,
+            top: onScreenTextPosition === "top" ? 24 : undefined,
             textAlign: "center",
-            fontSize: 36,
+            fontSize: onScreenTextFont || 36,
             fontWeight: heading.fontWeight,
             padding: "0 80px",
           }}

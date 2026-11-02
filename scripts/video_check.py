@@ -352,6 +352,33 @@ try:
     pj = json.load(open(os.path.join(rdir2, "slides",
                                      "s9c9.props.json"),
                         encoding="utf-8"))
+    ov = video.cut_slide_props(
+        SLIDE["cuts"][0], GUIDE,
+        {"blocks": {"1": {"font_size": 36, "x": 70}},
+         "on_screen_text": {"font": 40, "position": "top"},
+         "nope": {"x": 1}})
+    ok(ov["blocks"][1]["font_size"] == 36
+       and ov["blocks"][1]["box"]["x"] == 70
+       and ov["blocks"][0]["font_size"] == 24
+       and ov["onScreenTextFont"] == 40
+       and ov["onScreenTextPosition"] == "top"
+       and "nope" not in ov,
+       "overrides move layout only, unknown keys ignored")
+    tools._have_remotion = lambda: False
+    try:
+        ro = render_slide(rctx2, {"cut_id": "s9c9",
+                                  "overrides": {"blocks": {"0": {"x": 70}}}})
+    finally:
+        tools._have_remotion = real_have
+    rj = json.load(open(os.path.join(rdir2, "slides",
+                                     "s9c9.props.json"),
+                        encoding="utf-8"))
+    ok(ro.get("ok") and rj["blocks"][0]["box"]["x"] == 70,
+       "rendered overrides stick in the props sidecar")
+    ok(render_slide(
+        rctx2, {"cut_id": "s9c9",
+                "overrides": ["x"]}).get("ok") is False,
+       "string overrides refuse with the shape hint")
     ok(ri.get("ok") and pj["blocks"][0].get("file") == "s9c9-img0.jpg"
        and os.path.isfile(os.path.join(rdir2, "slides",
                                        "s9c9-img0.jpg")),
