@@ -702,6 +702,36 @@ try:
     ok(_media._json_headers().get("User-Agent")
        and _media._bytes_headers().get("User-Agent"),
        "outbound media calls identify the app")
+    ok("Mozilla" in _media._json_headers().get("User-Agent", ""),
+       "search UA is browser-like (Cloudflare 1010 bans bots)")
+    def _fake_mixed(url):
+        seen_urls.append(url)
+        if url.startswith(_media.OPENVERSE_URL):
+            raise RuntimeError("openverse 403: Forbidden")
+        return {"query": {"pages": {
+            "3": {"title": "File:Scan.pdf", "imageinfo": [{
+                "url": "https://up.test/scan.pdf",
+                "descriptionurl": "https://commons.test/scan",
+                "extmetadata": {"LicenseShortName": {
+                    "value": "CC BY 4.0"}}}]},
+            "5": {"title": "File:Photo.jpg", "imageinfo": [{
+                "url": "https://up.test/photo.jpg",
+                "descriptionurl": "https://commons.test/photo",
+                "extmetadata": {"LicenseShortName": {
+                    "value": "CC BY 4.0"}}}]}}}}
+    _media._HTTP_JSON = _fake_mixed
+    try:
+        mx = _media.openverse_search("harbor", 5)
+    finally:
+        _media._HTTP_JSON = _fake_search
+    ok(len(mx) == 1 and mx[0]["image_url"].endswith(".jpg")
+       and "filetype" in seen_urls[-1] and "bitmap" in seen_urls[-1],
+       "commons fallback asks bitmaps only, drops pdf hits")
+    ok(_media._retry_after({"retry-after": "10"}) == 10
+       and _media._retry_after({}) == 10
+       and _media._retry_after({"retry-after": "999"}) == 60
+       and _media._retry_after({"retry-after": "junk"}) == 10,
+       "429 retry honors retry-after, capped at 60")
     ok(_media._commons_license("Public domain") == ("pdm", "")
        and _media._commons_license("CC BY-SA 4.0")
        == ("by-sa", "4.0")

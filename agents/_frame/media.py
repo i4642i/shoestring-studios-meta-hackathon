@@ -21,7 +21,12 @@ from . import readlog
 
 OPENVERSE_URL = "https://api.openverse.org/v1/images/"
 COMMONS_URL = "https://commons.wikimedia.org/w/api.php"
-USER_AGENT = "ShoestringStudios/1.0 (AI video crew demo)"
+# Cloudflare in front of api.openverse.org answers 403 (error
+# 1010, "browser signature banned") to bot signatures and hangs
+# them; a browser UA is required. Verified live 2026-11-02.
+USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/126.0 Safari/537.36")
 
 
 def _json_headers():
@@ -131,12 +136,12 @@ def _owns(ctx, base):
         is not None
 
 
-def _get_json(url):
+def _get_json(url, timeout=60):
     if _HTTP_JSON is not None:
         return _HTTP_JSON(url)
     req = urllib.request.Request(url, headers=_json_headers())
     try:
-        with urllib.request.urlopen(req, timeout=60) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.load(r)
     except urllib.error.HTTPError as exc:
         raise RuntimeError("openverse %s: %s" % (exc.code, exc.reason))
@@ -144,14 +149,26 @@ def _get_json(url):
         raise RuntimeError("openverse unreachable: %s" % exc)
 
 
-def _get_bytes(url, cap):
+def _retry_after(headers, default=10):
+    """Seconds to wait on HTTP 429 (Retry-After, capped at 60)."""
+    try:
+        return min(60, max(1, int(str(
+            (headers or {}).get("retry-after", default)).strip())))
+    except (TypeError, ValueError, AttributeError):
+        return default
+
+
+def _get_bytes(url, cap, timeout=60, _retry=True):
     if _HTTP_BYTES is not None:
         return _HTTP_BYTES(url, cap)
     req = urllib.request.Request(url, headers=_bytes_headers())
     try:
-        with urllib.request.urlopen(req, timeout=60) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             blob = r.read(cap + 1)
     except urllib.error.HTTPError as exc:
+        if exc.code == 429 and _retry:
+            time.sleep(_retry_after(exc.headers))
+            return _get_bytes(url, cap, timeout, False)
         raise RuntimeError("download %s: %s" % (exc.code, exc.reason))
     except (urllib.error.URLError, OSError) as exc:
         raise RuntimeError("download unreachable: %s" % exc)
@@ -187,6 +204,21 @@ def _log_research(ctx, obj):
         pass
 
 
+OPENVERSE_TIMEOUT = 70  # live: success takes ~60 s here
+OPENVERSE_TRIES = 2
+
+
+def _get_openverse(url):
+    """GET with one retry. Returns (data, error)."""
+    err = RuntimeError("openverse unreachable: no attempt")
+    for _ in range(OPENVERSE_TRIES):
+        try:
+            return _get_json(url, timeout=OPENVERSE_TIMEOUT), None
+        except RuntimeError as exc:
+            err = exc
+    return None, err
+
+
 def openverse_search(query, limit=5, per_min=None):
     """Openverse image search (commercial reuse set, no nd). Hits
     are never stored; only picks are. Calls queue through the
@@ -199,7 +231,9 @@ def openverse_search(query, limit=5, per_min=None):
         "fields": "id,title,url,foreign_landing_url,license,"
                   "license_version,thumbnail"})
     try:
-        data = _get_json(OPENVERSE_URL + "?" + qs)
+        data, exc = _get_openverse(OPENVERSE_URL + "?" + qs)
+        if data is None:
+            raise exc
     except RuntimeError as exc:
         falls = commons_search(query, limit)
         for h in falls:
@@ -240,7 +274,7 @@ def commons_search(query, limit=5):
     key, same hit shape as openverse_search."""
     qs = urllib.parse.urlencode({
         "action": "query", "format": "json",
-        "generator": "search", "gsrsearch": query,
+        "generator": "search", "gsrsearch": query + " filetype:bitmap",
         "gsrnamespace": 6, "gsrlimit": limit,
         "prop": "imageinfo", "iiprop": "url|extmetadata"})
     data = _get_json(COMMONS_URL + "?" + qs)
@@ -249,6 +283,11 @@ def commons_search(query, limit=5):
     for _id in sorted(pages, key=str):
         pg = pages[_id] or {}
         info = (pg.get("imageinfo") or [{}])[0] or {}
+        url = info.get("url", "") or ""
+        if not urllib.parse.urlparse(url).path.lower().endswith(
+                (".jpg", ".jpeg", ".png", ".webp",
+                 ".tif", ".tiff", ".gif")):
+            continue  # scans/books (pdf, djvu) are not photos
         meta = info.get("extmetadata") or {}
         short = ((meta.get("LicenseShortName") or {}).get("value")
                  or "")
@@ -275,6 +314,25 @@ def _license_ok(lic):
     return core in LICENSE_OK
 
 
+def _search_with_breaker(ctx, query, limit, per_min):
+    """Openverse first; after 2 failed searches in this run go
+    straight to Commons so a dead API cannot stall the run."""
+    deadp = os.path.join(ctx["run_dir"], "openverse_dead.json")
+    try:
+        dead = int(_counter(deadp).get("n", 0))
+    except (TypeError, ValueError):
+        dead = 0
+    if dead >= 2:
+        hits = commons_search(query, limit)
+        for h in hits:
+            h["fallback"] = "openverse skipped (failed twice)"
+        return hits
+    hits = openverse_search(query, limit, per_min)
+    if hits and all("fallback" in h for h in hits):
+        _counter_save(deadp, {"n": dead + 1})
+    return hits
+
+
 @readlog.logged("image")
 def pc_search_images(ctx, args):
     """Pia's photo search: Openverse hits into the run log (never
@@ -296,7 +354,7 @@ def pc_search_images(ctx, args):
         return {"error": "cut %s already used %d image queries"
                 % (cut_id, IMAGE_QUERY_CAP)}
     try:
-        hits = openverse_search(q, limit,
+        hits = _search_with_breaker(ctx, q, limit,
                                 _rate_cap_from_ctx(ctx))
     except RuntimeError as exc:
         return {"error": str(exc)}
