@@ -34,11 +34,10 @@ docs/RESULT_JSON_DRAFT_EN.md).
   audio misses the cut time by more than 15%, rewrite the lines
   and voice once more. Never engine "stub" on a real order;
   keep each cut's voice_pc_ref + seconds for the report.
-- Spend steps like money: read scenes, voice cuts, then write.
-  Call write_narration no later than step 10 (voices done by
-  step 8): fixes need re-reads, and the last steps cannot fit
-  them. Batch independent calls in one block: reads and voices
-  for several cuts can share one step.
+- Read scenes, voice cuts, then write. Batch independent calls
+  in one block: reads and voices for several cuts can share one
+  step. If the writer reports errors, treat them as observations:
+  read or re-voice what you need and call the writer again.
 - Open only full passage refs (#pN, as cited in the draft).
   A bare entry open is refused: stay inside your listed parts.
 - Count words exactly: every word of every line text, counted
