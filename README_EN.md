@@ -28,9 +28,11 @@ Third-party below.
 ## How to run: PDF order to MP4
 
 Prereqs: Python 3.10+, Git, Node.js 16+, an LLM key (copy
-`.env.example` to `.env`; crew agents call `meta-models/*` on
-Baseten via `BASETEN_API_KEY`; Cleo/Rex web research needs
-`TAVILY_API_KEY`). First install: `pip install -r requirements.txt`
+`.env.example` to `.env`; all 12 crew agents call `muse-spark-1.3`
+on the Meta Model API via `MODEL_API_KEY` — Baseten credits ran
+out on 2026-11-03, so final runs use `muse-spark-1.3`;
+Cleo/Rex web research needs `TAVILY_API_KEY`).
+First install: `pip install -r requirements.txt`
 and `powershell -ExecutionPolicy Bypass -File tools/setup_video.ps1`
 (Remotion renderer + full ffmpeg via imageio-ffmpeg; local voice
 also wants espeak-ng and `kokoro>=0.9.4`).
@@ -89,7 +91,7 @@ installed versions/licenses):
 | three.js, Kenney assets (`vendor/`) | 3D studio office |
 | Tavily API | Web research for Cleo/Rex |
 | Wikimedia Commons, Openverse APIs | Licensed photo search for Pia |
-| Meta / Baseten model APIs | Every crew agent's model calls |
+| Meta Model API (`muse-spark-1.3`) / Baseten (`meta-models/*`) | Every crew agent's model calls (Meta direct since Baseten credits ran out 2026-11-03) |
 
 `vendor/`, `node_modules/`, `.venv/`, `storage/_pc/`, `orders/`,
 `runs/`, and secrets (`.env`, `shk/`) are either third-party,
