@@ -1995,7 +1995,7 @@ def _prompt_doc(prompt):
 
 def write_anim_picks(ctx, args):
     """Max's picks v2: cut match, template + structured values per
-    use, every ref a CHECKED source table/formula quoted verbatim,
+    use, every ref quoted verbatim (steps cuts may cite paragraphs),
     every data value traced to the quotes."""
     obj = (args or {}).get("anim_picks")
     if not isinstance(obj, dict):
@@ -2022,7 +2022,8 @@ def write_anim_picks(ctx, args):
             _readable_ref(errors, r.get("ref"), producer,
                           order_id, rw)
             _check_quote(errors, r.get("ref"), r.get("quote"), rw)
-            _checked_table_formula(errors, r.get("ref"), rw)
+            if cut.get("template") != "steps":
+                _checked_table_formula(errors, r.get("ref"), rw)
             if isinstance(r.get("quote"), str):
                 quotes.append(r["quote"])
         _values_trace(errors, cut.get("template"),
@@ -2223,7 +2224,8 @@ def _material_aspect(errors, ref, box, where):
 def _values_trace(errors, template, values, quotes, where):
     """Every data scalar appears in the quoted source (numbers may
     match numerically: 2.5 finds "2.50"). Steps items are Max's own
-    compression, so steps are exempt (refs still required)."""
+    compression, but each item must still appear verbatim in the
+    quoted paragraph."""
     vals = values if isinstance(values, dict) else {}
     want = []
     if template == "table":
@@ -2238,6 +2240,9 @@ def _values_trace(errors, template, values, quotes, where):
         want += [v for v in vals.get("values", [])
                  if isinstance(v, (int, float))
                  and not isinstance(v, bool)]
+    elif template == "steps":
+        want += [c for c in vals.get("items", [])
+                 if isinstance(c, str)]
     elif template == "formula":
         want += [c for c in vals.get("lines", [])
                  if isinstance(c, str)]

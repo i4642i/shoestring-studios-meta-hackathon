@@ -1304,11 +1304,21 @@ def validate_gen_picks(obj, storyboard):
 ANIM_TEMPLATES = ("bar", "line", "table", "formula", "steps")
 
 
+_ANIM_EXAMPLE = ('valid shape e.g. {"template": "steps", "values": '
+                 '{"items": ["First the desk logs the claim", "Then '
+                 'the reviewer checks the table"]}, "refs": [{"ref": '
+                 '"pc://source/<id>#s1.2/p7", "quote": "<verbatim '
+                 'paragraph holding both sentences>"}], "reason": '
+                 '"<why this cut needs motion>"}')
+
+
 def _anim_values_ok(template, values, where, errors):
     """Template-shaped values object for a Max use pick."""
+    _n0 = len(errors)
     if not isinstance(values, dict):
         errors.append("%s.values must be an object for a use pick"
                       % where)
+        errors.append("%s.%s" % (where, _ANIM_EXAMPLE))
         return
     if template == "table":
         heads = values.get("headers")
@@ -1349,6 +1359,8 @@ def _anim_values_ok(template, values, where, errors):
                 not (2 <= len(items) <= 8) or \
                 not all(isinstance(t, str) and t for t in items):
             errors.append("%s.values.items 2-8 nonempty" % where)
+    if len(errors) > _n0:
+        errors.append("%s.%s" % (where, _ANIM_EXAMPLE))
 
 
 def validate_anim_picks(obj, storyboard):
@@ -1378,6 +1390,7 @@ def validate_anim_picks(obj, storyboard):
             if cut.get("template") not in ANIM_TEMPLATES:
                 errors.append("%s.template one of %s for a use pick"
                               % (where, ANIM_TEMPLATES))
+                errors.append("%s.%s" % (where, _ANIM_EXAMPLE))
             else:
                 _anim_values_ok(cut["template"], cut.get("values"),
                                 where, errors)

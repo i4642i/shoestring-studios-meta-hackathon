@@ -578,6 +578,33 @@ try:
         ctx_for(mdir2, "anim_max"),
         {"anim_picks": maxbad2}).get("errors", [])),
        "untraced value refuses")
+    STEPS = {"cuts": [{"cut_id": "s1c1", "decision": "use",
+                       "template": "steps",
+                       "values": {"items": ["Year", "Sales"]},
+                       "refs": [{"ref": tabref,
+                                 "quote": "| Year | Sales |\n"
+                                          "| --- | --- |\n"
+                                          "| 2024 | 120 |\n"
+                                          "| 2025 | 150 |"}],
+                       "reason": "Steps beat a table here."},
+                      {"cut_id": "s1c2", "decision": "none",
+                       "reason": "Photo covers it."}]}
+    ok(write_anim_picks(ctx_for(mdir2, "anim_max"),
+                        {"anim_picks": STEPS}).get("ok") is True,
+       "steps items traced to the quote")
+    badsteps = json.loads(json.dumps(STEPS))
+    badsteps["cuts"][0]["values"]["items"] = ["Moon cheese",
+                                                      "Green stars"]
+    errs = write_anim_picks(ctx_for(mdir2, "anim_max"),
+                            {"anim_picks": badsteps}).get("errors", [])
+    ok(any("not in the quoted" in e for e in errs),
+       "untraced steps item refuses")
+    badshape = json.loads(json.dumps(STEPS))
+    badshape["cuts"][0]["values"] = {"items": ["only one"]}
+    errs2 = write_anim_picks(ctx_for(mdir2, "anim_max"),
+                             {"anim_picks": badshape}).get("errors", [])
+    ok(any("valid shape e.g." in e for e in errs2),
+       "shape error shows a valid example")
     vdir = wdir("board_vera")
     received(vdir, "voice_wren", "narration", 2, NARR)
     received(vdir, "board_penn", "storyboard", 2, BOARD)
