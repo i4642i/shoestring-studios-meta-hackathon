@@ -538,6 +538,17 @@ try:
        and fz[0]["kind"] == "table-image"
        and fz[0]["addr"] == "fig1.1.1",
        "failed table becomes a table-image figure")
+    fz2, tz2 = pc.assign_objects(
+        [{"n": "1.2", "heading": "Real", "paras": [{"text": "body"}],
+          "subsections": []},
+         {"n": "5", "heading": "20 X X X", "paras": [{"text": "row"}],
+          "subsections": []}],
+        [], [{"page": 8, "top": 10.0, "caption": "Table 1 Real",
+              "number": "1", "bbox": [0.0, 10.0, 50.0, 60.0],
+              "rows": [["a"]], "markdown": "| a |", "blob": None}])
+    ok(len(tz2) == 1 and tz2[0]["addr"].startswith("tab1.2."),
+       "footnote section never owns a table: %s"
+       % (tz2[0]["addr"] if tz2 else None))
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

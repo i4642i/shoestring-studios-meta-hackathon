@@ -389,6 +389,8 @@ def _section_for_page(sections, page):
     for s in sections or []:
         if s.get("non_content"):
             continue
+        if "." not in (s.get("n") or "") and (s.get("n") or "") != "0":
+            continue  # footnote/table-row pseudo-section: never owns
         for p in s["paras"]:
             if min(p.get("pages", [0])) <= page:
                 best = s["n"]
