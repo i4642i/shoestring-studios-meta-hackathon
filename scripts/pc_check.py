@@ -855,16 +855,16 @@ try:
     pruned = pc.prune_setter_rows("article", "o9", "case_rex",
                                   ["aabbccddeeff"], root=tmp2)
     ok(pruned == ["bbccddeeff00"], "prune drops stale pick listing")
-    twin_entry = {"ref": "pc://source/twinentry01",
+    twin_entry = {"ref": "pc://source/aabbccddee01",
                   "paragraphs": [],
                   "figures": [{"addr": "fig1.2.1"}],
                   "tables": [{"addr": "tab1.2.1"}]}
     ok(pc.twin_refs(twin_entry,
-                    ["pc://source/twinentry01#tab1.2.1"])
-       == ["pc://source/twinentry01#fig1.2.1"],
+                    ["pc://source/aabbccddee01#tab1.2.1"])
+       == ["pc://source/aabbccddee01#fig1.2.1"],
        "table grant carries its figure twin")
     ok(pc.twin_refs(twin_entry,
-                    ["pc://source/twinentry01#tab9.9.9"]) == [],
+                    ["pc://source/aabbccddee01#tab9.9.9"]) == [],
        "unknown twin never invented")
     keep_rows = json.load(open(os.path.join(
         tmp2, "storage", "_pc", "article", "entries",
