@@ -238,6 +238,36 @@ ok("sum to 61" in " ".join(write_structure(
     ctx2, {"result": {"concept": dict(CONCEPT),
                      "structure": badd}}).get("errors", [])),
    "write_structure duration sum enforced")
+mdp3 = os.path.join(wdir, "input3.md")
+with open(mdp3, "w", encoding="utf-8") as f:
+    f.write("# T\n\n## 1.1 Alpha\n\ntext\n\n## 1.2 Beta\n\ntext\n\n"
+            "## 1.3 Book Structure\n\ntext\n")
+metas = json.loads(json.dumps(struct))
+metas["parts"].append({"id": "p3", "heading": "1.3 Book Structure",
+                       "ref": SREF + "#s1.3", "covers": "z",
+                       "keywords": ["k"]})
+metas["links"].append({"from": "p2", "to": "p3", "why": "w"})
+metas["duration"] = {"total_s": 60,
+                     "parts": [{"part_id": "p1", "seconds": 20,
+                                "why": "w"},
+                               {"part_id": "p2", "seconds": 20,
+                                "why": "w"},
+                               {"part_id": "p3", "seconds": 20,
+                                "why": "w"}]}
+ctxm = dict(ctx2, input_md=mdp3)
+ok(write_structure(ctxm, {"result": {"concept": dict(CONCEPT),
+                                     "structure": metas}}).get("ok")
+   is True, "meta part allowed without depth info")
+reqp = os.path.join(wdir, "received.sales_sam.request.json")
+with open(reqp, "w", encoding="utf-8") as f:
+    json.dump({"sender": "sales_sam", "category": "request", "version": 1,
+               "data": {"client_answers":
+                        {"depth": "Key concepts only"}}}, f)
+ok("meta section" in " ".join(write_structure(
+    ctxm, {"result": {"concept": dict(CONCEPT),
+                      "structure": metas}}).get("errors", [])),
+   "meta part refused under key-concepts depth")
+os.remove(reqp)
 men = _pc.ingest_source("o1", "m.pdf", "2026-10-30T00:00:00",
                         "sales_sam",
                         ["1.1 Alpha\nAlpha body.",

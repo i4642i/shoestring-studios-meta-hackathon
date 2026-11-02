@@ -138,6 +138,33 @@ def _readable_ref(errors, ref, producer, order_id, where):
         errors.append("%s: %r is not listed for you" % (where, ref))
 
 
+
+_META_PART_RE = re.compile(
+    r"book structur|target audience|requisit|prereq|\bfaq\b|acknowledg"
+    r"|references?\b|bibliography|table of contents|foreword|preface",
+    re.IGNORECASE)
+
+
+def _request_depth(run_dir):
+    """Sam's depth answer for this run ('' when unknown)."""
+    if not run_dir or not os.path.isdir(run_dir):
+        return ""
+    for n in sorted(os.listdir(run_dir)):
+        if n.startswith("received.") and ".request.json" in n:
+            try:
+                with open(os.path.join(run_dir, n),
+                          encoding="utf-8") as f:
+                    rec = json.load(f)
+            except (OSError, ValueError):
+                return ""
+            data = rec.get("data", rec) if isinstance(rec, dict) else {}
+            ans = data.get("client_answers", data) \
+                if isinstance(data, dict) else {}
+            depth = ans.get("depth", "") if isinstance(ans, dict) else ""
+            return depth if isinstance(depth, str) else ""
+    return ""
+
+
 def write_structure(ctx, args):
     bundle = args.get("result")
     if not isinstance(bundle, dict):
@@ -157,6 +184,22 @@ def write_structure(ctx, args):
         except (OSError, ValueError, KeyError):
             pass
     errors += validate_structure(bundle.get("structure"), check)
+    if "key concept" in _request_depth(
+            (ctx or {}).get("run_dir", "")).lower():
+        struct = bundle.get("structure") or {}
+        parts = struct.get("parts") if isinstance(struct, dict) else None
+        if isinstance(parts, list):
+            for p in parts:
+                if not isinstance(p, dict):
+                    continue
+                heading = p.get("heading", "")
+                if isinstance(heading, str) and _META_PART_RE.search(heading):
+                    errors.append(
+                        "parts[%s] %r is a meta section (book structure, "
+                        "audience, requisites, FAQ, acknowledgments); with "
+                        "depth 'key concepts only' it must be a skipped "
+                        "entry with a reason, never a part" % (p.get("id"),
+                                                              heading))
     if errors:
         return {"ok": False, "errors": errors}
     return _save_categories(ctx, {"concept": bundle["concept"],
