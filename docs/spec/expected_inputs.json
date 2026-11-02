@@ -153,11 +153,13 @@
     },
     {
      "kind": "full",
-     "pc": "image"
+     "pc": "image",
+     "optional": true
     },
     {
      "kind": "full",
-     "pc": "generated"
+     "pc": "generated",
+     "optional": true
     }
    ]
   },
@@ -183,6 +185,10 @@
     {
      "kind": "map",
      "pc": "source"
+    },
+    {
+     "kind": "full",
+     "pc": "article"
     }
    ]
   },
@@ -208,6 +214,10 @@
     {
      "kind": "map",
      "pc": "source"
+    },
+    {
+     "kind": "full",
+     "pc": "theory"
     }
    ]
   },
@@ -436,15 +446,18 @@
    "pc_rows": [
     {
      "kind": "full",
-     "pc": "image"
+     "pc": "image",
+     "optional": true
     },
     {
      "kind": "full",
-     "pc": "generated"
+     "pc": "generated",
+     "optional": true
     },
     {
      "kind": "map",
-     "pc": "source"
+     "pc": "source",
+     "optional": true
     }
    ]
   },

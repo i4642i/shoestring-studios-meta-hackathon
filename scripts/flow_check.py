@@ -1256,6 +1256,18 @@ ok(ck2.get("ok") is False
    and "received.sales_sam.request" in ck2.get("missing", [])
    and "pc_row:source" in ck2.get("missing", []),
    "missing transfer and source row are flagged")
+cko = flow._check_inputs_spec(
+    "board_vera@p1",
+    [{"item": "brief", "category": "brief", "from": "order"},
+     {"item": "shared", "category": "shared",
+      "from": "part_split"},
+     {"item": "received.part_split.split_plan",
+      "category": "split_plan", "from": "part_split"},
+     {"item": "received.part_split.narration",
+      "category": "narration", "from": "part_split"}],
+    [{"pc": "source", "kind": "map"}], spec_path=specp)
+ok(cko.get("ok") is True,
+   "conditional image rows pass when the part has no picks")
 vdir = tempfile.mkdtemp()
 with open(os.path.join(vdir,
                        "received.voice_wren.narration.json"),

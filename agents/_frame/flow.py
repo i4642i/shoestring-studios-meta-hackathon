@@ -730,6 +730,8 @@ def _check_inputs_spec(node_id, items, pc_rows, spec_path=None):
         for name, wlist in want_rows.items():
             glist = got_rows.get(name, [])
             if not glist:
+                if all(w.get("optional") for w in wlist):
+                    continue
                 base["missing"].append("pc_row:%s" % name)
                 continue
             for w in wlist:
