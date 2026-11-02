@@ -17,6 +17,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from . import parts
+from . import profiles
 from . import pc
 from . import projlog
 from . import results
@@ -586,6 +587,27 @@ def _log_item(name, category, sender, text, part=None, note=""):
             "sha1": hashlib.sha1(blob).hexdigest(), "note": note}
 
 
+def _with_handbook(bundle, agent_id):
+    """anim_max hunts handbook/template_values.md by path (wasted
+    reads); its content goes into the input instead."""
+    if agent_id != "anim_max":
+        return bundle
+    try:
+        text = profiles.handbook_text(os.path.join(AGENTS,
+                                                   agent_id))
+    except OSError:
+        return bundle
+    if not text.strip():
+        return bundle
+    block = "## Handbook (your craft notes; already in your input, " \
+        "never open handbook files by path)\n\n" + text
+    items = list(bundle.get("items") or []) + [
+        _log_item("handbook", "handbook", agent_id, block,
+                  note="craft notes inline; no path reads")]
+    return dict(bundle, md=(bundle.get("md") or "") + "\n\n"
+                + block + "\n", items=items)
+
+
 def _render_inputs(order_brief, received, run_dir, dest_id,
                    agent_id=None, shared=None, shared_part=None,
                    note=None):
@@ -945,6 +967,7 @@ def _run_one_clone(run_dir, agent_id, order_id, order_brief,
                             shared=parts.shared_block(plan, no,
                                                       agent_id),
                             shared_part=no, note=note)
+    bundle = _with_handbook(bundle, agent_id)
     _write_inputs_bundle(cdir, cid, run_dir, order_id, bundle)
     input_md = os.path.join(cdir, "INPUTS.md")
     brief = {"order_id": order_id,

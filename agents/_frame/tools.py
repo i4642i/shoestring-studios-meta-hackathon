@@ -865,6 +865,15 @@ def pc_list_source(ctx, args):
             "tables": len(entry.get("tables", []))}
 
 
+def _arg(args, key, default=""):
+    """Tool arg as stripped text. None -> default, numbers ->
+    str: a model passing 1.2 or 3 must not crash a strip call."""
+    v = (args or {}).get(key, default)
+    if v is None:
+        return default
+    return v.strip() if isinstance(v, str) else str(v).strip()
+
+
 @readlog.logged("source")
 def pc_read_source(ctx, args):
     args = args or {}
@@ -883,7 +892,7 @@ def pc_read_source(ctx, args):
     elif not args.get("section"):
         return {"error": "give section or ref"}
     else:
-        sec = (args.get("section") or "").strip()
+        sec = _arg(args, "section")
         if "://" in sec or sec.startswith("pc:"):
             return {"error": "pass the ref in 'ref', not 'section' "
                              "(section is a number like '1.2')"}
@@ -1091,10 +1100,10 @@ def _pc_pick(ctx, args, pcname):
     args = args or {}
     missing = [k for k in ("url", "part_id", "why_important",
                            "how_to_use")
-               if not (args.get(k) or "").strip()]
+               if not _arg(args, k)]
     if missing:
         return {"error": "missing: " + ", ".join(missing)}
-    url = args["url"].strip()
+    url = _arg(args, "url")
     try:
         got = _tavily_extract(url)
     except RuntimeError as exc:
@@ -1103,7 +1112,7 @@ def _pc_pick(ctx, args, pcname):
     trunc = len(text) - FETCH_CAP if len(text) > FETCH_CAP else 0
     if trunc:
         text = text[:FETCH_CAP]
-    title = got.get("title", "").strip() or _first_line(text) or url
+    title = _arg(got, "title") or _first_line(text) or url
     now = time.strftime("%Y-%m-%dT%H:%M:%S")
     fn = pc.ingest_theory if pcname == "theory" else pc.ingest_article
     try:
@@ -1112,12 +1121,12 @@ def _pc_pick(ctx, args, pcname):
     except (OSError, ValueError) as exc:
         return {"error": "ingest failed: %s" % exc}
     ev = {"ev": "pick", "ref": r["ref"], "url": url,
-          "part_id": args["part_id"].strip(),
+          "part_id": _arg(args, "part_id"),
           "picked_by": (ctx or {}).get("producer", ""),
           "order_id": (ctx or {}).get("order_id", ""),
           "run_id": (ctx or {}).get("run_id", ""),
-          "reason": args["why_important"].strip(),
-          "how_to_use": args["how_to_use"].strip(),
+          "reason": _arg(args, "why_important"),
+          "how_to_use": _arg(args, "how_to_use"),
           "duplicate": r["duplicate"]}
     if trunc:
         ev["truncated_from"] = trunc + FETCH_CAP
@@ -1169,7 +1178,7 @@ def _pc_read_web(ctx, args, pcname):
     err = _need_grant(ctx, pcname)
     if err:
         return err
-    ref = (args.get("ref") or "").strip()
+    ref = _arg(args, "ref")
     if not ref:
         return {"error": "give ref"}
     try:

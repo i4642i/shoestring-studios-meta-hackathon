@@ -16,9 +16,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import pc as _pc
+from agents._frame import flow as _flow
 from agents._frame import results, tools, video
 from agents._frame.schemas import (validate_anim_picks,
                                    validate_cut_layout,
+                                   _cut_set_diff,
                                    validate_gen_picks,
                                    validate_photo_picks,
                                    render_photo_picks_md,
@@ -822,6 +824,49 @@ try:
     ok(_media._license_ok("by 4.0") and _media._license_ok("by-sa 4.0")
        and not _media._license_ok("by-nc 4.0"),
        "spaced licenses read like dashed ones")
+    ok(_cut_set_diff(["s1c1"], ["s1c1", "s1c2"], "narration")
+       == "cut set must equal the narration "
+          "(missing ['s1c2']; extra [])",
+       "cut-set error names missing and extra")
+    import urllib.request as _urlreq, urllib.error as _urlerr
+    tries = []
+
+    class _FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n=-1):
+            return b"\x89PNG\r\n\x1a\n" + b"0" * 8
+
+    def _flaky(req, timeout=None):
+        tries.append(1)
+        if len(tries) < 3:
+            raise _urlerr.HTTPError(req.full_url, 429, "Too Many",
+                                    {"retry-after": "0"}, None)
+        return _FakeResp()
+
+    old_open = _urlreq.urlopen
+    old_hook = _media._HTTP_BYTES
+    _urlreq.urlopen = _flaky
+    _media._HTTP_BYTES = None
+    try:
+        blob = _media._get_bytes("https://up.test/big.jpg", 100)
+    finally:
+        _urlreq.urlopen = old_open
+        _media._HTTP_BYTES = old_hook
+    ok(blob.startswith(b"\x89PNG") and len(tries) == 3,
+       "429 waits and retries to success")
+    hb = _flow._with_handbook({"md": "# Hi", "items": []}, "anim_max")
+    ok("template_values" in hb["md"]
+       and hb["items"][-1]["item"] == "handbook",
+       "max input carries the handbook")
+    same = _flow._with_handbook({"md": "# Hi", "items": []},
+                                "board_vera")
+    ok(same["md"] == "# Hi" and same["items"] == [],
+       "other agents get no handbook block")
     stored = _pc.load_entry_by_ref(pk["ref"])
     ok(stored["license"] == "by-4.0"
        and stored["source_url"] == "https://page.test/h1",

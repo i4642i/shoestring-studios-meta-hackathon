@@ -37,6 +37,11 @@
      "category": "storyboard",
      "from": "part_split",
      "item": "received.part_split.storyboard"
+    },
+    {
+     "category": "handbook",
+     "from": "anim_max",
+     "item": "handbook"
     }
    ],
    "pc_rows": [

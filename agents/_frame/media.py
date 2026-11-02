@@ -159,7 +159,7 @@ def _retry_after(headers, default=10):
         return default
 
 
-def _get_bytes(url, cap, timeout=60, _retry=True):
+def _get_bytes(url, cap, timeout=60, _tries=3):
     if _HTTP_BYTES is not None:
         return _HTTP_BYTES(url, cap)
     req = urllib.request.Request(url, headers=_bytes_headers())
@@ -167,9 +167,12 @@ def _get_bytes(url, cap, timeout=60, _retry=True):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             blob = r.read(cap + 1)
     except urllib.error.HTTPError as exc:
-        if exc.code == 429 and _retry:
+        if exc.code == 429 and _tries > 1:
             time.sleep(_retry_after(exc.headers))
-            return _get_bytes(url, cap, timeout, False)
+            return _get_bytes(url, cap, timeout, _tries - 1)
+        if exc.code == 429:
+            raise RuntimeError("download 429 rate-limited after retries; "
+                               "try this pick again later, the photo exists")
         raise RuntimeError("download %s: %s" % (exc.code, exc.reason))
     except (urllib.error.URLError, OSError) as exc:
         raise RuntimeError("download unreachable: %s" % exc)

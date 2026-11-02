@@ -702,6 +702,17 @@ def _draft_scene_map(draft):
     return out
 
 
+def _cut_set_diff(got, want, source):
+    """Cut-set mismatch that says how to fix: which cuts are
+    missing and which are extra."""
+    try:
+        return ("cut set must equal the %s (missing %s; extra %s)"
+                % (source, sorted(set(want) - set(got)),
+                   sorted(set(got) - set(want))))
+    except TypeError:
+        return "cut set must equal the %s (cut lists differ)" % source
+
+
 def validate_storyboard(obj, narration):
     """Penn's cut descriptions v2: exact cut match vs Wren's
     narration, text ≤3 lines. Penn writes no timing: scene_n,
@@ -742,7 +753,7 @@ def validate_storyboard(obj, narration):
             errors.append("%s.on_screen_text must hold 0-3 "
                           "non-empty lines" % where)
     if sorted(got) != sorted(want):
-        errors.append("cut set must equal the narration's")
+        errors.append(_cut_set_diff(got, want, "narration"))
     return errors
 
 
@@ -1226,7 +1237,7 @@ def validate_photo_picks(obj, storyboard):
         elif cut.get("decision") != "none":
             errors.append("%s.decision must be use or none" % where)
     if sorted(got) != sorted(want):
-        errors.append("cut set must equal the storyboard's")
+        errors.append(_cut_set_diff(got, want, "storyboard"))
     return errors
 
 
@@ -1263,7 +1274,7 @@ def validate_gen_picks(obj, storyboard):
             errors.append("%s.decision must be generate or none"
                           % where)
     if sorted(got) != sorted(want):
-        errors.append("cut set must equal the storyboard's")
+        errors.append(_cut_set_diff(got, want, "storyboard"))
     images = obj.get("images")
     if not isinstance(images, list):
         errors.append("images must be a list")
@@ -1394,7 +1405,7 @@ def validate_anim_picks(obj, storyboard):
         else:
             errors.append("%s.decision must be use or none" % where)
     if sorted(got) != sorted(want):
-        errors.append("cut set must equal the storyboard's")
+        errors.append(_cut_set_diff(got, want, "storyboard"))
     return errors
 
 
@@ -1622,7 +1633,7 @@ def validate_slide_draft(obj, narration):
             if not isinstance(cut.get(k), list):
                 errors.append("%s.%s must be a list" % (where, k))
     if sorted(got) != sorted(want):
-        errors.append("cut set must equal the narration's")
+        errors.append(_cut_set_diff(got, want, "narration"))
     return errors
 
 
@@ -1688,7 +1699,7 @@ def validate_render_log(obj, slide_draft):
         if not isinstance(cut.get("issues"), list):
             errors.append("%s.issues must be a list" % where)
     if sorted(got) != sorted(want):
-        errors.append("cut set must equal the slide draft's")
+        errors.append(_cut_set_diff(got, want, "slide draft"))
     return errors
 
 

@@ -594,6 +594,17 @@ try:
        "pc_read_source bad section errors")
     ok("error" in tmod.pc_read_source(cleo, {}),
        "pc_read_source needs a target")
+    out = tmod.pc_read_source(cleo, {"section": 1.1})
+    ok("Body tools here." in out.get("text", ""),
+       "numeric section coerced, no strip crash")
+    err = tmod.pc_pick_theory({}, {"part_id": 3})
+    ok("url" in err.get("error", "")
+       and "Traceback" not in err.get("error", ""),
+       "numeric pick arg guarded before any fetch")
+    ok(tmod._arg({"a": 5}, "a") == "5"
+       and tmod._arg({}, "a") == ""
+       and tmod._arg({"a": None}, "a", "d") == "d",
+       "tool args coerce None and numbers to text")
     ok(tmod.open_ref(
         cleo, {"ref": r3["ref"] + "#s1.1/p2"}).get("text")
        == "Body tools here.", "open_ref opens with grant")

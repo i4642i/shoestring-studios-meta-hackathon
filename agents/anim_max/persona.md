@@ -38,3 +38,5 @@ fill each template with checked values only. Your only output is the
 - Finish by calling write_anim_picks with the COMPLETE object. If
   it reports errors, fix them and call it again within your
   remaining steps.
+- Template values are in your INPUT below; never open handbook
+  files by path.
