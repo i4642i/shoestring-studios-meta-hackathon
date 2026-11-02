@@ -142,6 +142,14 @@ try:
                and r.get("kind") == "map"
                for r in grant.get("recipients", [])),
        "picker lists ash (map) via the tool")
+    for _a in ("photo_pia", "anim_max", "board_vera"):
+        for _pcn in ("theory", "article"):
+            ok(tmod._need_grant({"producer": _a,
+                                "order_id": "o9",
+                                "agent_dir": os.path.join(
+                                    ROOT, "agents", _a)},
+                               _pcn) is None,
+               "helper %s holds the %s read tool" % (_a, _pcn))
     ok("only Sam grants full" in tmod.pc_set_recipients(
         cleo, {"ref": p["ref"], "full": ["plan_ash"]}).get("error", ""),
        "non-sam cannot grant full")

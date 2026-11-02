@@ -24,7 +24,7 @@
   "read_md_section",
   "open_ref",
   "pc_list_source",
-  "pc_read_source",
+  "pc_read_source", "pc_read_theory", "pc_read_article",
   "vera_view_image",
   "write_slide_draft"
  ],

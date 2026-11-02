@@ -1027,8 +1027,9 @@ cross-model queries refused, per-profile markers.
 - Theory/Article PCs have no bare `add`: items enter only through a
   pick (§13).
 - Ash holds no listing tool: his `handoff[]` is applied by the
-  platform under the same lister rule (§8.9). Penn and Wren hold
-  the `pc_read_*` tools, gated by their handed rows.
+  platform under the same lister rule (§8.9). Penn, Wren, Pia,
+  Max and Vera hold the `pc_read_*` tools, gated by their
+  handed rows.
 
 Task input loaded by the runner (one shared recipients-gated builder,
 §8.9 — the Preview button shows the same text):
