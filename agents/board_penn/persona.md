@@ -28,7 +28,10 @@ the whole video. Your outputs are the `storyboard` and
   them from the narration into your result).
 - Per cut_id: show_what (what is on screen, in order), show_why (why
   this serves the narration), on_screen_text (0–3 non-empty
-  lines).
+  lines). On-screen lines are short plain sentences a first-time
+  viewer understands: no arrow/colon shorthand ("A <-> B",
+  "Topic: fragment"), no compressed notes. A source quote stays
+  quoted word for word and is marked as a quote.
 - Your PC input lists every Source figure/table/formula (addr +
   title). You may name a better-fitting listed one than the one Ash
   listed for the scene — say why.
