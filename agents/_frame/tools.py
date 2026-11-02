@@ -883,8 +883,12 @@ def pc_read_source(ctx, args):
     elif not args.get("section"):
         return {"error": "give section or ref"}
     else:
-        want = entry["ref"] + "#s" + args["section"].strip()
-        frag = "s" + args["section"].strip()
+        sec = (args.get("section") or "").strip()
+        if "://" in sec or sec.startswith("pc:"):
+            return {"error": "pass the ref in 'ref', not 'section' "
+                             "(section is a number like '1.2')"}
+        want = entry["ref"] + "#s" + sec
+        frag = "s" + sec
     err = _recipients_error(ctx, entry, want)
     if err:
         return err
