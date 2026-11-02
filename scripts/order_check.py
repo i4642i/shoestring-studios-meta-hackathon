@@ -240,6 +240,52 @@ _rfails = [e for e in _res.get("events", [])
 ok(_rfails and "timed out" in _rfails[-1].get("reason", "")
    and "kept" in _rfails[-1].get("reason", ""),
    "timeout reason says the parse results are kept")
+_flaky_calls = []
+
+
+def _flaky(*a, **k):
+    _flaky_calls.append(1)
+    if len(_flaky_calls) < 3:
+        raise ConnectionError("EOF occurred in violation of protocol")
+    raise TimeoutError("stop after retries")
+
+
+_runner._chat = _flaky
+_old_sleep = _runner.CHAT_RETRY_SLEEP
+_runner.CHAT_RETRY_SLEEP = 0
+try:
+    _rd3 = tempfile.mkdtemp(prefix="sam_transport_")
+    _res3 = _runner.run(os.path.join(ROOT, "agents", "pd_marty"),
+                        _rd3, {"order_id": "fixture-ord",
+                               "answers": {}}, "# fixture inputs")
+finally:
+    _runner._chat = _old_chat
+    _runner.CHAT_RETRY_SLEEP = _old_sleep
+    shutil.rmtree(_rd3, ignore_errors=True)
+ok(len(_flaky_calls) == 3 and _res3.get("ok") is False,
+   "transient transport errors retry the model call, then fail clean")
+_fatal_calls = []
+
+
+def _fatal(*a, **k):
+    _fatal_calls.append(1)
+    raise ValueError("bad key")
+
+
+_runner._chat = _fatal
+try:
+    _rd4 = tempfile.mkdtemp(prefix="sam_fatal_")
+    _res4 = _runner.run(os.path.join(ROOT, "agents", "pd_marty"),
+                        _rd4, {"order_id": "fixture-ord",
+                               "answers": {}}, "# fixture inputs")
+finally:
+    _runner._chat = _old_chat
+    shutil.rmtree(_rd4, ignore_errors=True)
+_rfails4 = [e for e in _res4.get("events", [])
+            if e.get("ev") == "run_fail"]
+ok(len(_fatal_calls) == 1 and _res4.get("ok") is False
+   and _rfails4 and "ValueError" in _rfails4[-1].get("reason", ""),
+   "non-transport errors fail the stage without retry")
 ok("_finalize_order" in _srv and "finalize_and_send" in _srv
    and "_try_fill_answers" not in _srv and "_extract_intake" not in _srv
    and "_run_parse_stage" not in _srv,
