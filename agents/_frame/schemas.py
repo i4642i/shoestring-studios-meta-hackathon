@@ -1435,7 +1435,9 @@ def validate_anim_picks(obj, storyboard):
 SLIDE_W = 1280
 SLIDE_H = 720
 SAFE_MARGIN = 64          # 5% of width on every side
-MIN_FONT = 20             # smallest readable size at 720p
+MIN_FONT = 20             # smallest size for data blocks at 720p
+MIN_FONT_TEXT = 32        # text blocks stay readable at 720p
+MIN_FONT_ONSCREEN = 36    # bottom on-screen line (renderer-fixed)
 VERA_MAX_BLOCKS = 4
 REVEAL_STEP_S = {"table": 0.5, "formula": 1.0, "steps": 0.8}
 BLOCK_MAX_ITEMS = {"table": 10, "formula": 8, "steps": 8, "text": 6}
@@ -1499,10 +1501,14 @@ def validate_cut_layout(cut, dur_s):
             errors.append("%s.box must be an object" % bw)
         font = b.get("font_size",
                      BLOCK_FONT_DEFAULT.get(kind, MIN_FONT + 4))
+        need = MIN_FONT_TEXT if kind == "text" else MIN_FONT
         font_ok = isinstance(font, int) and \
-            not isinstance(font, bool) and font >= MIN_FONT
+            not isinstance(font, bool) and font >= need
         if not font_ok:
-            errors.append("%s.font_size int >= %d" % (bw, MIN_FONT))
+            errors.append(
+                "%s.font_size int >= %d (text blocks: widen the "
+                "box or shorten the line, never go smaller)"
+                % (bw, need))
         ap = b.get("appear_s", 0)
         ap_ok = _is_num(ap) and 0 <= ap < dur_s
         if not ap_ok:

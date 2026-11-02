@@ -59,12 +59,14 @@ on-screen text, and timing per cut. Your only output is the
   0.8 s/item) must finish inside the cut.
 - Box math (canvas 1280x720, keep x in 64..1216 and y in
   64..656): box x/y/w/h are ints >= 0, boxes never overlap,
-  min 200x40 for text, 120x90 otherwise, font_size int >= 20.
+  min 200x40 for text, 120x90 otherwise, font_size int >= 32
+  for text blocks (>= 20 for table/formula/steps/chart).
   Text must fit: longest line chars x font x 0.55 <= box w
   (table: x columns; formula: x 0.8; steps: sum of item lens
   x font x 0.55 + (items - 1) x font <= w). When it does not
-  fit: shorter lines, smaller font (never below 20), a wider
-  box, or fewer items -- compute before calling.
+  fit: shorter lines, a wider box, or fewer items -- never a
+  smaller font (text never goes below 32; the renderer sizes
+  the text to fill the box). Compute before calling.
 - Finish with ONE write_slide_draft call shaped EXACTLY like
   this (a real object argument, never a JSON string):
   {slide_draft: {cuts: [{cut_id (Wren's), start_s/end_s

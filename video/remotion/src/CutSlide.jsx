@@ -245,9 +245,27 @@ function StepsBlock({b, order, frame, fps}) {
   );
 }
 
+const TEXT_MIN_FONT = 32;
+const TEXT_MAX_FONT = 72;
+
+// The box decides the size, not the LLM: biggest font that fills
+// the box, clamped to readable bounds.
+export const fitTextFont = (b) => {
+  const lines = (b.data && b.data.lines) || [];
+  const box = b.box || {w: 200, h: 40};
+  const longest = Math.max(1, ...lines.map((t) => String(t).length));
+  const n = Math.max(1, lines.length);
+  const byW = box.w / (longest * 0.55);
+  const byH = box.h / (n * 1.25);
+  return Math.max(
+    TEXT_MIN_FONT,
+    Math.min(TEXT_MAX_FONT, Math.floor(Math.min(byW, byH))),
+  );
+};
+
 function TextBlock({b, order}) {
   const lines = (b.data && b.data.lines) || [];
-  const font = b.font_size || 44;
+  const font = fitTextFont(b);
   return (
     <div
       style={{
@@ -343,7 +361,7 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide}) 
             right: 0,
             bottom: 24,
             textAlign: "center",
-            fontSize: 30,
+            fontSize: 36,
             fontWeight: heading.fontWeight,
             padding: "0 80px",
           }}

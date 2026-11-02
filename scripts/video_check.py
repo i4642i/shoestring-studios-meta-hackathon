@@ -530,6 +530,12 @@ try:
     tiny["cuts"][0]["blocks"][1]["font_size"] = 12
     ok("font_size" in " ".join(validate_slide_draft(tiny, NARR)),
        "tiny font refuses")
+    small = json.loads(json.dumps(SLIDE))
+    small["cuts"][0]["blocks"][1]["font_size"] = 24
+    ok(">= 32" in " ".join(validate_slide_draft(small, NARR)),
+       "24px text refuses (minimum is 32)")
+    ok(validate_slide_draft(SLIDE, NARR) == [],
+       "table keeps its 24px floor")
     wide = json.loads(json.dumps(SLIDE))
     wide["cuts"][0]["blocks"][1]["data"] = {"lines": ["x" * 100]}
     ok("too wide" in " ".join(validate_slide_draft(wide, NARR)),
