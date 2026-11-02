@@ -2183,11 +2183,13 @@ def _values_trace(errors, template, values, quotes, where):
             f = float(str(s).replace(",", ""))
         except ValueError:
             errors.append("%s: value %r is not in the quoted "
-                          "source" % (where, s))
+                          "source (copy the full row/cells into the "
+                          "refs quotes, verbatim)" % (where, s))
             continue
         if f not in nums:
             errors.append("%s: value %r is not in the quoted "
-                          "source" % (where, s))
+                          "source (copy the full row/cells into the "
+                          "refs quotes, verbatim)" % (where, s))
 
 
 def write_slide_draft(ctx, args):
