@@ -1550,10 +1550,29 @@ def _run_code_node(run_dir, node_id, order_id, order_brief, incoming,
             props = None
         if isinstance(props, dict):
             props_map[cid] = props
+    lengths = {}
+    for cut in cuts:
+        wav = audio.get(cut["cut_id"])
+        if not wav:
+            continue
+        try:
+            lengths[cut["cut_id"]] = video.wav_seconds(wav)
+        except Exception:  # noqa: BLE001 - unreadable clip keeps plan
+            pass
+    clips = {}
+    for cut in cuts:
+        mp4 = os.path.join(run_dir, "slide_remy", "slides",
+                           "%s.mp4" % cut["cut_id"])
+        if os.path.isfile(mp4):
+            clips[cut["cut_id"]] = os.path.join(
+                "slide_remy", "slides",
+                "%s.mp4" % cut["cut_id"])
     asm = video.build_assembly(narration, slides, audio,
                                props_map=props_map,
                                voice_refs=voice_refs,
-                               slide_status=slide_status)
+                               slide_status=slide_status,
+                               audio_lengths=lengths,
+                               clip_files=clips)
     srt_text, speech = asm["srt"], {"status": "proportional",
                                     "turns": 0, "mismatches": []}
     try:

@@ -165,16 +165,49 @@ ok(video.build_table(NARR, BOARD, SLIDE,
    "table identical via merged part info")
 asm = video.build_assembly(NARR, {"s1c1": "a.png", "s1c2": "b.png"},
                            {"s1c1": "a.wav", "s1c2": "b.wav"})
-ok(asm["total_s"] == 40.0 and len(asm["segments"]) == 2
-   and asm["segments"][1]["at_s"] == 20.0
+joined = " ".join(asm["ffmpeg_cmd"])
+ok(asm["total_s"] == 41.1 and len(asm["segments"]) == 2
+   and asm["segments"][0]["dur_s"] == 20.8
+   and asm["segments"][1]["at_s"] == 20.8
    and asm["ffmpeg_cmd"][0] == "ffmpeg"
    and asm["ffmpeg_cmd"][-1] == "video.mp4"
-   and "concat=n=2:v=1:a=0[v]" in " ".join(asm["ffmpeg_cmd"]),
-   "assembly plan joins in order with one ffmpeg command")
+   and "xfade=" in joined and "acrossfade=" in joined
+   and "apad=" in joined,
+   "assembly joins with plan lengths + crossfades (one command)")
 ok("-shortest" not in asm["ffmpeg_cmd"]
    and asm["ffmpeg_cmd"][-3] == "-t",
    "assembly keeps the full slide length")
-ok(asm["srt"] == srt, "assembly carries the same subtitles")
+ok(asm["srt"] == video.build_srt(video.retime_narration(NARR, None)),
+   "assembly subtitles follow the retimed cuts")
+wavp = os.path.join(tmp, "probe.wav")
+with wave.open(wavp, "wb") as _w:
+    _w.setnchannels(1)
+    _w.setsampwidth(2)
+    _w.setframerate(16000)
+    _w.writeframes(b"\x00" * 16000 * 2 * 2)
+ok(abs(video.wav_seconds(wavp) - 2.0) < 0.01, "wav length measured")
+try:
+    video.wav_seconds(os.path.join(tmp, "no-such.wav"))
+    ok(False, "missing wav raises")
+except Exception:
+    ok(True, "missing wav raises")
+rt = video.retime_narration(NARR, {"s1c1": 5.0, "s1c2": 7.0})
+ok(rt["cuts"][0] ["end_s"] == 5.8 and rt["cuts"][1]["start_s"] == 5.8
+   and rt["cuts"][1]["end_s"] == 13.6,
+   "segments follow measured voice + pad")
+asm2 = video.build_assembly(NARR, {"s1c1": "a.png", "s1c2": "b.png"},
+                            {"s1c1": "a.wav", "s1c2": "b.wav"},
+                            audio_lengths={"s1c1": 5.0, "s1c2": 7.0})
+ok(asm2["total_s"] == 13.1 and asm2["segments"][0]["dur_s"] == 5.8
+   and asm2["segments"][1]["dur_s"] == 7.8,
+   "assembly total follows measured voice")
+asm3 = video.build_assembly(NARR, {"s1c1": "a.png", "s1c2": "b.png"},
+                            {"s1c1": "a.wav", "s1c2": "b.wav"},
+                            clip_files={"s1c1": "c.mp4"})
+ok("-stream_loop" in asm3["ffmpeg_cmd"]
+   and asm3["segments"][0]["clip"] == "c.mp4"
+   and asm3["segments"][1]["clip"] is None,
+   "rendered clip preferred, png loop stays the fallback")
 recs, rtot = video.build_cut_records(
     NARR, {"s1c1": "a.png"}, {"s1c1": "a.wav", "s1c2": "b.wav"},
     props_map={"s1c1": {"cutId": "s1c1"}},

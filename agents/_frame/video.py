@@ -12,6 +12,52 @@ import subprocess
 from xml.sax.saxutils import escape
 
 RENDER_MAX = 3
+VOICE_PAD_S = 0.3  # breathing room after each voice clip ends
+XFADE_S = 0.5  # crossfade between cuts (video + audio)
+
+
+def wav_seconds(path):
+    """Real length of a WAV file in seconds. Raises on anything
+    unreadable (callers fall back to the planned cut length)."""
+    import wave
+    with wave.open(path, "rb") as w:
+        rate = w.getframerate() or 1
+        return w.getnframes() / float(rate)
+
+
+def retime_narration(narration, audio_lengths):
+    """Narration copy whose cut times follow the measured voice:
+    each cut lasts its WAV length plus a fade tail and a breath, laid end to end.
+    Cuts without a measured length keep their planned duration.
+    Planned seconds stay Wren's writing target only."""
+    cuts = ((narration or {}).get("cuts") or [])
+    out = []
+    cursor = 0.0; real = [c for c in cuts if isinstance(c, dict)]; pad = VOICE_PAD_S + (XFADE_S if len(real) > 1 else 0.0)
+    for cut in cuts:
+        if not isinstance(cut, dict):
+            continue
+        cid = cut.get("cut_id")
+        try:
+            start = float(cut.get("start_s", 0))
+            end = float(cut.get("end_s", start))
+            planned = max(0.0, end - start)
+        except (TypeError, ValueError):
+            planned = 0.0
+        length = None
+        if isinstance(audio_lengths, dict):
+            try:
+                length = float(audio_lengths.get(cid))
+            except (TypeError, ValueError):
+                length = None
+        dur = round(length + pad, 3) \
+            if length is not None and length > 0 \
+            else round(planned + pad, 3)
+        clone = dict(cut)
+        clone["start_s"] = round(cursor, 3)
+        clone["end_s"] = round(cursor + dur, 3)
+        out.append(clone)
+        cursor += dur
+    return {"cuts": out}
 
 
 def _color(guide, key, default):
@@ -175,13 +221,14 @@ def cut_slide_props(cut, guide):
 
 def build_cut_records(narration, slide_files, audio_files,
                       props_map=None, voice_refs=None,
-                      slide_status=None):
+                      slide_status=None, clip_files=None):
     """Per-cut assembly records: props + slide PNG + voice for
     every cut. Missing sidecars/refs record None, never a guess.
     Returns (records, total_s)."""
     props_map = props_map or {}
     voice_refs = voice_refs or {}
     slide_status = slide_status or {}
+    clip_files = clip_files or {}
     records = []
     total = 0.0
     for c in ((narration or {}).get("cuts") or []):
@@ -200,6 +247,7 @@ def build_cut_records(narration, slide_files, audio_files,
                 cid, "rendered" if slide else "missing"),
             "audio": (audio_files or {}).get(cid),
             "voice_ref": voice_refs.get(cid),
+            "clip": clip_files.get(cid),
         })
         total += dur
     return records, round(total, 3)
@@ -207,31 +255,70 @@ def build_cut_records(narration, slide_files, audio_files,
 
 def build_assembly(narration, slide_files, audio_files,
                    out_name="video", props_map=None,
-                   voice_refs=None, slide_status=None):
+                   voice_refs=None, slide_status=None,
+                   audio_lengths=None, clip_files=None):
     """Pure assembly plan. slide_files/audio_files map cut_id ->
-    file path. Segments are the per-cut records (props + slide
-    PNG + voice). Returns {segments, srt, ffmpeg_cmd, total_s}.
-    Execution lives in run_ffmpeg() only."""
-    segments, total = build_cut_records(
-        narration, slide_files, audio_files, props_map,
-        voice_refs, slide_status)
+    file path; clip_files maps cut_id -> Remy's per-cut MP4 clip
+    when rendered (else the looped slide PNG is used). Every
+    segment lasts its measured voice (audio_lengths) plus a
+    0.5 s fade tail of silence plus a 0.3 s breath, so the
+    0.5 s crossfade (xfade + acrossfade) never touches speech;
+    a lone cut keeps just the 0.3 s breath. Audio is apadded to
+    the same length. start_s/end_s for the SRT and the cut
+    records come from the measured lengths; planned seconds
+    remain only Wren's writing target. Execution lives in
+    run_ffmpeg() only."""
+    timed = retime_narration(narration, audio_lengths)
+    segments, _ = build_cut_records(
+        timed, slide_files, audio_files, props_map,
+        voice_refs, slide_status, clip_files)
+    lens = [seg["dur_s"] for seg in segments]
+    nseg = len(segments)
     cmd = ["ffmpeg", "-y"]
     for seg in segments:
-        cmd += ["-loop", "1", "-t", str(seg["dur_s"]), "-i",
-                seg["slide"] or ""]
+        clip = (clip_files or {}).get(seg["cut_id"])
+        if clip:
+            cmd += ["-stream_loop", "-1", "-t", str(seg["dur_s"]),
+                    "-i", clip]
+        else:
+            cmd += ["-loop", "1", "-t", str(seg["dur_s"]), "-i",
+                    seg["slide"] or ""]
     for seg in segments:
         cmd += ["-i", seg["audio"] or ""]
-    nseg = len(segments)
-    if nseg:
-        vcat = "".join("[%d:v]" % i for i in range(nseg))
-        acat = "".join("[%d:a]" % (nseg + i) for i in range(nseg))
-        filt = ("%sconcat=n=%d:v=1:a=0[v];"
-                "%sconcat=n=%d:v=0:a=1[a]" % (vcat, nseg, acat, nseg))
-        cmd += ["-filter_complex", filt, "-map", "[v]", "-map",
+    total = round(sum(lens), 3)
+    if nseg == 1:
+        filt = "[1:a]apad=whole_dur=%s[a]" % lens[0]
+        cmd += ["-filter_complex", filt, "-map", "0:v", "-map",
                 "[a]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-t", str(total),
                 out_name + ".mp4"]
-    return {"segments": segments, "srt": build_srt(narration),
+    elif nseg:
+        filt = []
+        for k in range(nseg):
+            filt.append("[%d:v]scale=1280:720:flags=lanczos,fps=30,"
+                        "format=yuv420p,setpts=PTS-STARTPTS[sv%d]"
+                        % (2 * k, k))
+            filt.append("[%d:a]apad=whole_dur=%s[ap%d]"
+                        % (nseg + k, lens[k], k))
+        vcur, acur, run = "[sv0]", "[ap0]", lens[0]
+        for k in range(1, nseg):
+            off = round(run - k * XFADE_S, 3)
+            filt.append("%s[sv%d]xfade=transition=fade:duration=%s"
+                        ":offset=%s[xv%d]"
+                        % (vcur, k, XFADE_S, off, k))
+            vcur = "[xv%d]" % k
+            filt.append("%s[ap%d]acrossfade=d=%s:c1=tri:c2=tri[ac%d]"
+                        % (acur, k, XFADE_S, k))
+            acur = "[ac%d]" % k
+            run += lens[k]
+        filt.append("%snull[v]" % vcur)
+        filt.append("%sanull[a]" % acur)
+        total = round(sum(lens) - (nseg - 1) * XFADE_S, 3)
+        cmd += ["-filter_complex", ";".join(filt), "-map", "[v]",
+                "-map", "[a]", "-c:v", "libx264", "-pix_fmt",
+                "yuv420p", "-c:a", "aac", "-t", str(total),
+                out_name + ".mp4"]
+    return {"segments": segments, "srt": build_srt(timed),
             "ffmpeg_cmd": cmd, "total_s": total}
 
 

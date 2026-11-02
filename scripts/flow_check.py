@@ -464,8 +464,16 @@ def stub(agent_dir, run_dir, brief, input_md):
     if _re.fullmatch(r"p\d+", who):
         who = os.path.basename(os.path.dirname(run_dir))
     if who == "voice_wren":
+        import io as _io
+        import wave as _wave
+        _buf = _io.BytesIO()
+        with _wave.open(_buf, "wb") as _w:
+            _w.setnchannels(1)
+            _w.setsampwidth(2)
+            _w.setframerate(16000)
+            _w.writeframes(b"\x00" * 16000 * 2)
         saved = _pc.voice_save(brief["order_id"], "s1c1",
-                               b"\x00" * 32, "Hello world", 20, 1,
+                               _buf.getvalue(), "Hello world", 20, 1,
                                "stub")
         cats = {"narration": {"cuts": [{
             "cut_id": "s1c1", "scene_n": 1, "start_s": 0, "end_s": 20,
@@ -594,8 +602,8 @@ ok(asmj["segments"][0]["props"] == {"cutId": "s1c1",
    "assembly segments record props + png + voice")
 with open(os.path.join(rdir, "video_production", "captions.srt"),
           encoding="utf-8") as f:
-    ok(f.read() == "1\n00:00:00,000 --> 00:00:20,000\nHello world\n",
-       "subtitle timing exact")
+    ok(f.read() == "1\n00:00:00,000 --> 00:00:01,300\nHello world\n",
+       "subtitle timing follows the measured voice")
 sp = json.load(open(os.path.join(rdir, "video_production",
                                  "assembly.json"),
                     encoding="utf-8"))["speech"]
