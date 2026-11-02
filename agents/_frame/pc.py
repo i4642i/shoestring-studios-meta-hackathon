@@ -1963,6 +1963,44 @@ def ref_within(requested_ref, part_ref):
     return rpc == ppc and rid == pid and _frag_within(rfrag, pfrag)
 
 
+def twin_refs(entry, refs):
+    """Table/image twins of the given refs that exist in the entry.
+
+    A table (tabN) and its rendered image (figN) are the same
+    content: a grant on one covers work on the other (Vera plans
+    the figure image; Remy renders it). Returns full refs for
+    twins that resolve in the entry; unknown twins are skipped,
+    never invented.
+    """
+    try:
+        pre = entry.get("ref", "")
+        have = set()
+        for f in entry.get("figures", []) or []:
+            if isinstance(f, dict) and f.get("addr"):
+                have.add(f["addr"])
+        for t in entry.get("tables", []) or []:
+            if isinstance(t, dict) and t.get("addr"):
+                have.add(t["addr"])
+    except AttributeError:
+        return []
+    out = []
+    for ref in refs or []:
+        try:
+            _rpc, _rid, frag = parse_ref(ref)
+        except ValueError:
+            continue
+        twin = None
+        if frag.startswith("tab"):
+            twin = "fig" + frag[3:]
+        elif frag.startswith("fig"):
+            twin = "tab" + frag[3:]
+        if twin and twin in have and pre:
+            full = pre + "#" + twin
+            if full not in (refs or []) and full not in out:
+                out.append(full)
+    return out
+
+
 def apply_handoff(order_id, draft, set_by="plan_ash", root=None):
     """Apply storyboard_draft scenes[].handoff[] as recipient rows
     (kind map + parts). Same lister rule as the tool: set_by must
@@ -2023,6 +2061,13 @@ def apply_handoff(order_id, draft, set_by="plan_ash", root=None):
                 planned.setdefault((rpc, rid, a), []).append(ref)
     applied = []
     for (rpc, rid, a), refs in sorted(planned.items()):
+        try:
+            entry = load_entry_by_ref(entry_ref(rpc, rid),
+                                      root=root)
+        except (OSError, ValueError, KeyError):
+            entry = None
+        if entry is not None:
+            refs = list(refs) + twin_refs(entry, refs)
         try:
             set_recipients(rpc, rid, order_id, [a], set_by,
                            kind="map", parts=refs, root=root)

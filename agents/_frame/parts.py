@@ -596,13 +596,15 @@ def write_clone_rows(order_id, plan, root=None):
                 p["no"], []).append(ref)
     for (rpc, rid), per_no in by_entry.items():
         try:
-            pc.load_entry_by_ref(pc.entry_ref(rpc, rid), root)
+            entry = pc.load_entry_by_ref(pc.entry_ref(rpc, rid),
+                                         root)
         except (OSError, ValueError, KeyError):
             skipped.append(pc.entry_ref(rpc, rid))
             continue
         for no, refs in per_no.items():
             agents = ["%s@p%d" % (b, no)
                       for b in SOURCE_CLONE_READERS]
+            refs = list(refs) + pc.twin_refs(entry, refs)
             try:
                 pc.set_recipients(rpc, rid, order_id, agents,
                                   SPLIT_NODE, kind="map",
@@ -626,8 +628,15 @@ def write_clone_rows(order_id, plan, root=None):
                 (rpc, rid), {}).setdefault(
                     p["no"], []).append(ref)
     for (rpc, rid), per_no in remy_by_entry.items():
+        try:
+            rentry = pc.load_entry_by_ref(pc.entry_ref(rpc, rid),
+                                          root)
+        except (OSError, ValueError, KeyError):
+            rentry = None
         for no, refs in per_no.items():
             agents = ["slide_remy@p%d" % no]
+            if rentry is not None:
+                refs = list(refs) + pc.twin_refs(rentry, refs)
             try:
                 pc.set_recipients(rpc, rid, order_id, agents,
                                   SPLIT_NODE, kind="map",
