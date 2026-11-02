@@ -28,7 +28,9 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Source figures (Source PC): open the figure with open_ref and
   look at it before you use it. Never use an unviewed figure.
 - Web photos: only reuse-permitted licenses (cc0, pdm, by, by-sa;
-  never nd — we crop). Store every pick with file, source URL,
+  version suffixes like by-sa-4.0 are fine). Source figures use
+  license "internal".
+  Never take nc/nd. Store every pick with file, source URL,
   license, and reason; always credit.
 - Search results are NOT stored; only your picks are.
 - A cut whose screen needs no photo, or where nothing honest turns

@@ -1143,6 +1143,12 @@ TTS_FIT = 0.15  # cut audio must sit within ±15% of the cut plan
 VOICE_MAX_ATTEMPTS = 2
 GEN_IMAGES_MAX = 6
 REMY_MAX_RENDERS = 3
+def _license_core(lic):
+    """'by-sa-2.0'/'by-sa 2.0' -> 'by-sa' for the reuse check."""
+    parts = str(lic or "").lower().replace(" ", "-").split("-")
+    return "-".join(p for p in parts if p and not p[0].isdigit())
+
+
 PICK_LICENSES = ("cc0", "pdm", "by", "by-sa")
 LAYOUT_FIELDS = ("position", "size", "font_size", "alignment",
                  "crop", "zoom", "padding", "accent", "x", "y",
@@ -1229,8 +1235,13 @@ def validate_photo_picks(obj, storyboard):
             if cut.get("kind") not in ("source_figure", "web"):
                 errors.append("%s.kind must be source_figure or web"
                               % where)
-            if str(cut.get("license", "")).lower() \
-                    not in PICK_LICENSES:
+            lic = str(cut.get("license", ""))
+            if cut.get("kind") == "source_figure":
+                if lic.lower() != "internal":
+                    errors.append("%s.license must be 'internal' for a "
+                                  "source_figure pick (got %r)"
+                                  % (where, cut.get("license")))
+            elif _license_core(lic) not in PICK_LICENSES:
                 errors.append("%s.license %r is not reuse-permitted "
                               "(%s)" % (where, cut.get("license"),
                                         "/".join(PICK_LICENSES)))

@@ -391,6 +391,23 @@ try:
                      "width": 800, "height": 600, "aspect": 1.33}]}
     ok("- Size: 800x600 (aspect 1.33)" in render_photo_picks_md(PHD),
        "pick markdown carries figure size")
+    LIC = {"cuts": [{"cut_id": "s1c1", "decision": "use",
+                     "kind": "web", "ref": "pc://image/0123456789ab",
+                     "file": "a.jpg", "source_url": "https://x.test/a",
+                     "license": "by-sa-2.0", "reason": "Why"},
+                    {"cut_id": "s1c2", "decision": "use",
+                     "kind": "source_figure",
+                     "ref": "pc://source/0123456789ab#fig1.1.1",
+                     "file": "fig1.png",
+                     "source_url": "pc://source/0123456789ab#fig1.1.1",
+                     "license": "internal", "reason": "Figure"}]}
+    ok(validate_photo_picks(LIC, BOARD) == [],
+       "versioned and internal licenses accept")
+    LICB = json.loads(json.dumps(LIC))
+    LICB["cuts"][0]["license"] = "by-nc-4.0"
+    ok(any("reuse-permitted" in e
+           for e in validate_photo_picks(LICB, BOARD)),
+       "nc license refuses")
     ok(tools._fit_hint(680, 380, 1130, 1000)
        == "fit w~429 at h=380 or h~602 at w=680",
        "aspect error names a fitting box")

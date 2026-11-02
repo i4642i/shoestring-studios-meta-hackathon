@@ -26,7 +26,8 @@ from . import pdfingest
 from . import readlog
 from . import results
 from .media import MEDIA_TOOLS
-from .schemas import (VOICE_MAX_ATTEMPTS, list_headings,
+from .schemas import (VOICE_MAX_ATTEMPTS, _license_core,
+                      list_headings,
                       validate_anim_picks, validate_cases,
                       validate_concept, validate_concepts,
                       validate_draft, validate_gen_picks,
@@ -1928,7 +1929,8 @@ def write_photo_picks(ctx, args):
                 errors.append("%s: cannot load pick (%s)"
                               % (where, exc))
                 continue
-            if entry.get("license") != cut.get("license"):
+            if _license_core(entry.get("license")) != \
+                    _license_core(cut.get("license")):
                 errors.append("%s: license %r != stored %r"
                               % (where, cut.get("license"),
                                  entry.get("license")))
