@@ -283,13 +283,12 @@ def _muse_image(prompt):
     the shape; tests inject _IMAGE_FN."""
     from . import runner
     model = "muse-image-1.0"
-    _, url, _ = runner.provider_of("meta-models/muse-spark-open-1026")
+    _, url, _ = runner.provider_of(model)
     body = {"model": model, "prompt": prompt, "n": 1,
             "response_format": "b64_json"}
     req = urllib.request.Request(
         url + "/images/generations", data=json.dumps(body).encode(),
-        headers={"Authorization": "Bearer " + runner._key(
-            "meta-models/muse-spark-open-1026"),
+        headers={"Authorization": "Bearer " + runner._key(model),
             "Content-Type": "application/json"}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=300) as r:
