@@ -798,9 +798,9 @@ bad3["settings"] = {"nope": 1}
 ok(flow.validate_flow(bad3) != [],
    "unknown flow setting rejected")
 ok(base_flow.get("settings")
-   == {"parallel_parts": False, "openverse_per_min": 20}
+   == {"parallel_parts": True, "openverse_per_min": 20}
    and flow.validate_flow(base_flow) == [],
-   "default ships parallel OFF")
+   "default ships parallel ON")
 
 _pc.ROOT_OVERRIDE = tmp
 flow.RUNS_DIR = RUNS

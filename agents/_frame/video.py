@@ -395,7 +395,7 @@ def build_assembly(narration, slide_files, audio_files,
         cmd += ["-i", seg["audio"] or ""]
     total = round(sum(lens), 3)
     if nseg == 1:
-        filt = "[1:a]apad=whole_dur=%s[a]" % lens[0]
+        filt = "[1:a]apad=whole_dur=%s[a]" % lens[0]  # 0:v, 1:a
         cmd += ["-filter_complex", filt, "-map", "0:v", "-map",
                 "[a]", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-t", str(total),
@@ -404,8 +404,8 @@ def build_assembly(narration, slide_files, audio_files,
         filt = []
         for k in range(nseg):
             filt.append("[%d:v]scale=1280:720:flags=lanczos,fps=30,"
-                        "format=yuv420p,setpts=PTS-STARTPTS[sv%d]"
-                        % (2 * k, k))
+                        "format=yuv420p[sv%d]"
+                        % (k, k))
             filt.append("[%d:a]apad=whole_dur=%s[ap%d]"
                         % (nseg + k, lens[k], k))
         vcur, acur, run = "[sv0]", "[ap0]", lens[0]
@@ -431,8 +431,20 @@ def build_assembly(narration, slide_files, audio_files,
 
 
 def ffmpeg_exe():
-    """ffmpeg binary: the Remotion compositor build first (ships
-    with the repo toolchain), else PATH ffmpeg, else None."""
+    """ffmpeg binary: a full build first (PATH, then the pip
+    imageio-ffmpeg static build — both carry xfade/acrossfade for
+    the assembly crossfades), else the Remotion compositor build
+    (minimal: concat only), else None."""
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        from imageio_ffmpeg import get_ffmpeg_exe
+        cand = get_ffmpeg_exe()
+    except Exception:  # noqa: BLE001 - optional video dep
+        cand = ""
+    if cand and os.path.isfile(cand):
+        return cand
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.dirname(os.path.dirname(here))
     bundled = os.path.join(root, "video", "remotion",
@@ -441,7 +453,7 @@ def ffmpeg_exe():
                            "ffmpeg.exe")
     if os.path.isfile(bundled):
         return bundled
-    return shutil.which("ffmpeg")
+    return None
 
 
 def run_ffmpeg(cmd, timeout_s=120, cwd=None):

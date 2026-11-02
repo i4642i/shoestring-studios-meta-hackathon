@@ -2668,6 +2668,7 @@ def render_slide(ctx, args):
     try:
         proc = subprocess.run(cmd, cwd=REMOTION_DIR,
                               capture_output=True, text=True,
+                              encoding="utf-8", errors="replace",
                               timeout=900)
     except (OSError, subprocess.SubprocessError) as exc:
         return {"ok": False, "errors": ["render failed: %s" % exc]}

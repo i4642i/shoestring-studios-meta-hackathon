@@ -190,6 +190,9 @@ ok(asm["total_s"] == 41.1 and len(asm["segments"]) == 2
    and "xfade=" in joined and "acrossfade=" in joined
    and "apad=" in joined,
    "assembly joins with plan lengths + crossfades (one command)")
+ok("[2:a]apad=" in joined and "[3:a]apad=" in joined
+   and "[1:a]apad=" not in joined,
+   "inputs are grouped: video 0-1, audio 2-3 (ffmpeg binds)")
 ok("-shortest" not in asm["ffmpeg_cmd"]
    and asm["ffmpeg_cmd"][-3] == "-t",
    "assembly keeps the full slide length")
