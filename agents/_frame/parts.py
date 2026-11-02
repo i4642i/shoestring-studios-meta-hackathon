@@ -168,7 +168,9 @@ def build_plan(structure, draft, narration, concept, guide):
                            "remy_handoff": rh,
                            "boundary": {"prev": None,
                                         "next": None}})
-    quotas = quotas_for([len(p["cuts"]) for p in plan_parts])
+    quotas = quotas_for([len(p["cuts"]) for p in plan_parts],
+                        budget=sum(len(p["cuts"])
+                                   for p in plan_parts))
     for p, q in zip(plan_parts, quotas):
         p["quota"] = q
     if len(plan_parts) > 1:

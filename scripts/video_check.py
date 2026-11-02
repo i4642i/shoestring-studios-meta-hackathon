@@ -521,8 +521,8 @@ try:
             "images": [{"cut_id": "s1c1", "file": "g%d.png" % i,
                         "prompt": "p%d" % i, "reused": False}
                        for i in range(7)]}
-    ok("6" in " ".join(validate_gen_picks(many, BOARD)),
-       "seventh image refuses")
+    ok("one per cut" in " ".join(validate_gen_picks(many, BOARD)),
+       "images past one-per-cut refuse")
     AN = {"cuts": [{"cut_id": "s1c1", "decision": "none",
                     "reason": "stub"},
                    {"cut_id": "s1c2", "decision": "none",

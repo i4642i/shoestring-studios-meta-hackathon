@@ -1139,7 +1139,6 @@ CUT_MIN_S = 10
 CUT_MAX_S = 30
 TTS_FIT = 0.15  # cut audio must sit within ±15% of the cut plan
 VOICE_MAX_ATTEMPTS = 2
-GEN_IMAGES_MAX = 6
 REMY_MAX_RENDERS = 3
 def _license_core(lic):
     """'by-sa-2.0'/'by-sa 2.0' -> 'by-sa' for the reuse check."""
@@ -1251,7 +1250,8 @@ def validate_photo_picks(obj, storyboard):
 
 
 def validate_gen_picks(obj, storyboard):
-    """Gene's choices: cut match, prompt per generate cut, ≤6 images."""
+    """Gene's choices: cut match, prompt per generate cut, at most
+    one image per cut that needs one."""
     errors = []
     if not isinstance(obj, dict):
         return ["gen_picks must be an object"]
@@ -1288,9 +1288,10 @@ def validate_gen_picks(obj, storyboard):
     if not isinstance(images, list):
         errors.append("images must be a list")
     else:
-        if len(images) > GEN_IMAGES_MAX:
-            errors.append("at most %d images per run, got %d"
-                          % (GEN_IMAGES_MAX, len(images)))
+        cap = len(_cut_id_map((storyboard or {}).get("cuts")))
+        if len(images) > cap:
+            errors.append("at most %d images per run (one per cut), "
+                          "got %d" % (cap, len(images)))
         covered = set()
         for i, im in enumerate(images):
             where = "images[%d]" % i

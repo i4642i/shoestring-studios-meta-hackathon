@@ -497,8 +497,10 @@ def _muse_image(prompt):
 
 @readlog.logged("generated")
 def pc_generate_image(ctx, args):
-    """Gene's image call: at most 6 per run; the same prompt
-    reuses the stored image without a new call."""
+    """Gene's image call: at most the part quota (one image per
+    cut that has no photo or source figure; 6 without a split
+    plan); the same prompt reuses the stored image without a
+    new call."""
     if not _owns(ctx, "image_gene"):
         return {"error": "pc_generate_image is Gene's tool"}
     prompt = ((args or {}).get("prompt") or "").strip()

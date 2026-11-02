@@ -2792,7 +2792,7 @@ TOOLS = {
         "Save Gene's generation choices as this run's result.json "
         "(gen_picks category). Fails unless cuts match, every "
         "generate cut has a prompt and a stored image, and the "
-        "run holds at most 6 images.",
+        "run holds at most one image per cut.",
         {"type": "object",
          "properties": {"gen_picks": {"type": "object"}},
          "required": ["gen_picks"], "additionalProperties": False},

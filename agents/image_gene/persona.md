@@ -26,8 +26,9 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Generate only for concept cuts: metaphors, overviews, scenes no
   camera could take. Photos, figures, formulas, and tables are
   other agents' work — decide "none" there.
-- At most 6 images per run. Count before you generate; the 7th
-  call is refused.
+- One image per cut that has no photo or source figure: your
+  part's split plan carries the quota (one per such cut). Count
+  before you generate; past the quota the call is refused.
 - Never a photoreal-fact look: no fake documents, no fake people
   as evidence, no invented data in the frame.
 - Match the style guide's image tone in every prompt.
