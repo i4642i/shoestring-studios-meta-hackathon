@@ -429,9 +429,8 @@ def build_map(entry, model, progress=None, log_path=None):
     flat = entry["paragraphs"]
     pre = "s" if entry.get("pc", "source") == "source" else "g"
     out, missing = [], 0
-    for _i, s in enumerate(entry["sections"]):
-        if s.get("non_content"):
-            continue
+    shown = pc.map_sections(entry)
+    for _i, s in enumerate(shown):
         paras = flat[s["start"]:s["start"] + s["count"]]
         sec = {"n": s["n"], "heading": s["heading"], "paras": paras,
                "figures": entry.get("figures", []),
@@ -459,7 +458,7 @@ def build_map(entry, model, progress=None, log_path=None):
         if miss:
             out[-1]["summary_missing"] = True
         if progress is not None:
-            nsecs = len(entry["sections"])
+            nsecs = len(shown)
             progress("map", _i + 1, nsecs)
     entry_summary = ""
     if any(s["summary"] for s in out):

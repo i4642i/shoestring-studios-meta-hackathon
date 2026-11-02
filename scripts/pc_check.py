@@ -416,6 +416,15 @@ NCENTRY = {"ref": entry["ref"], "doc_id": entry["doc_id"],
 ok([s["ref"] for s in pc.blank_map(NCENTRY, "m")["sections"]]
    == ["s" + s["n"] for s in entry["sections"]],
    "blank map skips non-content sections")
+FENTRY = {"ref": entry["ref"], "doc_id": entry["doc_id"],
+          "paragraphs": entry["paragraphs"],
+          "sections": entry["sections"] + [
+              {"n": "7", "heading": "Berkeley Lab, http://x.",
+               "start": 0, "count": 0, "subsections": [],
+               "non_content": False}]}
+ok([s["ref"] for s in pc.blank_map(FENTRY, "m")["sections"]]
+   == ["s" + s["n"] for s in entry["sections"]],
+   "blank map skips bare-number footnote sections")
 txtnc, _mnc = pc.start_prompt_for("Cleo", STRUCT, NCENTRY)
 ok("sexercises" not in txtnc and "EXERCISES" not in txtnc,
    "start prompt section list skips non-content")
