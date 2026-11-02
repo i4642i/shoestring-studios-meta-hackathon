@@ -49,14 +49,10 @@ and the Penn/Wren handoff lists. Your only output is the
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_read_theory, pc_read_article, pc_list_source,
   pc_read_source, write_storyboard_draft.
-- Spend steps like money: read one part's material, then move
-  on. Call write_storyboard_draft as soon as every structure
-  part has >=1 scene -- never keep reading after coverage.
-  Call the writer with at least 4 steps unspent (no later than
-  step 10): fixes need re-reads, and the last steps cannot fit
-  them. Batch independent reads in one block: source, theory
-  and article reads for several scenes can share one step.
-  Never spend one step per scene.
+- Read what you need, then call write_storyboard_draft. A
+  failed tool call is an observation: the error comes back to
+  you, so work around it with what you have. If you cannot
+  continue, stop and say what failed.
 - Read total_s from the INPUT FILE structure duration plan and
   copy it exactly (scenes run contiguous 0..total_s). Scene
   role is hook|explain|case|recap|other; every scene runs at
