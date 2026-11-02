@@ -1097,6 +1097,27 @@ def pc_search_articles(ctx, args):
     return _pc_search(ctx, args, "pc_search_articles")
 
 
+def _pick_build_mode(pcname, doc_id, prof):
+    # Worker mode for a fresh pick: None when map + index are
+    # done, else all/index (noindex while the Jetson profile
+    # has no server; a local profile never needs the Jetson).
+    try:
+        mp = pc.load_map_by_ref(pc.entry_ref(pcname, doc_id))
+    except (OSError, ValueError):
+        mp = None
+    map_done = isinstance(mp, dict) and mp.get('status') == 'done'
+    if map_done and _indexed(pcname, prof, doc_id):
+        return None
+    if prof == 'jetson':
+        try:
+            graph._adapter().jetson_health()
+        except (RuntimeError, ImportError, OSError):
+            return 'noindex'
+    if map_done:
+        return 'index'
+    return 'all'
+
+
 def _pc_pick(ctx, args, pcname):
     args = args or {}
     missing = [k for k in ("url", "part_id", "why_important",
@@ -1141,6 +1162,24 @@ def _pc_pick(ctx, args, pcname):
                            kind="full")
     except (OSError, ValueError) as exc:
         rec_err = str(exc)
+    try:
+        _prof = graph._adapter().embed_settings()["profile"]
+    except (RuntimeError, KeyError):
+        _prof = "jetson"
+    _wmode = _pick_build_mode(pcname, r["doc_id"], _prof)
+    worker_note = "map + index already done"
+    if _wmode is not None:
+        try:
+            subprocess.Popen(
+                [sys.executable,
+                 os.path.join("scripts", "pc_worker.py"),
+                 r["doc_id"], _wmode, pcname],
+                cwd=pc._base(None), stdout=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT)
+            worker_note = "mode %s spawned " % _wmode
+            worker_note += "(async; map/index pending)"
+        except OSError as exc:
+            worker_note = "worker start failed: %s" % exc
     out = {"ref": r["ref"], "doc_id": r["doc_id"],
            "duplicate": r["duplicate"], "title": r["title"],
            "paras": r["paras"], "chars": r["chars"],
@@ -1157,6 +1196,7 @@ def _pc_pick(ctx, args, pcname):
         pass
     if rec_err:
         out["recipients_error"] = rec_err
+    out["worker"] = worker_note
     return out
 
 

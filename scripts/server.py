@@ -997,21 +997,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _pc_entry_failed(edir):
-        try:
-            with open(os.path.join(edir, "log.jsonl"),
-                      encoding="utf-8") as f:
-                lines = f.read().splitlines()[-5:]
-        except OSError:
-            return False
-        for ln in lines:
-            try:
-                ev = json.loads(ln)
-            except ValueError:
-                continue
-            if ev.get("ev") in ("failed", "map_failed",
-                                "index_failed") and ev.get("error"):
-                return True
-        return False
+        return pc.entry_failed(edir)
 
     def _pc_profile_cell(self, pcname, prof, entries):
         idx = os.path.join(pc.index_dir(pcname, prof), "index.json")

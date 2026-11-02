@@ -512,6 +512,56 @@ try:
     with open(os.path.join(edir, "map.json"), encoding="utf-8") as f:
         imap = json.load(f)
     ok(imap["status"] == "pending", "ingest leaves map pending")
+    fd = tempfile.mkdtemp(prefix="ef_")
+
+    def _wlog(lines):
+        with open(os.path.join(fd, "log.jsonl"), "w",
+                  encoding="utf-8") as f:
+            f.write("\n".join(json.dumps(e) for e in lines) + "\n")
+
+    _wlog([{"ev": "ingested"}, {"ev": "map_failed", "error": "k"},
+           {"ev": "describe_done"}, {"ev": "map_done"}])
+    ok(pc.entry_failed(fd) is False,
+       "failure then success reads recovered")
+    _wlog([{"ev": "map_done"},
+           {"ev": "index_failed", "error": "k"}])
+    ok(pc.entry_failed(fd) is True,
+       "success then failure reads failed")
+    _wlog([{"ev": "ingested"}, {"ev": "failed", "error": "k"}])
+    ok(pc.entry_failed(fd) is True, "plain failure reads failed")
+    ok(pc.entry_failed(os.path.join(fd, "nope")) is False,
+       "missing log reads not failed")
+    it = pc.ingest_article("https://example.com/mode", "Mode",
+                           "News", "2026-01-01", "2026-10-30T00:00:00",
+                           "case_rex", "Alpha beta.\n\nGamma delta.",
+                           root=tmp)
+    pc.ROOT_OVERRIDE = tmp
+    try:
+        m1 = tmod._pick_build_mode("article", it["doc_id"], "local")
+    finally:
+        pc.ROOT_OVERRIDE = None
+    ok(m1 == "all", "fresh pick builds map + index")
+    ied = pc.entry_dir("article", it["doc_id"], root=tmp)
+    imap = json.load(open(os.path.join(ied, "map.json"),
+                          encoding="utf-8"))
+    imap["status"] = "done"
+    with open(os.path.join(ied, "map.json"), "w",
+              encoding="utf-8") as f:
+        json.dump(imap, f)
+    idxd = pc.index_dir("article", "local", root=tmp)
+    os.makedirs(idxd, exist_ok=True)
+    with open(os.path.join(idxd, "index.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"entries": [it["doc_id"]]}, f)
+    pc.ROOT_OVERRIDE = tmp
+    try:
+        m2 = tmod._pick_build_mode("article", it["doc_id"], "local")
+        m3 = tmod._pick_build_mode("article", "000000000000", "local")
+    finally:
+        pc.ROOT_OVERRIDE = None
+    ok(m2 is None, "done + indexed pick spawns nothing")
+    ok(m3 == "all", "missing entry still gets a build")
+    shutil.rmtree(fd, ignore_errors=True)
     with open(os.path.join(edir, "figures", "fig1.png"),
               "rb") as f:
         ok(f.read() == b"PNGDATA", "ingest stores figures as figN")

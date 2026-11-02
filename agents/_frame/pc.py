@@ -1644,6 +1644,37 @@ def load_map_by_ref(ref, root=None):
         return None
 
 
+# Entry log vocab for the Settings badge: a failure counts only
+# when no success came after it (recovered entries read as ok).
+ENTRY_FAIL_EVS = ('failed', 'map_failed', 'index_failed')
+ENTRY_OK_EVS = ('ingested', 'reingested', 'transcribe_done',
+                'describe_done', 'map_done', 'index_done')
+
+def entry_failed(edir):
+    # True only when the last failure has no success after it.
+    try:
+        with open(os.path.join(edir, 'log.jsonl'),
+                  encoding='utf-8') as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return False
+    last_fail = -1
+    ok_after = False
+    for i, ln in enumerate(lines):
+        try:
+            obj = json.loads(ln)
+            ev = obj.get('ev', '')
+        except (ValueError, AttributeError):
+            continue
+        if ev in ENTRY_FAIL_EVS and obj.get('error'):
+            last_fail = i
+            ok_after = False
+        elif (ev in ENTRY_OK_EVS and last_fail >= 0
+                and i > last_fail):
+            ok_after = True
+    return last_fail >= 0 and not ok_after
+
+
 def _match_section(heading, sections):
     m = re.match(r"^(\d+(?:\.\d+)*)\s+", (heading or "").strip())
     if m:
