@@ -2546,6 +2546,23 @@ def _have_remotion():
     return False
 
 
+def _remotion_render_cmd(out, props, last_frame, sdir):
+    """Render argv for a full cut clip (frames 0..last_frame).
+    Same node-direct wrapper as the still path below."""
+    args = ["render", "CutSlide", out,
+            "--props=%s" % json.dumps(props),
+            "--public-dir=%s" % sdir,
+            "--frames=0-%d" % last_frame,
+            "--codec=h264"]
+    cli = os.path.join(REMOTION_DIR, "node_modules", "@remotion",
+                       "cli", "remotion-cli.js")
+    node = shutil.which("node")
+    if node and os.path.isfile(cli):
+        return [node, cli] + args
+    exe = "npx.cmd" if os.name == "nt" else "npx"
+    return [exe, "remotion"] + args
+
+
 def _remotion_cmd(out, props, last_frame, sdir):
     """Render argv: node straight into the Remotion CLI (exact
     argv, no .cmd re-parsing, so & quotes and unicode survive).
@@ -2564,15 +2581,17 @@ def _remotion_cmd(out, props, last_frame, sdir):
 
 
 def render_slide(ctx, args):
-    """Render one cut's slide PNG via the Remotion CutSlide
-    composition (last frame of the cut). Max 3 renders per cut per
-    run. Optional overrides ({blocks: {<i>: {font_size, x, y, w,
-    h, align}}, on_screen_text: {font, position}}) move layout
-    only; they land in the props and in slides/<cut>.props.json
-    (the exact render inputs, guide included) so the assembly
-    records match the PNG Remy viewed. Without Remotion the
-    render is skipped honestly: ok True with status
-    remotion_unavailable (the 3-render cap still applies)."""
+    """Render one cut's slide clip (MP4, the cut's own seconds,
+    no 30 s cap) via the Remotion CutSlide composition, plus one
+    PNG still (last frame) for viewing and the records. Max 3
+    renders per cut per run. Optional overrides ({blocks: {<i>:
+    {font_size, x, y, w, h, align}}, on_screen_text: {font,
+    position}}) move layout only; they land in the props and in
+    slides/<cut>.props.json (the exact render inputs, guide
+    included) so the assembly records match what Remy viewed.
+    Without Remotion the render is skipped honestly: ok True
+    with status remotion_unavailable (the 3-render cap still
+    applies)."""
     from . import video
     cut_id = ((args or {}).get("cut_id") or "").strip()
     if not cut_id:
@@ -2643,21 +2662,31 @@ def render_slide(ctx, args):
                 "props_file": "slides/%s.props.json" % cut_id,
                 "note": "Remotion is not installed; run "
                         "tools/setup_video.ps1 to install it"}
-    out = os.path.join(sdir, "%s.png" % cut_id)
-    last_frame = props["seconds"] * 30 - 1
-    cmd = _remotion_cmd(out, props, last_frame, sdir)
+    frames = max(1, props["seconds"] * 30)
+    clip = os.path.join(sdir, "%s.mp4" % cut_id)
+    cmd = _remotion_render_cmd(clip, props, frames - 1, sdir)
     try:
         proc = subprocess.run(cmd, cwd=REMOTION_DIR,
                               capture_output=True, text=True,
-                              timeout=300)
+                              timeout=900)
     except (OSError, subprocess.SubprocessError) as exc:
         return {"ok": False, "errors": ["render failed: %s" % exc]}
-    if proc.returncode != 0 or not os.path.isfile(out):
+    if proc.returncode != 0 or not os.path.isfile(clip):
         tail = (proc.stderr or "")[-400:]
         return {"ok": False, "errors": ["render failed: %s" % tail]}
+    out = os.path.join(sdir, "%s.png" % cut_id)
+    late = max(0.0, props["seconds"] - 0.5)
+    still = video.run_ffmpeg(
+        ["ffmpeg", "-y", "-i", clip, "-ss", str(late),
+         "-vframes", "1", out])
+    if not still.get("ok") or not os.path.isfile(out):
+        return {"ok": False, "errors": [
+            "clip rendered but the still failed: %s"
+            % still.get("error", "unknown")]}
     counts[cut_id] = n
     _counter_save(countp, counts)
     return {"ok": True, "slide_file": "slides/%s.png" % cut_id,
+            "clip_file": "slides/%s.mp4" % cut_id,
             "renders_n": n,
             "props_file": "slides/%s.props.json" % cut_id}
 
@@ -2814,9 +2843,10 @@ TOOLS = {
     ),
     "render_slide": (
         render_slide,
-        "Render one cut's slide PNG via Remotion from the "
-        "received slide draft + style guide. Max 3 renders per cut "
-        "per run. Optional overrides adjust layout only.",
+        "Render one cut's slide clip (MP4) plus a PNG still via "
+        "Remotion from the received slide draft + style guide. "
+        "Max 3 renders per cut per run. Optional overrides "
+        "adjust layout only.",
         {"type": "object",
          "properties": {"cut_id": {"type": "string"},
                         "overrides": {"type": "object"}},

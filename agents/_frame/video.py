@@ -249,7 +249,7 @@ def cut_slide_props(cut, guide, overrides=None):
                         - float(cut.get("start_s", 0)))) or 20
     except (TypeError, ValueError):
         pass
-    dur = min(max(dur, 1), 30)
+    dur = max(dur, 1)
     blocks = []
     for b in (cut.get("blocks") or []):
         if not isinstance(b, dict):

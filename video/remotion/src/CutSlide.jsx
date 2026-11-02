@@ -3,6 +3,7 @@ import {
   Img,
   continueRender,
   delayRender,
+  interpolate,
   staticFile,
   useCurrentFrame,
 } from "remotion";
@@ -54,13 +55,38 @@ const boxStyle = (b, order) => ({
   overflow: "hidden",
 });
 
-function ImageBlock({b, order}) {
+const FADE_S = 0.5; // every block fades + slides in over 0.5 s
+const ZOOM_END = 1.06; // image blocks breathe over the cut
+
+const clamp01 = (t) => Math.max(0, Math.min(1, t));
+
+// Opacity + rise for a block that appeared at appear_s.
+const enterStyle = (frame, fps, appear_s) => {
+  const t = clamp01((frame / fps - appear_s) / FADE_S);
+  return {opacity: t, transform: `translateY(${(1 - t) * 24}px)`};
+};
+
+// Per-item fade for stepwise reveals (table rows, steps, formulas).
+const itemOpacity = (frame, fps, at_s) =>
+  clamp01((frame / fps - at_s) / FADE_S);
+
+function ImageBlock({b, order, frame, fps, seconds}) {
   if (!b.file) return null;
+  const total = Math.max(1, seconds * fps - 1);
+  const zoom = interpolate(frame, [0, total], [1, ZOOM_END], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
   return (
     <div style={boxStyle(b, order)}>
       <Img
         src={staticFile(b.file)}
-        style={{width: "100%", height: "100%", objectFit: "contain"}}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          transform: `scale(${zoom})`,
+        }}
       />
     </div>
   );
@@ -95,7 +121,16 @@ function TableBlock({b, order, frame, fps}) {
         </thead>
         <tbody>
           {shown.map((r, i) => (
-            <tr key={i}>
+            <tr
+              key={i}
+              style={{
+                opacity: itemOpacity(
+                  frame,
+                  fps,
+                  b.appear_s + i * REVEAL_STEP_S.table,
+                ),
+              }}
+            >
               {r.map((c, j) => (
                 <td key={j} style={{borderBottom: "1px solid currentColor"}}>
                   {c}
@@ -127,6 +162,13 @@ function FormulaBlock({b, order, frame, fps}) {
         frame >= (b.appear_s + i * REVEAL_STEP_S.formula) * fps ? (
           <div
             key={i}
+            style={{
+              opacity: itemOpacity(
+                frame,
+                fps,
+                b.appear_s + i * REVEAL_STEP_S.formula,
+              ),
+            }}
             dangerouslySetInnerHTML={{
               __html: katex.renderToString(tex, {
                 throwOnError: false,
@@ -228,7 +270,19 @@ function StepsBlock({b, order, frame, fps}) {
       }}
     >
       {shown.map((s, i) => (
-        <span key={i} style={{display: "flex", alignItems: "center", gap: 10}}>
+        <span
+          key={i}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            opacity: itemOpacity(
+              frame,
+              fps,
+              b.appear_s + i * REVEAL_STEP_S.steps,
+            ),
+          }}
+        >
           {i > 0 ? <span>{"\u2192"}</span> : null}
           <span
             style={{
@@ -285,7 +339,7 @@ function TextBlock({b, order}) {
   );
 }
 
-function Block({b, frame, fps, guide}) {
+function Block({b, frame, fps, guide, seconds}) {
   const order = b.order || 0;
   if (frame < b.appear_s * fps) return null;
   const tinted = {
@@ -293,14 +347,34 @@ function Block({b, frame, fps, guide}) {
     accent: guide.palette.accent,
     text: guide.palette.text,
   };
+  let inner = null;
   if (b.kind === "photo" || b.kind === "generated" || b.kind === "source_figure")
-    return <ImageBlock b={tinted} order={order} />;
-  if (b.kind === "table") return <TableBlock b={tinted} order={order} frame={frame} fps={fps} />;
-  if (b.kind === "formula") return <FormulaBlock b={tinted} order={order} frame={frame} fps={fps} />;
-  if (b.kind === "chart") return <ChartBlock b={tinted} order={order} />;
-  if (b.kind === "steps") return <StepsBlock b={tinted} order={order} frame={frame} fps={fps} />;
-  if (b.kind === "text") return <TextBlock b={tinted} order={order} />;
-  return null;
+    inner = (
+      <ImageBlock
+        b={tinted}
+        order={order}
+        frame={frame}
+        fps={fps}
+        seconds={seconds}
+      />
+    );
+  if (b.kind === "table")
+    inner = (
+      <TableBlock b={tinted} order={order} frame={frame} fps={fps} />
+    );
+  if (b.kind === "formula")
+    inner = (
+      <FormulaBlock b={tinted} order={order} frame={frame} fps={fps} />
+    );
+  if (b.kind === "chart")
+    inner = <ChartBlock b={tinted} order={order} />;
+  if (b.kind === "steps")
+    inner = (
+      <StepsBlock b={tinted} order={order} frame={frame} fps={fps} />
+    );
+  if (b.kind === "text") inner = <TextBlock b={tinted} order={order} />;
+  if (!inner) return null;
+  return <div style={enterStyle(frame, fps, b.appear_s)}>{inner}</div>;
 }
 
 // One cut slide: data-only props (layout preset, blocks with boxes,
@@ -352,7 +426,14 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide, o
         .slice()
         .sort((a, b) => (a.order || 0) - (b.order || 0))
         .map((b, i) => (
-          <Block key={i} b={b} frame={frame} fps={CUT_FPS} guide={{palette: pal}} />
+          <Block
+            key={i}
+            b={b}
+            frame={frame}
+            fps={CUT_FPS}
+            guide={{palette: pal}}
+            seconds={seconds}
+          />
         ))}
       {bottomLines.length ? (
         <div

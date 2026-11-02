@@ -672,7 +672,7 @@ try:
                                  "h": 200},
                          "data": {"lines": ["T"]},
                          "reason": "line"}],
-             "on_screen_text": ["T"], "transitions": [],
+             "on_screen_text": ["U"], "transitions": [],
              "why": "simple"}]}
 
     r = _tools.write_slide_draft(vctx, {"slide_draft": vobj(

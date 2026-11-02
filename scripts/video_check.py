@@ -220,6 +220,11 @@ ok(rtot == 40.0 and recs[0]["props"] == {"cutId": "s1c1"}
    and recs[1]["slide_status"] == "remotion_unavailable"
    and recs[1]["audio"] == "b.wav",
    "cut records carry props + png + voice, gaps stay null")
+long_cut = json.loads(json.dumps(SLIDE["cuts"][0]))
+long_cut["start_s"] = 0
+long_cut["end_s"] = 45
+ok(video.cut_slide_props(long_cut, GUIDE)["seconds"] == 45,
+   "no 30 s clamp on cut props")
 props = video.cut_slide_props(SLIDE["cuts"][0], GUIDE)
 ok(props["cutId"] == "s1c1" and props["seconds"] == 20
    and props["preset"] == "main_side"
@@ -389,6 +394,11 @@ try:
     ok(r4.get("ok") is False and "3 renders" in
        " ".join(r4.get("errors", [])),
        "fourth render refused")
+    rcmd = tools._remotion_render_cmd("o.mp4", {"seconds": 5},
+                                            149, "pub")
+    ok("--frames=0-149" in rcmd and rcmd[3] == "CutSlide"
+       and "--codec=h264" in rcmd,
+       "clip render targets the cut's own frames")
     amp = {"title": "Fish & Chips", "seconds": 20}
     acmd = tools._remotion_cmd("o.png", amp, 599, "pub")
     parg = next(a for a in acmd if a.startswith("--props="))
