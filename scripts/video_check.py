@@ -498,8 +498,9 @@ try:
            for e in validate_photo_picks(LICB, BOARD)),
        "nc license refuses")
     ok(tools._fit_hint(680, 380, 1130, 1000)
-       == "fit w~429 at h=380 or h~602 at w=680",
-       "aspect error names a fitting box")
+       == "fit w~429 at h=380 or h~602 at w=680 "
+          "(e.g. {\"x\": 64, \"y\": 96, \"w\": 429, \"h\": 380})",
+       "aspect error names a fitting box plus an example shape")
     bad_reveal = {"cut_id": "s1c1", "preset": "main_side",
                   "blocks": [
                       {"kind": "table",

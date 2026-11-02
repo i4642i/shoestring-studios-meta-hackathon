@@ -2174,9 +2174,12 @@ def _figure_kind(errors, ref, where):
 
 def _fit_hint(bw, bh, w, h):
     """Box sizes that fit material aspect w/h: keep the height
-    and take this width, or keep the width and take this height."""
-    return ("fit w~%d at h=%d or h~%d at w=%d"
-            % (round(bh * w / h), bh, round(bw * h / w), bw))
+    and take this width, or keep the width and take this height,
+    plus one valid example shape."""
+    fw = round(bh * w / h)
+    return ("fit w~%d at h=%d or h~%d at w=%d "
+            "(e.g. {\"x\": 64, \"y\": 96, \"w\": %d, \"h\": %d})"
+            % (fw, bh, round(bw * h / w), bw, fw, bh))
 
 
 def _figure_dims(ref):
