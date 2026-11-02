@@ -324,8 +324,8 @@ def commons_search(query, limit=5):
 
 
 def _license_ok(lic):
-    # strip version suffixes ("by-4.0" -> "by")
-    parts = (lic or "").lower().split("-")
+    # strip version suffixes ("by-4.0"/"by 4.0" -> "by")
+    parts = (lic or "").lower().replace(" ", "-").split("-")
     core = "-".join(p for p in parts
                     if p and not p[0].isdigit())
     return core in LICENSE_OK

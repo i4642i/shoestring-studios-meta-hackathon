@@ -791,6 +791,9 @@ try:
     ok(pk.get("ok") and pk["file"] == "pick.png"
        and pk["ref"].startswith("pc://image/"),
        "licensed pick stored with file + url + license")
+    ok(_media._license_ok("by 4.0") and _media._license_ok("CC BY-SA 4.0")
+       and not _media._license_ok("CC BY-NC 4.0"),
+       "spaced licenses read like dashed ones")
     stored = _pc.load_entry_by_ref(pk["ref"])
     ok(stored["license"] == "by-4.0"
        and stored["source_url"] == "https://page.test/h1",
