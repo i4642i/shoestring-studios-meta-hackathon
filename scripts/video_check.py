@@ -458,6 +458,19 @@ try:
     ok(any("must be 'all' or 'rows'" in e
            for e in validate_cut_layout(bad_reveal, 20)),
        "reveal error names the allowed values")
+    dupe = json.loads(json.dumps(SLIDE["cuts"][0]))
+    dupe["on_screen_text"] = ["Sales grew steadily"]
+    ok(any("repeats the on_screen_text line" in e
+           for e in validate_cut_layout(dupe, 20)),
+       "text block repeating the bottom line refuses")
+    dupe2 = json.loads(json.dumps(SLIDE["cuts"][0]))
+    dupe2["blocks"].append(json.loads(json.dumps(
+        SLIDE["cuts"][0]["blocks"][1])))
+    dupe2["blocks"][1]["box"] = {"x": 64, "y": 96, "w": 500,
+                                 "h": 100}
+    ok(any("repeats the cut s1c1.blocks[1] line" in e
+           for e in validate_cut_layout(dupe2, 20)),
+       "two text blocks sharing a line refuse")
     ok("cut set" in " ".join(validate_photo_picks(
         {"cuts": PH["cuts"][:1]}, BOARD)),
        "photo dropped cut refuses")

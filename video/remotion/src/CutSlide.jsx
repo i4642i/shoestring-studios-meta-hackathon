@@ -312,6 +312,9 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide}) 
   const body = mapGuideFont(fonts.body, 400);
   const heading = mapGuideFont(fonts.heading, 600);
   const shown = (blocks || []).filter((b) => frame >= b.appear_s * CUT_FPS);
+  // A text block owns the words: the bottom line stays silent then.
+  const hasTextBlock = (blocks || []).some((b) => b && b.kind === "text");
+  const bottomLines = hasTextBlock ? [] : onScreenText || [];
   return (
     <div
       style={{
@@ -332,22 +335,24 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide}) 
         .map((b, i) => (
           <Block key={i} b={b} frame={frame} fps={CUT_FPS} guide={{palette: pal}} />
         ))}
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 24,
-          textAlign: "center",
-          fontSize: 30,
-          fontWeight: heading.fontWeight,
-          padding: "0 80px",
-        }}
-      >
-        {(onScreenText || []).map((t, i) => (
-          <div key={i}>{t}</div>
-        ))}
-      </div>
+      {bottomLines.length ? (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 24,
+            textAlign: "center",
+            fontSize: 30,
+            fontWeight: heading.fontWeight,
+            padding: "0 80px",
+          }}
+        >
+          {bottomLines.map((t, i) => (
+            <div key={i}>{t}</div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 };

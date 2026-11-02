@@ -1618,6 +1618,27 @@ def validate_cut_layout(cut, dur_s):
                     y1 < y2 + h2 and y2 < y1 + h1:
                 errors.append("%s.blocks[%d] overlaps blocks[%d]"
                               % (where, boxes[a][0], boxes[b2][0]))
+    said = {}
+    for ln in (cut.get("on_screen_text") or []):
+        if isinstance(ln, str) and ln.strip():
+            said[_norm(ln)] = "on_screen_text"
+    for j, b in enumerate(blocks):
+        if not isinstance(b, dict) or b.get("kind") != "text":
+            continue
+        data = b.get("data") if isinstance(b.get("data"), dict) \
+            else {}
+        for ln in (data.get("lines") or []):
+            if not isinstance(ln, str) or not ln.strip():
+                continue
+            key = _norm(ln)
+            if key in said:
+                errors.append(
+                    "%s.blocks[%d] repeats the %s line %r "
+                    "(say it once: keep it in on_screen_text, cut "
+                    "it from the block)" % (where, j, said[key],
+                                             ln.strip()[:60]))
+            else:
+                said[key] = "%s.blocks[%d]" % (where, j)
     return errors
 
 

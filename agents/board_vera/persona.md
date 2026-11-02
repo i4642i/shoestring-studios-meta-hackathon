@@ -41,6 +41,11 @@ on-screen text, and timing per cut. Your only output is the
   have not seen.
 - When candidates are all "none" (helpers stubbed), plan text
   blocks from Penn's on-screen text.
+- A text block never repeats on_screen_text: the screen says a
+  sentence once (the renderer draws the bottom line only when no
+  text block exists). A text block adds the anchor the voice
+  does not spell out (a name, a number, a term), never a copy
+  of the spoken line.
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_list_source, pc_read_source,
   vera_view_image, write_slide_draft.
