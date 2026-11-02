@@ -1,6 +1,6 @@
 {
  "bounds": {
-  "max_steps": 10
+  "max_steps": 16
  },
  "done": [
   "every cut answered use or none",
