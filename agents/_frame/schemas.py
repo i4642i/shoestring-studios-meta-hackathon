@@ -660,14 +660,12 @@ def validate_storyboard_draft(obj, struct):
                         if not isinstance(tos, list) or not tos \
                                 or any(t not in ("board_penn",
                                                  "voice_wren",
-                                                 "photo_pia",
-                                                 "anim_max",
-                                                 "board_vera",
                                                  "slide_remy")
                                        for t in tos):
                             errors.append("%s.handoff[%d].to names "
-                                          "Penn, Wren, Pia, Max, "
-                                          "Vera and/or Remy only"
+                                          "Penn, Wren and/or Remy only"
+                                          " (rows land on their clones"
+                                          " through part_split)"
                                           % (where, j))
         if isinstance(total, int) and prev_end != total:
             errors.append("scenes end at %d, not total_s %d"

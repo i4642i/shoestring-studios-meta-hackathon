@@ -2085,6 +2085,16 @@ def apply_handoff(order_id, draft, set_by="plan_ash", root=None):
                                  "listed parts" % (sc.get("n", "?"),
                                                    ref, set_by)}
             for a in tos:
+                base = a.split("@")[0]
+                if base in ("photo_pia", "image_gene",
+                            "anim_max", "board_vera"):
+                    return {"error": "scene %s: handoff to %r"
+                                     " must be voice_wren or board_penn"
+                                     " (video-team clones are listed"
+                                     " by part_split)"
+                                     % (sc.get("n", "?"), a)}
+                if base == "slide_remy":
+                    continue
                 if not os.path.isfile(os.path.join(
                         ROOT, "agents", a, "agent.json")):
                     return {"error": "scene %s: unknown agent %r"
@@ -2576,9 +2586,10 @@ _CLONE_GRANT_RE = re.compile(r"^([A-Za-z0-9_]+)@p(\d+)$")
 
 
 def media_grantees(pcname, set_by):
-    """Recipient agents for a fresh image/generated pick. Whole
-    runs keep the base consumers; a clone's pick goes only to
-    its part's Vera/Remy clones plus video_production."""
+    # Recipient agents for a fresh image/generated pick. Whole
+    # runs keep the base consumers; a clone's pick goes only to
+    # its part's Vera/Remy clones (assembly reads run-dir PNGs,
+    # so video_production needs no row).
     m = _CLONE_GRANT_RE.match(set_by or "")
     if not m:
         return list(MEDIA_CONSUMERS.get(pcname, []))
@@ -2586,8 +2597,6 @@ def media_grantees(pcname, set_by):
     out = ["%s@p%s" % (c, no)
            for c in MEDIA_CONSUMERS.get(pcname, [])
            if c != base]
-    if "video_production" not in out:
-        out.append("video_production")
     return out
 
 

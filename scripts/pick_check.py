@@ -239,9 +239,9 @@ try:
              "why": "w", "how_to_use": "h"}]}]})
     prow = pc.entry_access(pc.load_entry_by_ref(p["ref"]),
                            "photo_pia", "ord-20261030-001")
-    ok(ap4.get("grants") == 1 and prow.get("kind") == "map"
-       and prow.get("parts") == [p["ref"] + "#p1"],
-       "handoff grants pia a map+parts row on theory")
+    ok("error" in ap4 and "voice_wren or board_penn" in ap4["error"]
+       and prow is None,
+       "handoff to a helper grants nothing")
     ptext, pmeta2 = pc.prompt_chunks_for(
         "board_penn", "ord-20261030-001", [src["ref"]],
         os.path.join(tmp, "runs"))

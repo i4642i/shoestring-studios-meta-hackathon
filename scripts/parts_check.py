@@ -418,24 +418,23 @@ try:
        and not _pc.entry_parts_allow(sentry, "image_gene@p2",
                                      ORDER, SRC + "#fig1.1"),
        "part-1-only figure opens for p1, not p2")
-    ok(_pc.entry_parts_allow(sentry, "anim_max@p2", ORDER,
-                             SRC + "#s2.1/p1")
+    ok(not _pc.entry_parts_allow(sentry, "anim_max@p2", ORDER,
+                                  SRC + "#s2.1/p1")
        and not _pc.entry_parts_allow(sentry, "anim_max@p2",
                                      ORDER, SRC + "#s1.1/p1"),
-       "anim rows hold only their part's items")
+       "paragraphs are no grants, figures and tables only")
     ventry = _pc.load_entry_by_ref(VOICE)
-    ok(_pc.entry_parts_allow(ventry, "slide_remy@p1", ORDER,
-                             VOICE + "#s1c1")
-       and not _pc.entry_parts_allow(ventry, "slide_remy@p1",
-                                     ORDER, VOICE + "#s3c1"),
-       "voice rows hold only the part's clips")
+    ok(not _pc.entry_parts_allow(ventry, "slide_remy@p1", ORDER,
+                                  VOICE + "#s1c1")
+       and _pc.entry_parts_allow(ventry, "video_production",
+                                 ORDER, VOICE + "#s1c1"),
+       "voice row goes to video_production only")
 
     e1 = _pc.load_entry_by_ref(pick1["ref"])
     got1 = sorted(r["agent"] for r in e1["recipients"]
                   if r.get("order_id") == ORDER)
-    ok(got1 == ["board_vera@p1", "slide_remy@p1",
-                "video_production"],
-       "pia@p1 pick grants only p1 clones + video")
+    ok(got1 == ["board_vera@p1", "slide_remy@p1"],
+       "pia@p1 pick grants only p1 clones")
     e2 = _pc.load_entry_by_ref(pick2["ref"])
     ok(not _pc.may_read(e2, "board_vera@p1", ORDER)
        and _pc.may_read(e2, "board_vera@p2", ORDER),
@@ -454,9 +453,8 @@ try:
     g1 = _pc.load_entry_by_ref(gen1["ref"])
     gotg = sorted(r["agent"] for r in g1["recipients"]
                   if r.get("order_id") == ORDER)
-    ok(gotg == ["board_vera@p1", "slide_remy@p1",
-                "video_production"],
-       "gene@p1 image grants only p1 clones + video")
+    ok(gotg == ["board_vera@p1", "slide_remy@p1"],
+       "gene@p1 image grants only p1 clones")
 
     def incoming_for(node):
         lines = [{"id": "x", "from": "part_split",
@@ -1152,20 +1150,91 @@ try:
     r3t = _pc.entry_access(tentry, "photo_pia@p1", ORDER)
     r3a = _pc.entry_access(aentry, "anim_max@p2", ORDER)
     r3s = _pc.entry_access(sentry3, "board_vera@p1", ORDER)
-    ok(r3t is not None and r3t.get("kind") == "map"
-       and r3t.get("parts") == [TREF + "#p1"]
-       and r3t.get("set_by") == "part_split"
-       and _pc.entry_access(tentry, "photo_pia@p2",
+    ok(r3t is None
+       and _pc.entry_access(tentry, "board_penn@p1",
+                            ORDER) is not None
+       and _pc.entry_access(tentry, "voice_wren@p1",
+                            ORDER) is not None
+       and _pc.entry_access(tentry, "board_penn@p2",
                             ORDER) is None,
-       "theory row is kind=map + parts for p1 only")
-    ok(r3a is not None and r3a.get("kind") == "map"
-       and r3a.get("parts") == [AREF + "#p2"]
-       and r3a.get("set_by") == "part_split",
-       "article row is kind=map + parts for p2 only")
+       "theory rows go to penn and wren of the part only")
+    ok(r3a is None
+       and _pc.entry_access(aentry, "board_penn@p2",
+                            ORDER) is not None
+       and _pc.entry_access(aentry, "voice_wren@p2",
+                            ORDER) is not None,
+       "article rows go to penn and wren of the part only")
     ok(r3s is not None and r3s.get("kind") == "map"
-       and SRC + "#s1.1/p1" in (r3s.get("parts") or [])
+       and SRC + "#s1.1/p1" not in (r3s.get("parts") or [])
+       and SRC + "#fig1.1" in (r3s.get("parts") or [])
        and r3s.get("set_by") == "part_split",
-       "source row is kind=map + parts")
+       "source row holds figures, not paragraphs")
+    S9 = _pc.content_id("source:pcrows-nine")
+    S9REF = "pc://source/%s" % S9
+    e9 = _pc.entry_dir("source", S9)
+    os.makedirs(os.path.join(e9, "figures"), exist_ok=True)
+    with open(os.path.join(e9, "entry.json"), "w",
+              encoding="utf-8") as f:
+        json.dump({"pc": "source", "doc_id": S9,
+                   "ref": S9REF,
+                   "paragraphs": [{"addr": "s9.1/p1",
+                                    "pages": [9],
+                                    "text": "nine"}],
+                   "figures": [{"addr": "fig9.1",
+                                  "file": "f.png"},
+                                {"addr": "fig9.3",
+                                 "file": "g.png"}],
+                   "tables": [{"addr": "tab9.2"},
+                                {"addr": "tab9.3"}],
+                   "recipients": []}, f)
+    t9 = _pc.ingest_theory("https://example.com/nine", "Nine",
+                           "Ex", "2026-01-01",
+                           "2026-10-30T00:00:00",
+                           "explain_cleo",
+                           "Nine things." + chr(10) + chr(10)
+                           + "Nine more.", root=tmp)
+    v9 = _pc.voice_save(ORDER, "c9", b"\x00" * 32, "line",
+                        9.0, 1, "stub", root=tmp)
+    V9 = v9["ref"].split("#")[0]
+    plan9 = {"parts": [{"no": 1,
+                          "materials": [S9REF + "#s9.1/p1",
+                                        S9REF + "#fig9.1",
+                                        S9REF + "#fig9.3",
+                                        S9REF + "#tab9.2",
+                                        t9["ref"] + "#p1"],
+                          "remy_handoff": [], "cuts": []}]}
+    w9 = parts.write_clone_rows(ORDER, plan9, root=tmp)
+    ok(not w9["errors"], "intent split writes clean")
+    acc = _pc.entry_access
+    r9p = acc(_pc.load_entry_by_ref(S9REF), "photo_pia@p1",
+              ORDER)
+    r9v = acc(_pc.load_entry_by_ref(S9REF), "board_vera@p1",
+              ORDER)
+    r9m = acc(_pc.load_entry_by_ref(S9REF), "anim_max@p1",
+              ORDER)
+    ok(sorted(r9p.get("parts"))
+       == sorted([S9REF + "#fig9.1", S9REF + "#fig9.3"])
+       and sorted(r9v.get("parts"))
+       == sorted([S9REF + "#fig9.1", S9REF + "#fig9.3"]),
+       "pia and vera get figures only")
+    ok(sorted(r9m.get("parts"))
+       == sorted([S9REF + "#tab9.2", S9REF + "#tab9.3"]),
+       "max gets tables plus the figure twin")
+    r9t = acc(_pc.load_entry_by_ref(t9["ref"]),
+              "photo_pia@p1", ORDER)
+    r9pw = acc(_pc.load_entry_by_ref(t9["ref"]),
+               "board_penn@p1", ORDER)
+    r9ww = acc(_pc.load_entry_by_ref(t9["ref"]),
+               "voice_wren@p1", ORDER)
+    ok(r9t is None and r9pw is not None and r9ww is not None,
+       "theory skips helpers, lists penn and wren")
+    r9vv = acc(_pc.load_entry_by_ref(V9), "photo_pia@p1",
+             ORDER)
+    r9vp = acc(_pc.load_entry_by_ref(V9), "video_production",
+             ORDER)
+    ok(r9vv is None and r9vp is not None
+       and r9vp.get("kind") == "full",
+       "voice lists video_production only")
 finally:
     _pc.ROOT_OVERRIDE = None
     flow.RUNS_DIR = real_runs

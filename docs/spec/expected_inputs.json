@@ -78,6 +78,14 @@
     {
      "kind": "map",
      "pc": "source"
+    },
+    {
+     "kind": "map",
+     "pc": "theory"
+    },
+    {
+     "kind": "map",
+     "pc": "article"
     }
    ]
   },
@@ -372,6 +380,14 @@
     {
      "kind": "map",
      "pc": "source"
+    },
+    {
+     "kind": "map",
+     "pc": "theory"
+    },
+    {
+     "kind": "map",
+     "pc": "article"
     }
    ]
   },
@@ -449,7 +465,12 @@
      "item": "received.slide_remy.part_info"
     }
    ],
-   "pc_rows": []
+   "pc_rows": [
+    {
+     "kind": "full",
+     "pc": "voice"
+    }
+   ]
   },
   "voice_wren": {
    "items": [
@@ -473,6 +494,14 @@
     {
      "kind": "map",
      "pc": "source"
+    },
+    {
+     "kind": "map",
+     "pc": "theory"
+    },
+    {
+     "kind": "map",
+     "pc": "article"
     }
    ]
   }

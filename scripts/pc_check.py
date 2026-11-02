@@ -562,6 +562,44 @@ try:
     ok(m2 is None, "done + indexed pick spawns nothing")
     ok(m3 == "all", "missing entry still gets a build")
     shutil.rmtree(fd, ignore_errors=True)
+    ok(pc.media_grantees("image", "photo_pia@p1")
+       == ["board_vera@p1", "slide_remy@p1"]
+       and pc.media_grantees("generated", "image_gene@p2")
+       == ["board_vera@p2", "slide_remy@p2"],
+       "clone picks grant vera+remy, never video")
+    ah = pc.ingest_theory("https://example.com/ahand",
+                          "Ahand", "Ex", "2026-01-01",
+                          "2026-10-30T00:00:00",
+                          "explain_cleo",
+                          "Hand this." + chr(10) + chr(10)
+                          + "Hand that.", root=tmp)
+    pc.set_recipients("theory", ah["doc_id"], "oah",
+                      ["plan_ash"], "explain_cleo",
+                      kind="map", root=tmp)
+    pc.ROOT_OVERRIDE = tmp
+    try:
+        dh = {"scenes": [{"n": 1,
+                           "handoff": [{"ref":
+                                         ah["ref"] + "#p1",
+                                         "to": ["photo_pia"],
+                                         "why": "w",
+                                         "how_to_use": "h"}]}]}
+        rh = pc.apply_handoff("oah", dh)
+        dh["scenes"][0]["handoff"][0]["to"] = ["slide_remy"]
+        rs = pc.apply_handoff("oah", dh)
+        dh["scenes"][0]["handoff"][0]["to"] = ["board_penn"]
+        rp = pc.apply_handoff("oah", dh)
+    finally:
+        pc.ROOT_OVERRIDE = None
+    ok("error" in rh
+       and "voice_wren or board_penn" in rh["error"],
+       "handoff to a helper clone refuses")
+    ok(rs.get("grants") == 0
+       and pc.entry_access(pc.load_entry_by_ref(ah["ref"],
+                                              root=tmp),
+                          "slide_remy", "oah") is None,
+       "handoff to remy defers to part_split")
+    ok(rp.get("grants") == 1, "handoff to penn applies")
     with open(os.path.join(edir, "figures", "fig1.png"),
               "rb") as f:
         ok(f.read() == b"PNGDATA", "ingest stores figures as figN")

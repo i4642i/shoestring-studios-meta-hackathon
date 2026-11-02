@@ -29,6 +29,12 @@ CUT_CATEGORIES = ("narration", "storyboard", "photo_picks",
                   "render_log")
 GEN_BUDGET = 6
 SOURCE_CLONE_READERS = ("photo_pia", "anim_max", "board_vera")
+# Flow-intent readers per PC (default.json pc_lines): source
+# figures to Pia/Vera and tables/formulas to Max (c75, c76,
+# c80); theory/article to Penn/Wren (c36-c39); image/generated
+# to Vera/Remy; voice to video_production only (c68).
+PENN_WREN_CLONES = ("board_penn", "voice_wren")
+IMAGE_CLONE_READERS = ("board_vera", "slide_remy")
 
 _CLONE_RE = re.compile(r"^([A-Za-z0-9_]+)@p(\d+)$")
 
@@ -571,6 +577,21 @@ def check_remy_handoff(order_id, plan, root=None):
     return errors
 
 
+def _split_fig_tab(refs):
+    # Source refs for clones: figures to Pia/Vera, tables and
+    # formulas to Max. Sections and paragraphs are not grants:
+    # the flow draws figures (c75, c80) and tables/formulas
+    # (c76) only.
+    figs, tabs = [], []
+    for ref in refs or []:
+        frag = ref.rsplit('#', 1)[-1] if '#' in ref else ''
+        if frag.startswith('fig'):
+            figs.append(ref)
+        elif frag.startswith('tab') or frag.startswith('eq'):
+            tabs.append(ref)
+    return figs, tabs
+
+
 def write_clone_rows(order_id, plan, root=None):
     """Recipient rows for every clone identity (the checks stay
     untouched; only rows are added). Returns {"granted": [...],
@@ -602,20 +623,34 @@ def write_clone_rows(order_id, plan, root=None):
             skipped.append(pc.entry_ref(rpc, rid))
             continue
         for no, refs in per_no.items():
-            agents = ["%s@p%d" % (b, no)
-                      for b in SOURCE_CLONE_READERS]
             refs = list(refs) + pc.twin_refs(entry, refs)
-            try:
-                pc.set_recipients(rpc, rid, order_id, agents,
-                                  SPLIT_NODE, kind="map",
-                                  parts=refs, root=root)
-            except (OSError, ValueError) as exc:
-                skipped.append("%s p%d (%s)"
-                               % (pc.entry_ref(rpc, rid), no, exc))
-                continue
-            granted.append("%s p%d (%s)"
-                           % (pc.entry_ref(rpc, rid), no,
-                              ",".join(agents)))
+            if rpc == "source":
+                figs, tabs = _split_fig_tab(refs)
+                groups = [([clone_id("photo_pia", no),
+                           clone_id("board_vera", no)], figs),
+                          ([clone_id("anim_max", no)], tabs)]
+            elif rpc in ("theory", "article"):
+                groups = [([clone_id(b, no)
+                           for b in PENN_WREN_CLONES], refs)]
+            elif rpc in ("image", "generated"):
+                groups = [([clone_id(b, no)
+                           for b in IMAGE_CLONE_READERS], refs)]
+            else:
+                groups = []
+            for agents, part_refs in groups:
+                if not part_refs:
+                    continue
+                try:
+                    pc.set_recipients(rpc, rid, order_id, agents,
+                                      SPLIT_NODE, kind="map",
+                                      parts=part_refs, root=root)
+                except (OSError, ValueError) as exc:
+                    skipped.append("%s p%d (%s)"
+                                   % (pc.entry_ref(rpc, rid), no, exc))
+                    continue
+                granted.append("%s p%d (%s)"
+                               % (pc.entry_ref(rpc, rid), no,
+                                  ",".join(agents)))
     remy_by_entry = {}
     for p in parts:
         for ref in (p.get("remy_handoff") or []):
@@ -657,16 +692,15 @@ def write_clone_rows(order_id, plan, root=None):
         skipped.append("voice entry for %s" % order_id)
         return {"granted": granted, "skipped": skipped,
                 "errors": []}
-    for p in parts:
-        no = p.get("no")
-        agents = ["%s@p%d" % (b, no) for b in CLONE_NODES]
-        refs = ["%s#%s" % (vref, cid) for cid in p.get("cuts", [])]
-        try:
-            pc.set_recipients("voice", vdoc, order_id, agents,
-                              SPLIT_NODE, kind="map", parts=refs,
-                              root=root)
-        except (OSError, ValueError) as exc:
-            skipped.append("voice p%d (%s)" % (no, exc))
-            continue
-        granted.append("voice p%d (%s)" % (no, ",".join(agents)))
+    # Voice clips reach clones as the narration category; the
+    # only Voice PC row goes to video_production (c68).
+    try:
+        pc.set_recipients("voice", vdoc, order_id,
+                          ["video_production"],
+                          SPLIT_NODE, kind="full", parts=[],
+                          root=root)
+    except (OSError, ValueError) as exc:
+        skipped.append("voice video_production (%s)" % exc)
+    else:
+        granted.append("voice video_production")
     return {"granted": granted, "skipped": skipped, "errors": []}
