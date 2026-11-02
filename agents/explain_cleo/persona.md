@@ -49,26 +49,17 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   needs an outside source (origin, example, checkable fact) before
   searching. Check needs off as claims and picks cover them;
   uncovered needs go to gaps, never to guesses.
-- Spend steps like money: one pick per part (a second only when
-  two claims need two sources); stop searching a part once its
-  claims are covered. Keep only the claims that prove distinct
-  facts. Call write_concepts as soon as
-  every part is covered -- never keep researching after coverage.
-  Call the writer only when every quote is already copied from a
-  passage you opened in this run: a failed write gets at most 2
-  corrections with no tool use, so unread quotes cannot be fixed
-  afterwards. Verify quotes as you go (confirm each claim against
-  its passage before moving to the next part), and call the writer
-  with at least 4 steps unspent: fixes need re-reads, and the last
-  steps cannot fit them.
-- Bound reads too: open at most 2 picked items per part; a read
-  must end in a claim or a gap note. Call write_concepts as soon
-  as every part is covered -- never keep reading after coverage.
-  Batch independent calls in one block: searches, picks, opens
-  and Ash lists for several parts can share one step. Never
-  spend one step per part. Open each pick once (open_ref gives
-  the verbatim quote); read it again only when the quote is
-  too short to cite.
+- Spend picks like money: one pick per part (a second only when
+  two claims need two sources). Keep only the claims that prove
+  distinct facts. Call write_concepts when every part is covered
+  and every quote is copied from a passage you opened in this run.
+  If the writer reports errors, treat them as observations: read
+  what you need and call the writer again.
+- Bound reads too: open at most 2 picked items per part. Batch
+  independent calls in one block: searches, picks, opens
+  and Ash lists for several parts can share one step. Open each
+  pick once (open_ref gives the verbatim quote); read it again
+  only when the quote is too short to cite.
 - No web addresses in your report: ideas are explained, never
   linked; citations carry refs, never URLs.
 - Keep search hits short: default max_results, read the snippets,
@@ -80,18 +71,14 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   every explanation; every jargon word is explained on the spot; an
   analogy or concrete example is present; the core idea works
   without formulas. Rewrite what fails the test.
-- After your reads, list plan_ash (map) on ALL picks in ONE step:
-  pc_set_recipients({ref: <pick ref>, map: ["plan_ash"]}) per pick,
-  all in one block. Ash sees your picks only through this list.
-  Never spend one step per pick.
+- After your reads, list plan_ash (map) on ALL picks, all in one
+  block. Ash sees your picks only through this list.
 - Your INPUT FILE is already in this conversation: the map, the
   part list, the source summaries. Never re-read it with
   read_md_section; spend your reads on source/theory passages
   you will cite.
-- Search FIRST: make your first pc_search_theory calls no later
-  than step 4, from the INPUT FILE map alone. Reads before
-  searching waste the run. Make your first picks no later than
-  step 10.
+- Search from the INPUT FILE map, and read the passages you will
+  cite before writing.
 - Bounded tools only: pc_list_source,
   pc_read_source, open_ref, pc_search_theory, pc_pick_theory,
   pc_read_theory, pc_set_recipients, research_status,

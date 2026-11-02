@@ -13,7 +13,7 @@ BASE_URL = "https://api.meta.ai/v1"
 BASETEN_URL = "https://inference.baseten.co/v1"
 LLM_MODELS = ["meta-models/muse-spark-open-1026", "muse-spark-1.3",
               "muse-spark-1.2", "muse-spark-1.1", "muse-wonder-1.0"]
-MAX_JSON_RETRIES = 2  # tools-off correction attempts per RUN (truncation included)
+MAX_JSON_RETRIES = 2  # failed writer calls per RUN (errors go back with tools on)
 MAX_TOOL_FAILS = 5  # consecutive failures before a tool is closed for the run
 
 DATA_TAG = ("<external-data tool=\"%s\">\n"
@@ -159,87 +159,6 @@ def _chat(model, messages, tools, max_tokens=None, timeout=300,
     return out
 
 
-def _retry_writer(agent, messages, ctx, play, writer, writer_arg,
-                  step, emit, total, errors):
-    """One tools-off correction attempt. True when the run output is saved.
-
-    Sends a slim context (persona + the failed call + the errors), not
-    the full history: the failed JSON is all the model must repair."""
-    with open(os.path.join(ctx["agent_dir"], "persona.md"),
-              encoding="utf-8") as f:
-        persona = f.read()
-    last = None
-    for m in reversed(messages):
-        if m.get("role") == "assistant" and m.get("tool_calls"):
-            last = m
-            break
-    shape_hint = ""
-    if last is not None:
-        for tc in last.get("tool_calls", []):
-            fn = tc.get("function", {}) or {}
-            if fn.get("name") != writer:
-                continue
-            try:
-                call_args = json.loads(fn.get("arguments", "") or "{}")
-            except ValueError:
-                break
-            inner = call_args.get(writer_arg)
-            if isinstance(inner, dict):
-                shape_hint = (" The object goes under the %r argument "
-                              "and must keep exactly these top-level "
-                              "keys: %s."
-                              % (writer_arg, ", ".join(sorted(inner))))
-            else:
-                shape_hint = (" The object goes under the %r argument "
-                              "as a real object (not a string) with "
-                              "the same top-level keys as the "
-                              "persona's EXACT shape." % writer_arg)
-            break
-    ask = ("Your last %s call failed validation:\n%s\n"
-           "Reply with ONLY the corrected, complete JSON object.%s "
-           "No explanation, no tool calls."
-           % (writer, "\n".join("- " + e for e in errors), shape_hint))
-    slim = [{"role": "system", "content": persona}]
-    if last is not None:
-        slim.append(last)
-    slim.append({"role": "user", "content": ask})
-    resp = _chat(agent["model"], slim, None,
-                   caller=agent["id"] + ":retry",
-                   log_path=os.path.join(ctx.get("run_dir", ""),
-                                         "llm_calls.jsonl"))
-    usage = resp.get("usage", {})
-    total["prompt"] += usage.get("prompt_tokens", 0)
-    total["completion"] += usage.get("completion_tokens", 0)
-    text = (resp["choices"][0]["message"].get("content") or "")
-    messages.append({"role": "assistant", "content": text})
-    obj, status = parse_json_answer(text)
-    if status != "ok":
-        note = ("your correction was cut off; resend the COMPLETE JSON "
-                "object" if status == "truncated" else
-                "your reply held no JSON object; resend the COMPLETE JSON object")
-        messages.append({"role": "user", "content":
-                         note + " by calling %s again." % writer})
-        emit({"ev": "tool", "step": step, "tool": writer,
-              "retry": True, "ok": False, "parse": status})
-        return False
-    result = play[writer][0](ctx, {writer_arg: obj})
-    ok = bool(result.get("ok"))
-    if ok:
-        messages.append({"role": "user", "content":
-                         "Correction accepted and saved to %s." % result.get("path")})
-    else:
-        messages.append({"role": "user", "content":
-                         "Correction still failing:\n%s\nDo not read "
-                         "anything else; fix it and call %s again now."
-                         % ("\n".join("- " + e for e in result.get("errors", ["unknown error"])),
-                            writer)})
-    tool_ev = {"ev": "tool", "step": step, "tool": writer, "retry": True, "ok": ok}
-    if "errors" in result:
-        tool_ev["errors"] = result["errors"]
-    emit(tool_ev)
-    return ok
-
-
 VISION_MAX_BYTES = 2 * 1024 * 1024
 VISION_MAX_IMAGES = 4
 VISION_MIME = {".png": "image/png", ".jpg": "image/jpeg",
@@ -365,21 +284,8 @@ def run(agent_dir, run_dir, brief, input_md):
     emit({"ev": "run_start", "agent": agent["id"], "model": agent["model"]})
     fails = {}
     staged_seen = 0
-    retries_left = MAX_JSON_RETRIES
+    writer_fails = 0
     for step in range(1, agent["bounds"]["max_steps"] + 1):
-        _max = agent["bounds"]["max_steps"]
-        if step == _max:
-            messages.append({
-                "role": "user", "content":
-                "Last step: call %s now with your complete "
-                "object. No more research after this." % writer})
-        elif step >= _max - 2:
-            messages.append({
-                "role": "user", "content":
-                "%d steps left of %d. Stop researching and call "
-                "%s with your complete object now; keep the rest "
-                "for writer fixes only."
-                % (_max - step + 1, _max, writer)})
         oai = [{"type": "function",
                 "function": {"name": n, "description": d, "parameters": s}}
                for n, (_, d, s) in play.items()]
@@ -458,13 +364,11 @@ def run(agent_dir, run_dir, brief, input_md):
                             "reason": "writer tool closed"}
             if (name == writer and not result.get("ok")
                     and "errors" in result):
-                if retries_left > 0:
-                    retries_left -= 1
-                    if _retry_writer(agent, messages, ctx, play, writer,
-                                     writer_arg, step, emit, total,
-                                     result["errors"]):
-                        finished = True
-                if not finished and retries_left == 0:
+                # ReAct: the errors already went back as the tool
+                # result above, with every tool still available. The
+                # model reads what it needs and calls the writer again.
+                writer_fails += 1
+                if writer_fails > MAX_JSON_RETRIES:
                     emit({"ev": "run_fail",
                           "reason": "writer validation failed after "
                                     "%d retries; stopping" % MAX_JSON_RETRIES,
