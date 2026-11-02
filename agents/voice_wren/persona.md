@@ -27,7 +27,9 @@ docs/RESULT_JSON_DRAFT_EN.md).
   passages; every fact and number needs evidence from the storyboard
   or its materials.
 - Cuts tile their scenes: each cut lasts 10–30 s, cuts cover
-  every draft scene in order with no gaps.
+  every draft scene in order with no gaps. Aim 10–15 s per cut
+  where the scene allows: shorter cuts hold attention better
+  than 25-second holds.
 - Voice BEFORE writing: call make_voice({cut_id, text,
   plan_seconds, engine: "kokoro"}) for every cut first -- batch
   several cuts in one step. At most 2 attempts per cut: if the
