@@ -1,33 +1,48 @@
-# 아침 노트 (2026-11-02 MP4)
+# 아침 노트 (2026-11-02 MP4 — 심야 체인 반영)
 
 주문 `ord-20261102-030`, 런 `flow-20261102-122459-0471`.
 MP4: `runs/flow-20261102-122459-0471/video_production/video.mp4`
-(10:00, 1280x720 h264 + AAC, 8.9MB, Gallery에서 재생됨).
+(10:00, 1280x720 h264 + AAC mono, 9.0MB).
 자막 `captions.srt`, 스토리보드 표 `storyboard_table.json` 같은 폴더.
-LLM 호출 330회(약 640만 토큰, 실패 재시도 포함), 이미지 6장 생성.
 
 ## MP4 내용 확인 (프레임 직접 봄)
-- c9: 원본 TABLE 1.2 이미지 + 자막 (표/차트)
-- c11/c16: Gene 생성 일러스트 2장 (생성 이미지)
-- 웹 실사진: 없음 (Pia가 전부 none — 문서가 벡터/표 중심이라 정직한 사진이 없음)
+- 0:30: 텍스트 카드 (온스크린 문구 4개, 스타일 가이드 색 그대로)
+- 5:00: Gene 생성 일러스트 (용접→전기→도장→조립 BMW 삽화) + 자막
+- 실사진: 없음 (아래 Pia 429 참조), 차트: 없음 (Max 전부 none)
 
-## 직원별 수정 (전부 push됨, F1~F6 이후 추가분)
-- Sam: 수정 없음 (채팅→PDF→handover 정상)
-- Marty: 8파트→3파트로 재실행 1회 (메타섹션 금지 검사 추가 `57d5641`)
-- Cleo/Rex: Rex 재실행 3회 끝에 성공 (도구 끄고 재시도하던 코드 삭제 `bbc11d3`)
-- Ash: 표 2개를 장면에 배정하도록 재실행 1회 (표/그림 twin 권한 `14df5f7`)
-- Wren: 수정 없음 (22컷, 전부 ±15% 안, 28개 wav)
-- Penn: 수정 없음 (22화면, 시간 복사 확인)
-- Pia: shape 수정+예산 16스텝 (`4e47635`, `eb48387`), c9 원본 표 사용
-- Gene: 6장 생성 확인, Source 읽기 권한 제거 (`95e3b75`)
-- Max: 빈칸 셀 허용+전체행 인용 안내 (`e5aefb6`, `a520377`), c9 표 1건
-- Vera: 표 이미지(fig) 사용하도록 재실행 3회 (twin 권한+썸네일)
-- Remy: 이미지 블록 렌더 수정 후 전체 재렌더 (`f62941f`)
-- 영상조립: assemble 호출로 MP4 생성 (record 단계는 조리법만 만듦)
+## Pia 7차 쿼리별 결과 (research.jsonl 실측)
+- p1 c3 'Hong Kong skyline' 8건, c4 'trading floor' 8건
+- p2 c12 'car factory' 8건, c15 'supercomputer' 7건
+- p3 c16 'handshake' 7건 → 'business meeting' 8건,
+  c18 'skyscraper' 8건 → 'office building' 8건,
+  c21 'bank branch' 8건 → 'bank vault' 5건
+- 짧은 쿼리·제목 심사·0건 재검색 모두 동작. 그러나
+  다운로드가 IP 429로 전멸 (실측: 같은 URL 수동 요청도 429) →
+  정직한 후보 6건 (홍콩하버 pdm, 시카고 거래소 pdm, 오펠 라인,
+  크레이 슈퍼컴, LA 타워, PNC 지점)을 적고 전부 none. 승인됨.
+
+## 직원별 수정 (전부 push됨)
+- Pia: Commons 우선·Openverse 25초 2구간·짧은 쿼리·0건 재시도
+  (`b5190da`)
+- 러너: 모델 호출 중 TLS 끊김에 런 전체 크래시 → 2회 재시도 후
+  단계 실패 처리 (`b1b250b`, Vera p2 크래시 원인)
+- 인덱스: 실패 뒤 성공이면 recovered (오경보 해소),
+  픽할 때 map+index 워커 자동 실행 (`88e7cc8`)
+- PC 행: theory/article는 Penn/Wren만, 원본은 Pia/Vera에 그림만·
+  Max에 표/수식만, voice는 video_production만, Ash handoff는
+  Wren/Penn만, image/generated에서 video_production 제거,
+  Penn/Wren은 base ID 합산 행 (`cae369a`, `c2b262c`)
+- Vera/Remy: 재실행 후 승인 (텍스트 카드 22컷, PNG 22장)
+- 영상조립: video_production 기록 + assemble (9.0MB)
+
+## 인덱스 백필 (진행 중)
+- Theory jetson 25/41, Article 0/124 (순차 워커 실행 중)
+- 픽 1건당 LLM 약 15~35회 (LightRAG 개체 추출) + 60~170초
 
 ## 못 고친 것 / 남은 것
-- 웹 실사진 0장: Pia가 정직하게 none (이 문서 특성상 정상)
-- 애니메이션 차트 없음: Max 표 1건은 Vera가 정적 표 이미지로 선택
-- TABLE 1.1은 미사용 (1.2만 등장)
+- 웹 실사진 0장: Wikimedia IP 스로틀 (429) — 조용해지면 Pia만
+  다시 돌리면 됨 (검색은 이미 됨)
+- 차트 없음: Max 전부 none (이번 문서에 표가 적음)
 - Ash 입력에 실패했던 실행의 기사 9건이 남아 있음 (이후 실행부터 prune 적용)
-- step 호출이 stopped 런에서 조용히 실패함 (started:true 반환) — 다음에 고칠 것
+- step 호출이 stopped 런에서 조용히 실패함 (started:true 반환)
+- inputs 검사 28개 노드 전부 OK (fresh rows 기준 재평가)
