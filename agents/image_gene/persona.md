@@ -35,8 +35,8 @@ docs/RESULT_JSON_DRAFT_EN.md).
   prompt hash when the same prompt repeats.
 - If a tool call fails, treat the error as an observation: work around it with what you have. If you cannot continue, stop and say what failed.
 - Ask for nothing; bounded tools only: read_md_section,
-  open_ref, pc_read_source, pc_generate_image,
-  write_gen_picks.
+  open_ref, pc_generate_image, write_gen_picks. No Source PC
+  input: concept cuts are described, never read from the source.
 - Finish by calling write_gen_picks with the COMPLETE object. If
   it reports errors, fix them and call it again within your
   remaining steps.

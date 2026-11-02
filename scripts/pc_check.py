@@ -838,6 +838,34 @@ try:
     frag = tmod.pc_read_theory(cleor, {"ref": wt["ref"] + "#p2"})
     ok(frag.get("text") == "Second paragraph here.",
        "theory fragment read still exact")
+    for did in ("aabbccddeeff", "bbccddeeff00"):
+        edir = os.path.join(tmp2, "storage", "_pc", "article",
+                            "entries", did)
+        os.makedirs(edir)
+        with open(os.path.join(edir, "entry.json"), "w",
+                  encoding="utf-8") as f:
+            json.dump({"ref": "pc://article/" + did, "doc_id": did,
+                       "recipients": []}, f)
+    pc.set_recipients("article", "aabbccddeeff", "o9", ["plan_ash"],
+                      "case_rex", root=tmp2)
+    pc.set_recipients("article", "bbccddeeff00", "o9", ["plan_ash"],
+                      "case_rex", root=tmp2)
+    pc.set_recipients("article", "bbccddeeff00", "o8", ["plan_ash"],
+                      "case_rex", root=tmp2)
+    pruned = pc.prune_setter_rows("article", "o9", "case_rex",
+                                  ["aabbccddeeff"], root=tmp2)
+    ok(pruned == ["bbccddeeff00"], "prune drops stale pick listing")
+    keep_rows = json.load(open(os.path.join(
+        tmp2, "storage", "_pc", "article", "entries",
+        "aabbccddeeff", "entry.json"), encoding="utf-8"))["recipients"]
+    ok(len([r for r in keep_rows if r["order_id"] == "o9"]) == 1,
+       "prune keeps the reported pick listed")
+    drop_rows = json.load(open(os.path.join(
+        tmp2, "storage", "_pc", "article", "entries",
+        "bbccddeeff00", "entry.json"), encoding="utf-8"))["recipients"]
+    ok(len([r for r in drop_rows if r["order_id"] == "o9"]) == 0
+       and len([r for r in drop_rows if r["order_id"] == "o8"]) == 1,
+       "prune drops stale row but keeps other orders")
 
     mix = {"sections": [{"n": "0", "heading": "", "non_content": False},
                         {"n": "1.1", "heading": "A", "non_content": False},

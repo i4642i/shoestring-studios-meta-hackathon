@@ -1,1 +1,475 @@
-{"$comment": "Expected inputs per flow node, checked by _check_inputs_spec into inputs_check.json. items: received transfers + brief/shared (category/from must match; part omitted: clone numbers are dynamic). pc_rows: PC name + kind only (parts are dynamic refs). Optional items mirror flow.inputs required:false. Clone patterns use @p*.", "nodes": {"anim_max": {"items": [{"category": "note", "from": "part_split", "item": "split"}], "pc_rows": []}, "anim_max@p*": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "shared", "from": "part_split", "item": "shared"}, {"category": "split_plan", "from": "part_split", "item": "received.part_split.split_plan"}, {"category": "narration", "from": "part_split", "item": "received.part_split.narration"}, {"category": "storyboard", "from": "part_split", "item": "received.part_split.storyboard"}], "pc_rows": [{"kind": "map", "pc": "source"}]}, "board_penn": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "narration", "from": "voice_wren", "item": "received.voice_wren.narration"}, {"category": "storyboard_draft", "from": "plan_ash", "item": "received.plan_ash.storyboard_draft", "optional": true}, {"category": "concept", "from": "pd_marty", "item": "received.pd_marty.concept", "optional": true}], "pc_rows": [{"kind": "map", "pc": "source"}]}, "board_vera": {"items": [{"category": "note", "from": "part_split", "item": "split"}], "pc_rows": []}, "board_vera@p*": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "shared", "from": "part_split", "item": "shared"}, {"category": "photo_picks", "from": "photo_pia", "item": "received.photo_pia.photo_picks", "optional": true}, {"category": "gen_picks", "from": "image_gene", "item": "received.image_gene.gen_picks", "optional": true}, {"category": "anim_picks", "from": "anim_max", "item": "received.anim_max.anim_picks", "optional": true}, {"category": "split_plan", "from": "part_split", "item": "received.part_split.split_plan"}, {"category": "narration", "from": "part_split", "item": "received.part_split.narration"}, {"category": "storyboard", "from": "part_split", "item": "received.part_split.storyboard", "optional": true}], "pc_rows": [{"kind": "map", "pc": "source"}]}, "case_rex": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "concept", "from": "pd_marty", "item": "received.pd_marty.concept"}, {"category": "structure", "from": "pd_marty", "item": "received.pd_marty.structure"}], "pc_rows": [{"kind": "map", "pc": "source"}]}, "explain_cleo": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "concept", "from": "pd_marty", "item": "received.pd_marty.concept"}, {"category": "structure", "from": "pd_marty", "item": "received.pd_marty.structure"}], "pc_rows": [{"kind": "map", "pc": "source"}]}, "image_gene": {"items": [{"category": "note", "from": "part_split", "item": "split"}], "pc_rows": []}, "image_gene@p*": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "shared", "from": "part_split", "item": "shared"}, {"category": "split_plan", "from": "part_split", "item": "received.part_split.split_plan"}, {"category": "narration", "from": "part_split", "item": "received.part_split.narration"}, {"category": "storyboard", "from": "part_split", "item": "received.part_split.storyboard"}], "pc_rows": []}, "part_split": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "structure", "from": "pd_marty", "item": "received.pd_marty.structure"}, {"category": "concept", "from": "pd_marty", "item": "received.pd_marty.concept"}, {"category": "storyboard_draft", "from": "plan_ash", "item": "received.plan_ash.storyboard_draft"}, {"category": "narration", "from": "voice_wren", "item": "received.voice_wren.narration"}, {"category": "storyboard", "from": "board_penn", "item": "received.board_penn.storyboard"}, {"category": "style_guide", "from": "board_penn", "item": "received.board_penn.style_guide"}], "pc_rows": []}, "pd_marty": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "request", "from": "sales_sam", "item": "received.sales_sam.request"}], "pc_rows": [{"kind": "full", "pc": "source"}]}, "photo_pia": {"items": [{"category": "note", "from": "part_split", "item": "split"}], "pc_rows": []}, "photo_pia@p*": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "shared", "from": "part_split", "item": "shared"}, {"category": "split_plan", "from": "part_split", "item": "received.part_split.split_plan"}, {"category": "narration", "from": "part_split", "item": "received.part_split.narration"}, {"category": "storyboard", "from": "part_split", "item": "received.part_split.storyboard"}], "pc_rows": [{"kind": "map", "pc": "source"}]}, "plan_ash": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "concept", "from": "pd_marty", "item": "received.pd_marty.concept"}, {"category": "structure", "from": "pd_marty", "item": "received.pd_marty.structure"}, {"category": "concepts", "from": "explain_cleo", "item": "received.explain_cleo.concepts"}, {"category": "cases", "from": "case_rex", "item": "received.case_rex.cases"}], "pc_rows": [{"kind": "map", "pc": "source"}]}, "slide_remy": {"items": [{"category": "note", "from": "part_split", "item": "split"}], "pc_rows": []}, "slide_remy@p*": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "shared", "from": "part_split", "item": "shared"}, {"category": "slide_draft", "from": "board_vera", "item": "received.board_vera.slide_draft"}, {"category": "style_guide", "from": "part_split", "item": "received.part_split.style_guide", "optional": true}], "pc_rows": []}, "video_production": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "narration", "from": "voice_wren", "item": "received.voice_wren.narration"}, {"category": "storyboard", "from": "board_penn", "item": "received.board_penn.storyboard"}, {"category": "slide_draft", "from": "board_vera", "item": "received.board_vera.slide_draft"}, {"category": "render_log", "from": "slide_remy", "item": "received.slide_remy.render_log"}, {"category": "storyboard_draft", "from": "plan_ash", "item": "received.plan_ash.storyboard_draft"}, {"category": "part_info", "from": "slide_remy", "item": "received.slide_remy.part_info"}], "pc_rows": []}, "voice_wren": {"items": [{"category": "brief", "from": "order", "item": "brief"}, {"category": "storyboard_draft", "from": "plan_ash", "item": "received.plan_ash.storyboard_draft"}, {"category": "concept", "from": "pd_marty", "item": "received.pd_marty.concept", "optional": true}], "pc_rows": [{"kind": "map", "pc": "source"}]}}}
+{
+ "$comment": "Expected inputs per flow node, checked by _check_inputs_spec into inputs_check.json. items: received transfers + brief/shared (category/from must match; part omitted: clone numbers are dynamic). pc_rows: PC name + kind only (parts are dynamic refs). Optional items mirror flow.inputs required:false. Clone patterns use @p*.",
+ "nodes": {
+  "anim_max": {
+   "items": [
+    {
+     "category": "note",
+     "from": "part_split",
+     "item": "split"
+    }
+   ],
+   "pc_rows": []
+  },
+  "anim_max@p*": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "shared",
+     "from": "part_split",
+     "item": "shared"
+    },
+    {
+     "category": "split_plan",
+     "from": "part_split",
+     "item": "received.part_split.split_plan"
+    },
+    {
+     "category": "narration",
+     "from": "part_split",
+     "item": "received.part_split.narration"
+    },
+    {
+     "category": "storyboard",
+     "from": "part_split",
+     "item": "received.part_split.storyboard"
+    }
+   ],
+   "pc_rows": [
+    {
+     "kind": "map",
+     "pc": "source"
+    }
+   ]
+  },
+  "board_penn": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "narration",
+     "from": "voice_wren",
+     "item": "received.voice_wren.narration"
+    },
+    {
+     "category": "storyboard_draft",
+     "from": "plan_ash",
+     "item": "received.plan_ash.storyboard_draft"
+    },
+    {
+     "category": "concept",
+     "from": "pd_marty",
+     "item": "received.pd_marty.concept"
+    }
+   ],
+   "pc_rows": [
+    {
+     "kind": "map",
+     "pc": "source"
+    }
+   ]
+  },
+  "board_vera": {
+   "items": [
+    {
+     "category": "note",
+     "from": "part_split",
+     "item": "split"
+    }
+   ],
+   "pc_rows": []
+  },
+  "board_vera@p*": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "shared",
+     "from": "part_split",
+     "item": "shared"
+    },
+    {
+     "category": "photo_picks",
+     "from": "photo_pia",
+     "item": "received.photo_pia.photo_picks",
+     "optional": true
+    },
+    {
+     "category": "gen_picks",
+     "from": "image_gene",
+     "item": "received.image_gene.gen_picks",
+     "optional": true
+    },
+    {
+     "category": "anim_picks",
+     "from": "anim_max",
+     "item": "received.anim_max.anim_picks",
+     "optional": true
+    },
+    {
+     "category": "split_plan",
+     "from": "part_split",
+     "item": "received.part_split.split_plan"
+    },
+    {
+     "category": "narration",
+     "from": "part_split",
+     "item": "received.part_split.narration"
+    },
+    {
+     "category": "storyboard",
+     "from": "part_split",
+     "item": "received.part_split.storyboard",
+     "optional": true
+    }
+   ],
+   "pc_rows": [
+    {
+     "kind": "map",
+     "pc": "source"
+    }
+   ]
+  },
+  "case_rex": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "concept",
+     "from": "pd_marty",
+     "item": "received.pd_marty.concept"
+    },
+    {
+     "category": "structure",
+     "from": "pd_marty",
+     "item": "received.pd_marty.structure"
+    }
+   ],
+   "pc_rows": [
+    {
+     "kind": "map",
+     "pc": "source"
+    }
+   ]
+  },
+  "explain_cleo": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "concept",
+     "from": "pd_marty",
+     "item": "received.pd_marty.concept"
+    },
+    {
+     "category": "structure",
+     "from": "pd_marty",
+     "item": "received.pd_marty.structure"
+    }
+   ],
+   "pc_rows": [
+    {
+     "kind": "map",
+     "pc": "source"
+    }
+   ]
+  },
+  "image_gene": {
+   "items": [
+    {
+     "category": "note",
+     "from": "part_split",
+     "item": "split"
+    }
+   ],
+   "pc_rows": []
+  },
+  "image_gene@p*": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "shared",
+     "from": "part_split",
+     "item": "shared"
+    },
+    {
+     "category": "split_plan",
+     "from": "part_split",
+     "item": "received.part_split.split_plan"
+    },
+    {
+     "category": "narration",
+     "from": "part_split",
+     "item": "received.part_split.narration"
+    },
+    {
+     "category": "storyboard",
+     "from": "part_split",
+     "item": "received.part_split.storyboard"
+    }
+   ],
+   "pc_rows": []
+  },
+  "part_split": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "structure",
+     "from": "pd_marty",
+     "item": "received.pd_marty.structure"
+    },
+    {
+     "category": "concept",
+     "from": "pd_marty",
+     "item": "received.pd_marty.concept"
+    },
+    {
+     "category": "storyboard_draft",
+     "from": "plan_ash",
+     "item": "received.plan_ash.storyboard_draft"
+    },
+    {
+     "category": "narration",
+     "from": "voice_wren",
+     "item": "received.voice_wren.narration"
+    },
+    {
+     "category": "storyboard",
+     "from": "board_penn",
+     "item": "received.board_penn.storyboard"
+    },
+    {
+     "category": "style_guide",
+     "from": "board_penn",
+     "item": "received.board_penn.style_guide"
+    }
+   ],
+   "pc_rows": []
+  },
+  "pd_marty": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "request",
+     "from": "sales_sam",
+     "item": "received.sales_sam.request"
+    }
+   ],
+   "pc_rows": [
+    {
+     "kind": "full",
+     "pc": "source"
+    }
+   ]
+  },
+  "photo_pia": {
+   "items": [
+    {
+     "category": "note",
+     "from": "part_split",
+     "item": "split"
+    }
+   ],
+   "pc_rows": []
+  },
+  "photo_pia@p*": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "shared",
+     "from": "part_split",
+     "item": "shared"
+    },
+    {
+     "category": "split_plan",
+     "from": "part_split",
+     "item": "received.part_split.split_plan"
+    },
+    {
+     "category": "narration",
+     "from": "part_split",
+     "item": "received.part_split.narration"
+    },
+    {
+     "category": "storyboard",
+     "from": "part_split",
+     "item": "received.part_split.storyboard"
+    }
+   ],
+   "pc_rows": [
+    {
+     "kind": "map",
+     "pc": "source"
+    }
+   ]
+  },
+  "plan_ash": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "concept",
+     "from": "pd_marty",
+     "item": "received.pd_marty.concept"
+    },
+    {
+     "category": "structure",
+     "from": "pd_marty",
+     "item": "received.pd_marty.structure"
+    },
+    {
+     "category": "concepts",
+     "from": "explain_cleo",
+     "item": "received.explain_cleo.concepts"
+    },
+    {
+     "category": "cases",
+     "from": "case_rex",
+     "item": "received.case_rex.cases"
+    }
+   ],
+   "pc_rows": [
+    {
+     "kind": "map",
+     "pc": "source"
+    }
+   ]
+  },
+  "slide_remy": {
+   "items": [
+    {
+     "category": "note",
+     "from": "part_split",
+     "item": "split"
+    }
+   ],
+   "pc_rows": []
+  },
+  "slide_remy@p*": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "shared",
+     "from": "part_split",
+     "item": "shared"
+    },
+    {
+     "category": "slide_draft",
+     "from": "board_vera",
+     "item": "received.board_vera.slide_draft"
+    },
+    {
+     "category": "style_guide",
+     "from": "part_split",
+     "item": "received.part_split.style_guide",
+     "optional": true
+    }
+   ],
+   "pc_rows": []
+  },
+  "video_production": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "narration",
+     "from": "voice_wren",
+     "item": "received.voice_wren.narration"
+    },
+    {
+     "category": "storyboard",
+     "from": "board_penn",
+     "item": "received.board_penn.storyboard"
+    },
+    {
+     "category": "slide_draft",
+     "from": "board_vera",
+     "item": "received.board_vera.slide_draft"
+    },
+    {
+     "category": "render_log",
+     "from": "slide_remy",
+     "item": "received.slide_remy.render_log"
+    },
+    {
+     "category": "storyboard_draft",
+     "from": "plan_ash",
+     "item": "received.plan_ash.storyboard_draft"
+    },
+    {
+     "category": "part_info",
+     "from": "slide_remy",
+     "item": "received.slide_remy.part_info"
+    }
+   ],
+   "pc_rows": []
+  },
+  "voice_wren": {
+   "items": [
+    {
+     "category": "brief",
+     "from": "order",
+     "item": "brief"
+    },
+    {
+     "category": "storyboard_draft",
+     "from": "plan_ash",
+     "item": "received.plan_ash.storyboard_draft"
+    },
+    {
+     "category": "concept",
+     "from": "pd_marty",
+     "item": "received.pd_marty.concept"
+    }
+   ],
+   "pc_rows": [
+    {
+     "kind": "map",
+     "pc": "source"
+    }
+   ]
+  }
+ }
+}

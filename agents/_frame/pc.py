@@ -1898,6 +1898,49 @@ def _set_recipients_in(edir, order_id, agents, set_by, kind, parts):
     return entry["recipients"]
 
 
+def prune_setter_rows(pcname, order_id, set_by, keep_doc_ids,
+                      root=None):
+    """Delete set_by's rows for order_id on entries outside keep.
+
+    A re-run that drops a pick must not leave the old listing
+    readable: rows outlive the run that created them. keep_doc_ids
+    are entry ids that stay listed. Other orders' rows and other
+    setters' rows are never touched. Atomic per entry. Returns the
+    pruned doc ids.
+    """
+    keep = set(keep_doc_ids or [])
+    base = os.path.join(_base(root), "storage", "_pc", pcname,
+                        "entries")
+    pruned = []
+    try:
+        doc_ids = sorted(os.listdir(base))
+    except OSError:
+        return pruned
+    for doc_id in doc_ids:
+        edir = os.path.join(base, doc_id)
+        p = os.path.join(edir, "entry.json")
+        if not os.path.isfile(p):
+            continue
+        with _path_lock(edir):
+            try:
+                with open(p, encoding="utf-8") as f:
+                    entry = json.load(f)
+            except ValueError:
+                continue
+            rows = recipients_of(entry) or []
+            left = [r for r in rows
+                    if not (isinstance(r, dict)
+                            and r.get("order_id") == order_id
+                            and r.get("set_by") == set_by)]
+            if len(left) == len(rows) or doc_id in keep:
+                continue
+            entry["recipients"] = left
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(entry, f, ensure_ascii=False, indent=2)
+            pruned.append(doc_id)
+    return pruned
+
+
 def _frag_within(rfrag, pfrag):
     """True when requested fragment rfrag sits inside part pfrag:
     exact match, or a paragraph/range under a listed section/group."""

@@ -525,6 +525,20 @@ def _write_report(ctx, args, category, validator):
         for pid in sorted(cited):
             _log_research(ctx, {"ev": "citations", "part_id": pid,
                                 "refs": sorted(set(cited[pid]))})
+        if category in ("cases", "concepts"):
+            keep = {}
+            for ref in _report_pick_refs(obj):
+                try:
+                    rpc, rid, _frag = pc.parse_ref(ref)
+                except ValueError:
+                    continue
+                keep.setdefault(rpc, set()).add(rid)
+            producer = (ctx or {}).get("producer", "")
+            order_id = (ctx or {}).get("order_id", "")
+            if producer and order_id:
+                for rpc in ("theory", "article"):
+                    pc.prune_setter_rows(rpc, order_id, producer,
+                                        keep.get(rpc, set()))
     return saved
 
 

@@ -1,56 +1,55 @@
 {
- "bounds": {
-  "max_steps": 10
- },
- "done": [
-  "at most 6 generated images this run",
-  "every generate cut has an English prompt",
-  "every image stored before saving",
-  "gen_picks written (result.json)"
- ],
- "frame_version": 1,
- "id": "image_gene",
- "io": {
-  "inputs": [
-   "INPUTS.md"
+  "bounds": {
+    "max_steps": 10
+  },
+  "done": [
+    "at most 6 generated images this run",
+    "every generate cut has an English prompt",
+    "every image stored before saving",
+    "gen_picks written (result.json)"
   ],
-  "output": "result.json"
- },
- "model": "meta-models/muse-spark-open-1026",
- "name": "Gene",
- "title": "Image generator",
- "stage": 7,
- "tools": [
-  "read_md_section",
-  "open_ref",
-  "pc_read_source",
-  "pc_generate_image",
-  "write_gen_picks"
- ],
- "flow": {
-  "inputs": [
-   {
-    "category": "split_plan",
-    "required": true,
-    "description": "Part split: this part's cuts plus the shared context."
-   },
-   {
-    "category": "narration",
-    "required": true,
-    "description": "Wren's lines and cut times for this part."
-   },
-   {
-    "category": "storyboard",
-    "required": true,
-    "description": "Penn's per-cut screen plan to illustrate."
-   }
+  "frame_version": 1,
+  "id": "image_gene",
+  "io": {
+    "inputs": [
+      "INPUTS.md"
+    ],
+    "output": "result.json"
+  },
+  "model": "meta-models/muse-spark-open-1026",
+  "name": "Gene",
+  "title": "Image generator",
+  "stage": 7,
+  "tools": [
+    "read_md_section",
+    "open_ref",
+    "pc_generate_image",
+    "write_gen_picks"
   ],
-  "outputs": [
-   {
-    "category": "gen_picks",
-    "description": "Per-cut generated image or none."
-   }
-  ]
- },
- "team": "video"
+  "flow": {
+    "inputs": [
+      {
+        "category": "split_plan",
+        "required": true,
+        "description": "Part split: this part's cuts plus the shared context."
+      },
+      {
+        "category": "narration",
+        "required": true,
+        "description": "Wren's lines and cut times for this part."
+      },
+      {
+        "category": "storyboard",
+        "required": true,
+        "description": "Penn's per-cut screen plan to illustrate."
+      }
+    ],
+    "outputs": [
+      {
+        "category": "gen_picks",
+        "description": "Per-cut generated image or none."
+      }
+    ]
+  },
+  "team": "video"
 }
