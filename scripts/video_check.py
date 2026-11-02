@@ -554,6 +554,10 @@ try:
     ok("none pick" in " ".join(validate_anim_picks(au_bad3, BOARD)),
        "none pick with values refuses")
     ok(validate_slide_draft(SLIDE, NARR) == [], "vera draft accepts")
+    card = json.loads(json.dumps(SLIDE["cuts"][0]))
+    card["preset"] = "card"
+    ok("preset" not in " ".join(validate_cut_layout(card, 20)),
+       "card preset validates")
     thin = json.loads(json.dumps(SLIDE))
     thin["cuts"][0]["blocks"] = []
     ok("blocks" in " ".join(validate_slide_draft(thin, NARR)),

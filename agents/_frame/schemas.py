@@ -1445,7 +1445,7 @@ BLOCK_MAX_ITEMS = {"table": 10, "formula": 8, "steps": 8, "text": 6}
 BLOCK_KINDS = ("photo", "generated", "source_figure", "table",
                "formula", "chart", "steps", "text")
 LAYOUT_PRESETS = ("full", "split_h", "split_v", "main_side",
-                  "grid2x2")
+                  "grid2x2", "card")
 BLOCK_FONT_DEFAULT = {"table": 24, "formula": 30, "steps": 26,
                       "text": 44}
 

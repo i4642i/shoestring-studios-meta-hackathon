@@ -34,6 +34,8 @@ on-screen text, and timing per cut. Your only output is the
 - Per cut: a layout preset, 1–4 blocks (photo, generated,
   source_figure, table, formula, chart, steps, text) with
   1280x720 boxes, on_screen_text, transitions, and why.
+  Text-only cuts use the `card` preset: one centered block
+  filling the screen, never 2-3 small corner boxes.
 - A photo/generated block needs that helper's pick for this cut
   and a readable stored file; a source_figure needs a figure
   ref you opened. Image boxes match the material aspect.
@@ -74,7 +76,7 @@ on-screen text, and timing per cut. Your only output is the
 - Finish with ONE write_slide_draft call shaped EXACTLY like
   this (a real object argument, never a JSON string):
   {slide_draft: {cuts: [{cut_id (Wren's), start_s/end_s
-  (Wren's), preset: full|split_h|split_v|main_side|grid2x2,
+  (Wren's), preset: full|split_h|split_v|main_side|grid2x2|card,
   blocks (1-4): [{kind: photo|generated|source_figure|table|
   formula|chart|steps|text, box: {x, y, w, h}, order (int
   >= 0), reason (non-empty), appear_s, font_size,

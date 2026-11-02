@@ -317,15 +317,18 @@ export const fitTextFont = (b) => {
   );
 };
 
-function TextBlock({b, order}) {
+const CARD_BOX = {x: 64, y: 64, w: 1152, h: 592};
+
+function TextBlock({b, order, card}) {
   const lines = (b.data && b.data.lines) || [];
-  const font = fitTextFont(b);
+  const box = card ? {...b, box: CARD_BOX} : b;
+  const font = fitTextFont(box);
   return (
     <div
       style={{
-        ...boxStyle(b, order),
+        ...boxStyle(card ? {...b, box: CARD_BOX} : b, order),
         fontSize: font,
-        textAlign: b.align || "left",
+        textAlign: card ? "center" : b.align || "left",
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
@@ -339,7 +342,7 @@ function TextBlock({b, order}) {
   );
 }
 
-function Block({b, frame, fps, guide, seconds}) {
+function Block({b, frame, fps, guide, seconds, preset}) {
   const order = b.order || 0;
   if (frame < b.appear_s * fps) return null;
   const tinted = {
@@ -372,7 +375,14 @@ function Block({b, frame, fps, guide, seconds}) {
     inner = (
       <StepsBlock b={tinted} order={order} frame={frame} fps={fps} />
     );
-  if (b.kind === "text") inner = <TextBlock b={tinted} order={order} />;
+  if (b.kind === "text")
+    inner = (
+      <TextBlock
+        b={tinted}
+        order={order}
+        card={preset === "card" && b.kind === "text"}
+      />
+    );
   if (!inner) return null;
   return <div style={enterStyle(frame, fps, b.appear_s)}>{inner}</div>;
 }
@@ -433,6 +443,7 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide, o
             fps={CUT_FPS}
             guide={{palette: pal}}
             seconds={seconds}
+            preset={preset}
           />
         ))}
       {bottomLines.length ? (
