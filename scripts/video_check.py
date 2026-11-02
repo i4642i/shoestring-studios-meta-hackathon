@@ -141,6 +141,22 @@ ok(srt == ("1\n00:00:00,000 --> 00:00:08,000\nHello world\n\n"
            "3\n00:00:20,000 --> 00:00:40,000\nPlains only\n"),
    "subtitle timing exact (proportional word split)")
 ok(video.srt_timestamp(3661.5) == "01:01:01,500", "srt clock rolls over")
+long_narr = {"cuts": [{"cut_id": "s9c1", "start_s": 0, "end_s": 60,
+                        "lines": [{"text": "One two three four. Five six "
+                                           "seven eight nine ten eleven "
+                                           "twelve thirteen fourteen.",
+                                   "citations": []}]}]}
+long_srt = video.build_srt(long_narr)
+long_texts = [ln for ln in long_srt.split("\n")
+              if ln and ln[0].isalpha()]
+ok(len(long_texts) == 2
+   and all(len(t.split()) <= 12 for t in long_texts),
+   "long lines split into <=12-word subtitle blocks")
+body = video._multipart_body("----bound1", "m",
+                             b"RIFFdata")
+ok(body.endswith(b"\r\n------bound1--\r\n")
+   and b"RIFFdata\r\n------bound1--" in body,
+   "multipart body separates the blob from the boundary")
 table = video.build_table(NARR, BOARD, SLIDE, {1: "p1"})
 ok(table == {"rows": [
     {"part": "p1", "scene_n": 1, "cut_id": "s1c1", "start_s": 0,

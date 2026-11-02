@@ -1577,9 +1577,12 @@ def _run_code_node(run_dir, node_id, order_id, order_brief, incoming,
                                     "turns": 0, "mismatches": []}
     try:
         heard = []
-        for cut in cuts:
-            heard += video.transcribe_file(
-                audio[cut["cut_id"]]) or []
+        if video.SKIP_TRANSCRIBE:
+            heard = []  # audio API 400: proportional timing stands in
+        else:
+            for cut in cuts:
+                heard += video.transcribe_file(
+                    audio[cut["cut_id"]]) or []
         if heard:
             srt_text = video.align_subs(narration, heard)
             bad = [c["cut_id"] for c in

@@ -89,31 +89,82 @@ def srt_timestamp(seconds):
     return "%02d:%02d:%02d,%03d" % (h, m, s, ms)
 
 
-def build_srt(narration):
-    """Subtitles from Wren's exact line text. Each cut's lines
-    split its time proportionally by word count (the no-word-
-    timestamps fallback). Returns the .srt text."""
-    blocks = []
-    n = 0
+SRT_MAX_WORDS = 12  # one subtitle block holds at most 12 words
+
+
+def _split_sentences(text):
+    """One line -> sentence strings (sentence-end punctuation
+    .!?… splits; words never change)."""
+    import re
+    bits = re.split(r"(?<=[.!?\u2026])\s+", str(text).strip())
+    return [b.strip() for b in bits if b.strip()] or [str(text).strip()]
+
+
+def _block_texts(cut):
+    """One cut's lines -> subtitle block texts. Each line keeps
+    its own blocks (split at sentence ends, packed to
+    SRT_MAX_WORDS; a past-limit sentence cuts at the word
+    boundary). Wren's words never change, only the grouping."""
+    out = []
+    for ln in ((cut or {}).get("lines") or []):
+        if not isinstance(ln, dict) \
+                or not str(ln.get("text", "")).strip():
+            continue
+        cur = []
+        for sent in _split_sentences(ln["text"]):
+            words = sent.split()
+            while len(words) > SRT_MAX_WORDS:
+                if cur:
+                    out.append(" ".join(cur))
+                    cur = []
+                out.append(" ".join(words[:SRT_MAX_WORDS]))
+                words = words[SRT_MAX_WORDS:]
+            if not words:
+                continue
+            if len(cur) + len(words) <= SRT_MAX_WORDS:
+                cur += words
+            else:
+                if cur:
+                    out.append(" ".join(cur))
+                cur = words
+        if cur:
+            out.append(" ".join(cur))
+    return out
+
+
+def srt_blocks(narration):
+    """(cut, [block texts]): each line split at sentence ends and
+    packed into blocks of at most SRT_MAX_WORDS words. A single
+    sentence past the limit is cut at the word boundary. Wren's
+    words never change, only the grouping."""
+    out = []
     for cut in ((narration or {}).get("cuts") or []):
         if not isinstance(cut, dict):
             continue
+        out.append((cut, _block_texts(cut)))
+    return out
+
+
+def build_srt(narration):
+    """Subtitles from Wren's exact line text. Each cut's blocks
+    (lines split at sentence ends into <=12-word groups) split
+    its time proportionally by word count (the no-word-
+    timestamps fallback). Returns the .srt text."""
+    blocks = []
+    n = 0
+    for cut, texts in srt_blocks(narration):
         start = float(cut.get("start_s", 0))
         end = float(cut.get("end_s", start))
-        lines = [ln for ln in (cut.get("lines") or [])
-                 if isinstance(ln, dict) and str(ln.get("text",
-                                                       "")).strip()]
-        weights = [max(1, len(str(ln["text"]).split()))
-                   for ln in lines]
+        weights = [max(1, len(t.split())) for t in texts]
         total = sum(weights) or 1
         cursor = start
-        for ln, w in zip(lines, weights):
+        for text, w in zip(texts, weights):
             span = (end - start) * w / total
             n += 1
             blocks.append("%d\n%s --> %s\n%s\n"
                           % (n, srt_timestamp(cursor),
                              srt_timestamp(cursor + span),
-                             str(ln["text"]).strip()))
+                             text))
             cursor += span
     return "\n".join(blocks)
 
@@ -418,6 +469,9 @@ def run_ffmpeg(cmd, timeout_s=120, cwd=None):
 
 
 _TRANSCRIBE_FN = None  # fn(path) -> turns (tests inject fixtures)
+SKIP_TRANSCRIBE = True  # the live audio API still answers 400: keep
+# proportional timing until transcribe_file() is verified fixed, then
+# flip back to False so runs use turn-level alignment again.
 
 
 def _norm_words(text):
@@ -444,12 +498,7 @@ def transcribe_file(path, fn=None):
     bound = "----shoestring%d" % os.getpid()
     with open(path, "rb") as f:
         blob = f.read()
-    body = (
-        "--%s\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n"
-        "%s\r\n--%s\r\nContent-Disposition: form-data; "
-        "name=\"file\"; filename=\"cut.wav\"\r\n"
-        "Content-Type: audio/wav\r\n\r\n" % (bound, model, bound)
-    ).encode() + blob + ("--%s--\r\n" % bound).encode()
+    body = _multipart_body(bound, model, blob)
     req = urllib.request.Request(
         url + "/audio/transcriptions", data=body,
         headers={"Authorization": "Bearer " + runner._key(
@@ -472,6 +521,19 @@ def transcribe_file(path, fn=None):
         except (TypeError, ValueError):
             continue
     return turns
+
+
+def _multipart_body(bound, model, blob):
+    """Multipart request body for one WAV upload. The CRLF between
+    the blob and the closing boundary is required: without it the
+    audio API answers 400 Bad Request."""
+    head = (
+        "--%s\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n"
+        "%s\r\n--%s\r\nContent-Disposition: form-data; "
+        "name=\"file\"; filename=\"cut.wav\"\r\n"
+        "Content-Type: audio/wav\r\n\r\n" % (bound, model, bound)
+    ).encode()
+    return head + blob + ("\r\n--%s--\r\n" % bound).encode()
 
 
 def _cut_span(cut, turns):
@@ -502,20 +564,17 @@ def align_subs(narration, turns):
         if not isinstance(cut, dict):
             continue
         start, end = _cut_span(cut, turns)
-        lines = [ln for ln in (cut.get("lines") or [])
-                 if isinstance(ln, dict) and str(ln.get("text",
-                                                       "")).strip()]
-        weights = [max(1, len(str(ln["text"]).split()))
-                   for ln in lines]
+        texts = _block_texts(cut)
+        weights = [max(1, len(t.split())) for t in texts]
         total = sum(weights) or 1
         cursor = start
-        for ln, w in zip(lines, weights):
+        for text, w in zip(texts, weights):
             span = (end - start) * w / total
             n += 1
             blocks.append("%d\n%s --> %s\n%s\n"
                           % (n, srt_timestamp(cursor),
                              srt_timestamp(cursor + span),
-                             str(ln["text"]).strip()))
+                             text))
             cursor += span
     return "\n".join(blocks)
 
