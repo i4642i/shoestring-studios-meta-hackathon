@@ -471,7 +471,56 @@ def _lenient_json(s):
                 return o
         except ValueError:
             pass
-    return None
+    # Mismatched or missing closers (Cleo on ch02 ended a 14 KB
+    # report with "}}}" where "}]}" was due): close containers in
+    # the order they were opened and try once more.
+    try:
+        return json.loads(_close_brackets(cands[1]))
+    except ValueError:
+        return None
+
+
+def _close_brackets(s):
+    """Repair bracket nesting of model JSON: a closer that does not
+    match the innermost open container first closes that container;
+    containers still open at the end are closed. Strings are left
+    alone."""
+    out = []
+    stack = []
+    in_str = False
+    esc = False
+    pair = {"{": "}", "[": "]"}
+    for ch in s:
+        if in_str:
+            out.append(ch)
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            out.append(ch)
+        elif ch in pair:
+            stack.append(pair[ch])
+            out.append(ch)
+        elif ch in ("}", "]"):
+            if not stack:
+                continue  # stray closer
+            while stack and stack[-1] != ch:
+                out.append(stack.pop())
+            if stack:
+                stack.pop()
+                out.append(ch)
+        else:
+            out.append(ch)
+    if in_str:
+        out.append('"')
+    while stack:
+        out.append(stack.pop())
+    return "".join(out)
 
 
 def _write_report(ctx, args, category, validator):
@@ -2775,7 +2824,7 @@ TOOLS = {
         write_narration,
         "Save Wren's cuts as this run's result.json (narration "
         "category). Fails unless cuts tile the scenes, audio sits "
-        "within ±50% of each cut, number lines are cited, "
+        "within ±25% of each cut, number lines are cited, "
         "citations are verbatim, and audio refs are stored.",
         {"type": "object",
          "properties": {"narration": {"type": "object"}},
