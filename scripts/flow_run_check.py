@@ -503,6 +503,31 @@ finally:
     flow.ORDERS_DIR = real_orders
     _pc.ROOT_OVERRIDE = None
 
+def _tiny_pdf():
+    """A valid one-page PDF (correct xref) with one line of text, so
+    the parser that finalize now runs accepts it."""
+    stream = b"BT /F1 12 Tf 20 50 Td (Stub chapter text) Tj ET"
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] "
+            b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            b"<< /Length %d >>\nstream\n" % len(stream) + stream
+            + b"\nendstream",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    out = b"%PDF-1.4\n"
+    offs = []
+    for i, body in enumerate(objs, 1):
+        offs.append(len(out))
+        out += b"%d 0 obj\n" % i + body + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)
+    for o in offs:
+        out += b"%010d 00000 n \n" % o
+    out += (b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n"
+            % (len(objs) + 1, xref))
+    return out
+
+
 # ---- t7: auto-start after Sam's request (real dirs, cleaned) ----
 oid = "ord-ctl-autostart"
 odir = os.path.join(ROOT, "orders", oid)
@@ -540,7 +565,7 @@ try:
                                "depth": "c", "theme": "d"},
                    "files": {"source": "source.pdf"}}, f)
     with open(os.path.join(odir, "source.pdf"), "wb") as f:
-        f.write(b"%PDF-1.4\n%stub\n")
+        f.write(_tiny_pdf())  # finalize parses the PDF; a bare stub fails
     handler = _srv.Handler.__new__(_srv.Handler)
     code, obj = handler._do_complete(
         oid, odir, handler._order_meta(odir), {}, "in_production")

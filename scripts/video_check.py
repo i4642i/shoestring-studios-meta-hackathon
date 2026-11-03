@@ -986,9 +986,9 @@ try:
         _media._pace_pick(pia)
     finally:
         _media.IMAGE_PICK_GAP = 15
-    ok(os.path.isfile(os.path.join(wdir("photo_pia2"),
-                                  "last_pick_download.json")),
-       "paced picks record the last download")
+    ok(os.path.isfile(os.path.join(_pc.pc_dir("image"),
+                                  "_last_download.json")),
+       "paced picks record the last download (machine-wide mark)")
     ok(_media._commons_license("Public domain") == ("pdm", "")
        and _media._commons_license("CC BY-SA 4.0")
        == ("by-sa", "4.0")
