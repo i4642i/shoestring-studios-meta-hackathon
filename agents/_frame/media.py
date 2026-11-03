@@ -581,9 +581,14 @@ def _resolve_view(ctx, args):
     """A viewable file: {ref} (a stored pick/figure: resolved to
     its file) or {path} (must exist under the repo root)."""
     ref = ((args or {}).get("ref") or "").strip()
+    if ref.startswith("#"):
+        # a bare figure/table fragment means the order's own source
+        ref = (pc.order_entry_ref((ctx or {}).get("order_id", ""))
+               or "") + ref
     if ref:
         try:
             entry = pc.load_entry_by_ref(ref)
+            _pcn, _doc, frag = pc.parse_ref(ref)
         except (OSError, ValueError, KeyError) as exc:
             return None, "no such ref: %s" % exc
         if not pc.entry_parts_allow(
@@ -593,6 +598,23 @@ def _resolve_view(ctx, args):
         sub = {"image": "files", "generated": "files"}.get(
             entry.get("pc"), "figures")
         fname = entry.get("file", "")
+        if frag and entry.get("pc") == "source":
+            # a Source entry has no single file: #figN.M.K is one of its
+            # figures, #tabN.M.K a table (viewable through its figure)
+            figs = entry.get("figures") or []
+            hit = next((f for f in figs if f.get("addr") == frag), None)
+            if hit is None:
+                tab = next((t for t in (entry.get("tables") or [])
+                            if t.get("addr") == frag), None)
+                if tab and tab.get("figure"):
+                    hit = next((f for f in figs
+                                if f.get("addr") == tab["figure"]), None)
+            if hit and hit.get("file"):
+                fname, sub = hit["file"], "figures"
+            else:
+                return None, ("%s is not a figure of this source "
+                              "(figures: %s)" % (frag, ", ".join(
+                                  f.get("addr", "") for f in figs[:12])))
         if not fname:
             return None, "entry has no viewable file"
         full = os.path.join(pc.entry_dir(entry.get("pc"),

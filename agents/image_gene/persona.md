@@ -46,8 +46,10 @@ docs/RESULT_JSON_DRAFT_EN.md).
   (a real object argument, never a JSON string):
   {gen_picks: {cuts: [{cut_id (Penn's), decision: generate|none,
   prompt (the generate prompt), reason}], images: [{cut_id,
-  file (the "file" pc_generate_image returned), prompt,
-  reused (its "reused_entry" true/false)}]}}. Every storyboard
+  file (the "file" pc_generate_image returned),
+  ref (the "ref" it returned, pc://generated/...), prompt,
+  reused (its "reused_entry" true/false)}]}}. Vera and Remy find
+  the picture only through that ref. Every storyboard
   cut appears once in cuts; every generate cut has one images[]
   entry. If it reports errors, fix them and call it again within
   your remaining steps.

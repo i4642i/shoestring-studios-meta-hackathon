@@ -1310,6 +1310,12 @@ def validate_gen_picks(obj, storyboard):
             if not isinstance(im, dict):
                 errors.append("%s must be an object" % where)
                 continue
+            ref = im.get("ref")
+            if not isinstance(ref, str) or                     not re.match(r"^pc://generated/[0-9a-f]{12}$", ref):
+                errors.append("%s.ref must be the pc://generated/... ref "
+                              "that pc_generate_image returned (Vera and "
+                              "Remy find the picture only through it)"
+                              % where)
             for k in ("cut_id", "file", "prompt", "reused"):
                 if k not in im:
                     errors.append("%s missing: %s" % (where, k))
