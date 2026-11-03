@@ -16,6 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import flow, parts, results
+flow.AUTO_ASSEMBLE = False  # stubbed runs: no real ffmpeg at the end
 from agents._frame import media as _media
 from agents._frame import pc as _pc
 from agents._frame import tools as _tools

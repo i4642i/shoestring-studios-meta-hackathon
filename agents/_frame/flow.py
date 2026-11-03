@@ -1364,7 +1364,39 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
                  "completed": list(completed),
                  "cost": _run_cost(run_dir)})
     emit({"ev": "flow_done", "run": run_id})
-    return {"ok": True, "run_id": run_id, "received": final["received"]}
+    asm = _assemble_after_done(run_dir, emit)
+    return {"ok": True, "run_id": run_id, "received": final["received"],
+            "video": asm}
+
+
+# Off in the offline checks: their stubbed runs must not start a real
+# ffmpeg (flow_check hung on it). _ASSEMBLE_FN lets a check stub it.
+AUTO_ASSEMBLE = True
+_ASSEMBLE_FN = None
+
+
+def _assemble_after_done(run_dir, emit):
+    """The run is done: build the MP4 from the recorded ffmpeg plan
+    right away (user request 11-04: before, nothing in the site called
+    the assembly, so a finished run stayed "Storyboard only"). Never
+    raises; a failed assembly is an event, the run stays done and the
+    assemble endpoint can try again."""
+    if not AUTO_ASSEMBLE:
+        return {"ok": False, "skipped": True}
+    from . import video as _video
+    fn = _ASSEMBLE_FN or _video.assemble_run
+    emit({"ev": "assemble_start"})
+    try:
+        rec = fn(run_dir)
+    except Exception as exc:  # noqa: BLE001 - never breaks a done run
+        rec = {"ok": False, "seconds": 0, "error": str(exc)}
+    if rec.get("ok"):
+        emit({"ev": "assemble_done", "seconds": rec.get("seconds"),
+              "bytes": rec.get("bytes")})
+    else:
+        emit({"ev": "assemble_fail",
+              "error": str(rec.get("error", ""))[:300]})
+    return rec
 
 
 def _save_usage(adir, out):
@@ -2132,8 +2164,10 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
                      "approved": approved,
                      "received": final["received"]})
         emit({"ev": "flow_done", "run": run_id})
+        asm = _assemble_after_done(run_dir, emit)
         return {"ok": True, "run_id": run_id, "last": target,
-                "ran": ran, "received": final["received"]}
+                "ran": ran, "received": final["received"],
+                "video": asm}
     _write_json(_step_status_path(run_dir),
                 {"run_id": run_id, "flow_id": flow_id,
                  "order_id": order_id, "state": "step_paused",

@@ -6,9 +6,11 @@ never run ffmpeg. Only run_ffmpeg() executes anything, and only
 when an ffmpeg binary is on PATH.
 """
 
+import json
 import os
 import shutil
 import subprocess
+import time
 from xml.sax.saxutils import escape
 
 RENDER_MAX = 3
@@ -467,9 +469,10 @@ def run_ffmpeg(cmd, timeout_s=120, cwd=None):
     argv = [exe] + list(cmd[1:]) if cmd and cmd[0] == "ffmpeg" \
         else list(cmd)
     try:
+        # stdin closed: ffmpeg must never sit waiting for keyboard input
         done = subprocess.run(
             argv, capture_output=True, text=True,
-            timeout=timeout_s, cwd=cwd)
+            timeout=timeout_s, cwd=cwd, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError) as exc:
         return {"ok": False, "error": "ffmpeg failed: %s" % exc}
     if done.returncode != 0:
@@ -615,3 +618,88 @@ def compare_transcript(narration, turns):
                     "script_words": len(sw),
                     "heard_words": len(hw)})
     return out
+
+
+ASSEMBLE_TIMEOUT_S = 900
+
+
+def assemble_run(run_dir, timeout_s=ASSEMBLE_TIMEOUT_S):
+    """Turn a finished run's ffmpeg plan (video_production/assembly.json)
+    into video_production/video.mp4. One place for every caller: the
+    flow's end (automatic), the server's assemble endpoint and the test
+    driver. A fresh MP4 always replaces the old one (a re-assembly after
+    a fix must not leave the old file). Writes assemble.log
+    ({state, ok, seconds, error, bytes}); never raises."""
+    vdir = os.path.join(run_dir, "video_production")
+    logp = os.path.join(vdir, "assemble.log")
+
+    def _log(rec):
+        try:
+            with open(logp, "w", encoding="utf-8") as f:
+                json.dump(rec, f, ensure_ascii=False, indent=1)
+        except OSError:
+            pass
+
+    try:
+        with open(os.path.join(vdir, "assembly.json"),
+                  encoding="utf-8") as f:
+            cmd = json.load(f).get("ffmpeg_cmd", [])
+    except (OSError, ValueError) as exc:
+        rec = {"state": "failed", "ok": False, "seconds": 0,
+               "error": "no assembly plan: %s" % exc}
+        _log(rec)
+        return rec
+    if not cmd:
+        rec = {"state": "failed", "ok": False, "seconds": 0,
+               "error": "empty assembly plan"}
+        _log(rec)
+        return rec
+    # every input file must be there before ffmpeg starts: a missing
+    # slide or voice fails at once with its name (no ffmpeg run on a
+    # half-built plan)
+    missing = []
+    for i, arg in enumerate(cmd[:-1]):
+        if arg != "-i":
+            continue
+        if i >= 2 and cmd[i - 2] == "-f" and cmd[i - 1] == "lavfi":
+            continue
+        src = cmd[i + 1]
+        path = src if os.path.isabs(src) else os.path.join(run_dir, src)
+        if not os.path.isfile(path):
+            missing.append(src)
+    if missing:
+        rec = {"state": "failed", "ok": False, "seconds": 0,
+               "error": "missing input (%d): %s" % (
+                   len(missing), ", ".join(missing[:3]))}
+        _log(rec)
+        return rec
+    _log({"state": "running", "ok": False, "seconds": 0, "error": "",
+          "started": time.strftime("%Y-%m-%d %H:%M:%S")})
+    t0 = time.time()
+    out = run_ffmpeg(cmd, timeout_s=timeout_s, cwd=run_dir)
+    rec = {"ok": bool(out.get("ok")),
+           "seconds": round(time.time() - t0, 1),
+           "error": out.get("error", "")}
+    mp = os.path.join(vdir, "video.mp4")
+    raw = os.path.join(run_dir, "video.mp4")
+    if rec["ok"] and os.path.isfile(raw):
+        try:
+            os.replace(raw, mp)
+        except OSError as exc:
+            rec.update(ok=False, error="cannot move video.mp4: %s" % exc)
+    if rec["ok"] and not os.path.isfile(mp):
+        rec.update(ok=False, error="ffmpeg ended but no video.mp4")
+    if rec["ok"]:
+        rec["bytes"] = os.path.getsize(mp)
+        rp = os.path.join(vdir, "result.json")
+        try:
+            with open(rp, encoding="utf-8") as f:
+                res = json.load(f)
+            res["categories"]["video"]["data"]["file"]["size_bytes"] =                 rec["bytes"]
+            with open(rp, "w", encoding="utf-8") as f:
+                json.dump(res, f, ensure_ascii=False, indent=1)
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    rec["state"] = "done" if rec["ok"] else "failed"
+    _log(rec)
+    return rec

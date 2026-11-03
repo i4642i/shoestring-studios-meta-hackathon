@@ -25,6 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 from agents._frame import flow  # noqa: E402
+flow.AUTO_ASSEMBLE = False  # stubbed runs: no real ffmpeg at the end
 from agents._frame import parts  # noqa: E402
 from agents._frame import pc as _pc  # noqa: E402
 from agents._frame import results  # noqa: E402

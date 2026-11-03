@@ -15,6 +15,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from agents._frame import flow  # noqa: E402
+flow.AUTO_ASSEMBLE = False  # stubbed runs: no real ffmpeg at the end
 from agents._frame import memory as memstore  # noqa: E402
 from agents._frame import pc as _pc  # noqa: E402
 from agents._frame import projlog  # noqa: E402

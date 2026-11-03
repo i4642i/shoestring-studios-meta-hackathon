@@ -1752,39 +1752,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"error": "empty plan"})
 
         def _work():
-            t0 = time.time()
-            out = _video.run_ffmpeg(cmd, timeout_s=900,
-                                    cwd=run_dir)
-            rec = {"ok": bool(out.get("ok")),
-                   "seconds": round(time.time() - t0, 1),
-                   "error": out.get("error", "")}
-            mp = os.path.join(vdir, "video.mp4")
-            raw_mp = os.path.join(run_dir, "video.mp4")
-            if rec["ok"] and not os.path.isfile(mp) \
-                    and os.path.isfile(raw_mp):
-                try:
-                    os.replace(raw_mp, mp)
-                except OSError:
-                    pass
-            if rec["ok"] and os.path.isfile(mp):
-                rec["bytes"] = os.path.getsize(mp)
-                try:
-                    with open(os.path.join(
-                            vdir, "result.json"),
-                            encoding="utf-8") as f:
-                        res = json.load(f)
-                    res["categories"]["video"]["data"]["file"][
-                        "size_bytes"] = rec["bytes"]
-                    with open(os.path.join(
-                            vdir, "result.json"),
-                            "w", encoding="utf-8") as f:
-                        json.dump(res, f, ensure_ascii=False,
-                                  indent=1)
-                except (OSError, ValueError, KeyError):
-                    pass
-            with open(os.path.join(vdir, "assemble.log"),
-                      "w", encoding="utf-8") as f:
-                json.dump(rec, f, ensure_ascii=False, indent=1)
+            # same assembly as the flow's end (always replaces the MP4)
+            _video.assemble_run(run_dir)
 
         threading.Thread(target=_work, daemon=True).start()
         return self._json(200, {"started": True,

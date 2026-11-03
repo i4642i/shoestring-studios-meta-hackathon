@@ -74,31 +74,23 @@ def make_order(new_id, src_id):
 
 
 def assemble(run_id):
+    """The flow now assembles the MP4 itself when the run is done
+    (video.assemble_run). Re-assemble only when that did not succeed."""
     run_dir = os.path.join(ROOT, "runs", run_id)
     vdir = os.path.join(run_dir, "video_production")
-    with open(os.path.join(vdir, "assembly.json"),
-              encoding="utf-8") as f:
-        cmd = json.load(f).get("ffmpeg_cmd", [])
-    t0 = time.time()
-    out = _video.run_ffmpeg(cmd, timeout_s=900, cwd=run_dir)
-    rec = {"ok": bool(out.get("ok")),
-           "seconds": round(time.time() - t0, 1),
-           "error": out.get("error", "")}
-    mp = os.path.join(vdir, "video.mp4")
-    raw = os.path.join(run_dir, "video.mp4")
-    # The fresh MP4 always replaces video_production/video.mp4: a
-    # re-assembly after a fix must not leave the old file in place
-    # (the first run 043822 showed the black build for 16 minutes).
-    if rec["ok"] and os.path.isfile(raw):
-        try:
-            os.replace(raw, mp)
-        except OSError:
-            pass
-    with open(os.path.join(vdir, "assemble.log"), "w",
-              encoding="utf-8") as f:
-        json.dump(rec, f, ensure_ascii=False, indent=1)
+    try:
+        with open(os.path.join(vdir, "assemble.log"),
+                  encoding="utf-8") as f:
+            prev = json.load(f)
+    except (OSError, ValueError):
+        prev = {}
+    if prev.get("ok") and os.path.isfile(os.path.join(vdir, "video.mp4")):
+        log(run_dir, "assemble ok=True (built by the flow, %ss)"
+            % prev.get("seconds"))
+        return True
+    rec = _video.assemble_run(run_dir)
     log(run_dir, "assemble ok=%s seconds=%s err=%s"
-        % (rec["ok"], rec["seconds"], rec["error"][:200]))
+        % (rec["ok"], rec["seconds"], str(rec.get("error", ""))[:200]))
     return rec["ok"]
 
 

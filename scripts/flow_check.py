@@ -13,6 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 tempfile.tempdir = os.path.join(ROOT, "scripts", "_tmpclip", "t")
 from agents._frame import flow, results
+flow.AUTO_ASSEMBLE = False  # stubbed runs: no real ffmpeg at the end
 from agents._frame import tools as _tools
 from agents._frame import pc as _pc
 from agents._frame import runner as _runner
@@ -1355,6 +1356,45 @@ ok(not out.get("ok") and "kaput" in out.get("error", ""),
 st3 = json.load(open(os.path.join(tmp, "runs", "rid3", "STATUS.json"),
                      encoding="utf-8"))
 ok(st3["state"] == "failed", "STATUS failed recorded")
+
+# ---- MP4 assembly at the end of a run (11-04: nothing called it) ----
+from agents._frame import video as _vid  # noqa: E402
+evs = []
+flow.AUTO_ASSEMBLE = True
+flow._ASSEMBLE_FN = lambda d: {"ok": True, "seconds": 1.0, "bytes": 9}
+try:
+    rec = flow._assemble_after_done(rdir, evs.append)
+finally:
+    flow._ASSEMBLE_FN = None
+    flow.AUTO_ASSEMBLE = False
+ok(rec.get("ok") and [e["ev"] for e in evs]
+   == ["assemble_start", "assemble_done"],
+   "run end assembles the MP4 (start + done events)")
+evs = []
+flow.AUTO_ASSEMBLE = True
+flow._ASSEMBLE_FN = lambda d: {"ok": False, "error": "boom"}
+try:
+    rec = flow._assemble_after_done(rdir, evs.append)
+finally:
+    flow._ASSEMBLE_FN = None
+    flow.AUTO_ASSEMBLE = False
+ok(not rec.get("ok") and evs[-1].get("ev") == "assemble_fail"
+   and "boom" in evs[-1].get("error", ""),
+   "failed assembly is an event, the run stays done")
+ok(flow._assemble_after_done(rdir, evs.append).get("skipped"),
+   "AUTO_ASSEMBLE off skips (offline checks)")
+adir = os.path.join(tmp, "asm_run")
+os.makedirs(os.path.join(adir, "video_production"))
+with open(os.path.join(adir, "video_production", "assembly.json"), "w",
+          encoding="utf-8") as f:
+    json.dump({"ffmpeg_cmd": ["ffmpeg", "-y", "-i",
+                              "slide_remy/slides/nope.mp4", "out.mp4"]}, f)
+arec = _vid.assemble_run(adir)
+alog = json.load(open(os.path.join(adir, "video_production",
+                                   "assemble.log"), encoding="utf-8"))
+ok(not arec["ok"] and "missing input" in arec["error"]
+   and "nope.mp4" in arec["error"] and alog["state"] == "failed",
+   "missing input fails at once, no ffmpeg run (%s)" % arec["error"])
 shutil.rmtree(tmp, ignore_errors=True)
 
 if fails:
