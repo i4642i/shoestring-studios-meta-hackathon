@@ -74,6 +74,46 @@ if "%NEWHASH%"=="%OLDHASH%" (
   )
 )
 
+REM ---- Video toolchain, part 1: Kokoro voice (requirements-video.txt), only when it changed ----
+set VHASH=
+for /f "skip=1 tokens=*" %%H in ('certutil -hashfile "requirements-video.txt" SHA256 2^>nul') do (
+  if not defined VHASH set "VHASH=%%H"
+)
+set OLDVHASH=
+if exist ".venv\requirements-video.sha" set /p OLDVHASH=<".venv\requirements-video.sha"
+if "%VHASH%"=="" set OLDVHASH=FORCE-INSTALL
+if "%VHASH%"=="%OLDVHASH%" (
+  echo [INFO] Voice packages unchanged, skipping install.
+) else (
+  echo [INFO] Installing voice packages - Kokoro TTS, first run downloads a few hundred MB...
+  "%VENVPY%" -m pip install --disable-pip-version-check -r requirements-video.txt
+  if errorlevel 1 (
+    echo [WARN] Voice packages failed to install. Wren cannot make narration until this works:
+    echo        .venv\Scripts\python -m pip install -r requirements-video.txt
+  ) else (
+    >".venv\requirements-video.sha" echo %VHASH%
+  )
+)
+
+REM ---- Video toolchain, part 2: Remotion slide renderer (needs Node.js 16+) ----
+where node >nul 2>nul
+if errorlevel 1 (
+  echo [WARN] Node.js not found. Remy cannot render slides, so no video can be made.
+  echo        Install Node.js LTS from https://nodejs.org/ and run start_server.bat again.
+) else (
+  if not exist "video\remotion\node_modules" (
+    echo [INFO] Installing the Remotion slide renderer - npm, first run is slow...
+    pushd video\remotion
+    call npm install --no-audit --no-fund
+    popd
+    if not exist "video\remotion\node_modules" (
+      echo [WARN] npm install failed in video\remotion. Run it there by hand to see the error.
+    )
+  ) else (
+    echo [INFO] Remotion renderer already installed.
+  )
+)
+
 REM Stop any previous Shoestring server first (ours only: python running scripts/server.py).
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') -and ($_.CommandLine -like '*scripts/server.py*' -or $_.CommandLine -like '*scripts\server.py*') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Output ('[INFO] Stopped previous server (PID ' + $_.ProcessId + ').') }"
 timeout /t 2 /nobreak >nul

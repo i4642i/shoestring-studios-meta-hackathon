@@ -32,10 +32,12 @@ Prereqs: Python 3.10+, Git, Node.js 16+, an LLM key (copy
 on the Meta Model API via `MODEL_API_KEY` — Baseten credits ran
 out on 2026-11-03, so final runs use `muse-spark-1.3`;
 Cleo/Rex web research needs `TAVILY_API_KEY`).
-First install: `pip install -r requirements.txt`
-and `powershell -ExecutionPolicy Bypass -File tools/setup_video.ps1`
-(Remotion renderer + full ffmpeg via imageio-ffmpeg; local voice
-also wants espeak-ng and `kokoro>=0.9.4`).
+First install: double-click `start_server.bat` — it creates `.venv`
+and installs `requirements.txt`, `requirements-video.txt` (Kokoro
+voice; espeak-ng and ffmpeg come as pip packages) and the Remotion
+renderer (`npm install` in `video/remotion/`). Node.js is the only
+system install. Check with
+`powershell -ExecutionPolicy Bypass -File tools/setup_video.ps1`.
 
 1. Start the server (`start_server.bat` or `python scripts/server.py`)
    and open the printed URL (usually http://localhost:8000).

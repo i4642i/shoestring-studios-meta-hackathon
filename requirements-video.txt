@@ -5,8 +5,12 @@
 kokoro==0.9.4
 soundfile==0.14.0
 imageio-ffmpeg==0.7.0
-en-core-web-sm==3.8.0
+# spaCy English model: not on PyPI, installed from its GitHub release
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+# espeak-ng bundled as a pip package (Kokoro fallback for unusual words;
+# no system espeak-ng install needed)
+espeakng-loader==0.2.4
 # torch itself is shared with the LightRAG env: torch==2.14.1+cpu (already present).
 # Kokoro downloads the Kokoro-82M weights + spacy model on first use (~400 MB).
-# Still needs a MANUAL install (not pip): espeak-ng (Kokoro English fallback)
-# and system ffmpeg (assembly fallback; imageio-ffmpeg covers pip-only use).
+# No manual installs: espeak-ng comes from espeakng-loader and ffmpeg from
+# imageio-ffmpeg. Node.js (for the Remotion renderer) is the only system install.

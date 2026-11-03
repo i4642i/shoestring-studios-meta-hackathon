@@ -6,9 +6,9 @@ All code in this repository was written during the Meta Global AI Developer Hack
 
 ## Run it (first time)
 
-Prereqs: Python 3.10+, Git, an LLM key (see `.env` below).
+Prereqs: Python 3.10+, Git, **Node.js 16+** (LTS from nodejs.org; needed to render slides), an LLM key (see `.env` below).
 
-1. `pip install -r requirements.txt` (includes the LightRAG knowledge backend; first install downloads ~1GB of ML packages)
+1. Nothing to install by hand: `start_server.bat` (step 3) creates `.venv` and installs everything on first run — `requirements.txt` (LightRAG knowledge backend, ~1GB), `requirements-video.txt` (Kokoro voice, espeak-ng and ffmpeg as pip packages) and the Remotion slide renderer (`npm install` in `video/remotion/`). Without the bat: `pip install -r requirements.txt -r requirements-video.txt` and `npm install` in `video/remotion/`.
 2. Copy `.env.example` to `.env` next to this file and fill it in (never commit it). Keys the app reads:
    - `MODEL_API_KEY` — Meta Model API key. Every crew agent and the knowledge-build worker use `muse-spark-1.3` through it. `META_API_KEY` still works as a legacy alias.
    - `BASETEN_API_KEY` — only if you switch an employee to a `meta-models/*` model (Baseten hosting); not needed by default.
@@ -17,7 +17,7 @@ Prereqs: Python 3.10+, Git, an LLM key (see `.env` below).
    - `JETSON_EMBED_URL`, `EMBED_REMOTE_TOKEN` — only for the `jetson` profile: where the LAN embed server lives and its token.
 3. Double-click `start_server.bat` (or run `python scripts/server.py`).
 4. Open the printed URL (usually http://localhost:8000) → Crew tab → click Marty.
-5. Video toolchain (optional — real slide PNGs + local voiceover only; without it the app runs and records honest "unavailable" notes): install Node.js 16+ and ffmpeg, then run `powershell -ExecutionPolicy Bypass -File tools/setup_video.ps1` (installs the Remotion renderer in `video/remotion/`). For local TTS: install espeak-ng, then `pip install "kokoro>=0.9.4"` (see docs/PLAN_V8_VIDEO_EN.md §1b).
+5. Video toolchain check: `powershell -ExecutionPolicy Bypass -File tools/setup_video.ps1` prints what is installed. A full PDF-to-MP4 run needs the voice packages and the Remotion renderer (both installed by the bat); first use also downloads the Kokoro voice (~400 MB) and Remotion's headless browser.
 
 ## Layout
 
