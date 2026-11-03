@@ -1082,6 +1082,8 @@ class Handler(BaseHTTPRequestHandler):
                "chunk_local_lite": eff["chunk_local_lite"],
                "chunk_jetson": eff["chunk_jetson"],
                "office_fps": eff["office_fps"],
+               "index_gleaning": eff["index_gleaning"],
+               "index_llm_async": eff["index_llm_async"],
                "llm_models": [{"model": m,
                                "provider": runner.provider_of(m)[0]}
                               for m in runner.LLM_MODELS],

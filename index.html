@@ -846,6 +846,14 @@
     </div>
         </div>
         <div class="card se-sub">
+    <h3>INDEX SPEED (NEW BUILDS)</h3>
+    <p class="hint">Extra passes: one more model call per chunk to find missed items (0 = off, about half the calls). Parallel calls: model calls at once while an index builds.</p>
+    <div class="addform">
+      <label>Extra passes <input id="se-gleaning" type="number" min="0" max="2" aria-label="Extra extraction passes"></label>
+      <label>Parallel calls <input id="se-llm-async" type="number" min="1" max="16" aria-label="Parallel model calls"></label>
+    </div>
+        </div>
+        <div class="card se-sub">
     <h3>OFFICE 3D FRAME RATE</h3>
     <div class="addform" id="se-fps">
       <label><input type="radio" name="se-fps" value="15"> 15</label>
@@ -5639,6 +5647,8 @@ button.linklike { background: none; border: none; padding: 0;
         document.getElementById("se-chunk-local").value = s.chunk_local;
         document.getElementById("se-chunk-local_lite").value = s.chunk_local_lite;
         document.getElementById("se-chunk-jetson").value = s.chunk_jetson;
+        document.getElementById("se-gleaning").value = s.index_gleaning;
+        document.getElementById("se-llm-async").value = s.index_llm_async;
         const fps = [15, 20, 30].indexOf(s.office_fps) >= 0
           ? s.office_fps : 20;
         document.querySelectorAll('input[name="se-fps"]')
@@ -5731,6 +5741,8 @@ button.linklike { background: none; border: none; padding: 0;
           chunk_local: parseInt(document.getElementById("se-chunk-local").value, 10),
           chunk_local_lite: parseInt(document.getElementById("se-chunk-local_lite").value, 10),
           chunk_jetson: parseInt(document.getElementById("se-chunk-jetson").value, 10),
+          index_gleaning: parseInt(document.getElementById("se-gleaning").value, 10),
+          index_llm_async: parseInt(document.getElementById("se-llm-async").value, 10),
           office_fps: (() => {
             const c = document.querySelector('input[name="se-fps"]:checked');
             const v = c ? parseInt(c.value, 10) : 20;

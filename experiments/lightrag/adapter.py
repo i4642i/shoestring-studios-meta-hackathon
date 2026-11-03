@@ -39,6 +39,11 @@ TOP_K_MIN, TOP_K_MAX = 5, 100
 CHUNK_MIN, CHUNK_MAX = 64, 1024
 OFFICE_FPS_VALUES = (15, 20, 30)
 OFFICE_FPS_DEFAULT = 20
+# Index build speed (user decision 11-04): no extra "missed items" pass
+# (LightRAG's own default is 1, about half the model calls) and 8 model
+# calls at once (LightRAG's default is 4).
+GLEANING_MIN, GLEANING_MAX, GLEANING_DEFAULT = 0, 2, 0
+LLM_ASYNC_MIN, LLM_ASYNC_MAX, LLM_ASYNC_DEFAULT = 1, 16, 8
 
 
 def _read_settings_file():
@@ -95,6 +100,16 @@ def clean_settings(d):
             if not CHUNK_MIN <= v <= CHUNK_MAX:
                 raise RuntimeError("%s must be %d..%d"
                                    % (k, CHUNK_MIN, CHUNK_MAX))
+            out[k] = v
+    for k, lo, hi in (("index_gleaning", GLEANING_MIN, GLEANING_MAX),
+                      ("index_llm_async", LLM_ASYNC_MIN, LLM_ASYNC_MAX)):
+        if k in d:
+            try:
+                v = int(d[k])
+            except (TypeError, ValueError):
+                raise RuntimeError("%s must be an integer" % k)
+            if not lo <= v <= hi:
+                raise RuntimeError("%s must be %d..%d" % (k, lo, hi))
             out[k] = v
     if "office_fps" in d:
         try:
@@ -223,6 +238,17 @@ def office_fps_settings():
     return {"fps": v}
 
 
+def index_speed_settings():
+    """Index build speed: settings win, LightRAG defaults otherwise."""
+    st = _read_settings_file()
+    raw = {"index_gleaning": st.get("index_gleaning", GLEANING_DEFAULT),
+           "index_llm_async": st.get("index_llm_async",
+                                     LLM_ASYNC_DEFAULT)}
+    c = clean_settings(raw)
+    return {"gleaning": c["index_gleaning"],
+            "llm_async": c["index_llm_async"]}
+
+
 def query_settings():
     """Effective retrieval options: settings win, config/package default."""
     cfg = load_config()
@@ -271,12 +297,18 @@ def resolved_settings():
     except RuntimeError as e:
         fps = OFFICE_FPS_DEFAULT
         probs.append(str(e))
+    try:
+        sp = index_speed_settings()
+    except RuntimeError as e:
+        sp = {"gleaning": GLEANING_DEFAULT, "llm_async": LLM_ASYNC_DEFAULT}
+        probs.append(str(e))
     return {"profile": st["profile"], "jetson_url": st["jetson_url"],
             "llm_model": lm, "query_mode": q["mode"], "top_k": q["top_k"],
             "chunk_local": chunks["local"],
             "chunk_local_lite": chunks["local_lite"],
             "chunk_jetson": chunks["jetson"],
-            "office_fps": fps, "problems": probs}
+            "office_fps": fps, "index_gleaning": sp["gleaning"],
+            "index_llm_async": sp["llm_async"], "problems": probs}
 
 
 def marker_path(agent_dir, profile):
@@ -373,7 +405,10 @@ def jetson_embed(base, token, texts):
 def get_rag(eid, profile=None, working_dir=None):
     pcfg = profile_config(profile)
     prof = pcfg["profile"]
-    key = (eid, prof, working_dir or "")
+    sp = index_speed_settings()
+    # speed settings are part of the key: a changed setting gets a fresh
+    # instance instead of the cached one
+    key = (eid, prof, working_dir or "", sp["gleaning"], sp["llm_async"])
     if key in _RAGS:
         return _RAGS[key]
     try:
@@ -455,6 +490,8 @@ def get_rag(eid, profile=None, working_dir=None):
             max_token_size=8192,
             func=embed_func),
         chunk_token_size=pcfg["chunk_size"],
+        entity_extract_max_gleaning=sp["gleaning"],
+        llm_model_max_async=sp["llm_async"],
     )
     _run(rag.initialize_storages())
     _RAGS[key] = rag
