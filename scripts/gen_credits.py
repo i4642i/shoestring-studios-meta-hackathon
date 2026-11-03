@@ -19,7 +19,7 @@ PAGE = os.path.join(ROOT, "index.html")
 BEGIN = "<!-- CREDITS:BEGIN -->"
 END = "<!-- CREDITS:END -->"
 
-GROUP_ORDER = ["Backend", "AI & RAG", "Video", "3D & assets"]
+GROUP_ORDER = ["Backend", "AI & RAG", "Video", "3D & assets", "Services"]
 
 
 def grouped(items):

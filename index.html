@@ -2254,7 +2254,7 @@ button.linklike { background: none; border: none; padding: 0;
   <div class="card">
     <h2>OPEN SOURCE</h2>
     <!-- CREDITS:BEGIN -->
-    <p>Built on free software (open source except the Remotion slide renderer, which is proprietary source-available under its Free License). Licenses below were read from the installed packages; run scripts/list_licenses.py to re-check.</p>
+    <p>Built on free software (open source except the Remotion slide renderer, which is proprietary source-available under its Free License). Licenses below were read from the installed packages (two voice packages, phonemizer-fork and eSpeak NG, are GPL and are installed by pip, never bundled in this repository); run scripts/list_licenses.py to re-check.</p>
     <h3>BACKEND</h3>
     <div class="credwrap"><table class="credtab">
     <tr><th>Name</th><th>Version</th><th>License</th><th>What we use it for</th><th>Link</th></tr>
@@ -2286,12 +2286,28 @@ button.linklike { background: none; border: none; padding: 0;
     <tr><td>Remotion</td><td>4.0.539</td><td>Remotion Free License (proprietary)</td><td>Cut-slide still renderer (video/remotion/, installed via npm, never bundled). Proprietary source-available software under the Remotion Free License (free for up to 3 people) — NOT open source.</td><td><a href="https://www.remotion.dev/" target="_blank" rel="noopener">remotion.dev</a></td></tr>
     <tr><td>KaTeX</td><td>0.19.1</td><td>MIT</td><td>Formula rendering inside the Remotion cut-slide composition.</td><td><a href="https://www.npmjs.com/package/katex" target="_blank" rel="noopener">npm</a></td></tr>
     <tr><td>React</td><td>19.2.3</td><td>MIT</td><td>UI library behind the Remotion cut-slide composition.</td><td><a href="https://www.npmjs.com/package/react" target="_blank" rel="noopener">npm</a></td></tr>
+    <tr><td>Kokoro</td><td>0.9.4</td><td>Apache-2.0</td><td>Wren&#x27;s local text-to-speech voice (installed by start_server.bat from requirements-video.txt). Imported directly by our code.</td><td><a href="https://pypi.org/project/kokoro/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>Kokoro-82M (voice model)</td><td>—</td><td>Apache-2.0</td><td>Voice model weights Kokoro downloads on first use (a few hundred MB). License read from its Hugging Face model card.</td><td><a href="https://huggingface.co/hexgrad/Kokoro-82M" target="_blank" rel="noopener">Hugging Face</a></td></tr>
+    <tr><td>misaki</td><td>0.9.4</td><td>Apache-2.0</td><td>Text-to-phoneme step behind Kokoro.</td><td><a href="https://pypi.org/project/misaki/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>spaCy + en_core_web_sm</td><td>3.8.18 / 3.8.0</td><td>MIT</td><td>English sentence analysis behind misaki (the model is installed from its GitHub release).</td><td><a href="https://pypi.org/project/spacy/" target="_blank" rel="noopener">PyPI</a> &middot; <a href="https://github.com/explosion/spacy-models/releases/tag/en_core_web_sm-3.8.0" target="_blank" rel="noopener">Model</a></td></tr>
+    <tr><td>phonemizer-fork</td><td>3.3.2</td><td>GPL-3.0-or-later</td><td>Phonemizer behind misaki&#x27;s fallback for unusual words. Installed by pip, not bundled in this repository.</td><td><a href="https://pypi.org/project/phonemizer-fork/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>espeakng-loader (with eSpeak NG)</td><td>0.2.4</td><td>eSpeak NG: GPL-3.0-or-later (loader: not stated in package metadata)</td><td>Ships the eSpeak NG library that misaki uses for words it cannot spell; no system install needed. Installed by pip, not bundled in this repository.</td><td><a href="https://pypi.org/project/espeakng-loader/" target="_blank" rel="noopener">PyPI</a> &middot; <a href="https://github.com/espeak-ng/espeak-ng" target="_blank" rel="noopener">eSpeak NG</a></td></tr>
+    <tr><td>soundfile</td><td>0.14.0</td><td>BSD-3-Clause</td><td>Writes Kokoro&#x27;s audio to WAV.</td><td><a href="https://pypi.org/project/soundfile/" target="_blank" rel="noopener">PyPI</a></td></tr>
+    <tr><td>imageio-ffmpeg (with FFmpeg)</td><td>0.7.0</td><td>BSD-2-Clause (FFmpeg binary: LGPL/GPL depending on its build)</td><td>Provides the ffmpeg binary that assembles slides and voice into the MP4 when no system ffmpeg is installed.</td><td><a href="https://pypi.org/project/imageio-ffmpeg/" target="_blank" rel="noopener">PyPI</a> &middot; <a href="https://ffmpeg.org/legal.html" target="_blank" rel="noopener">FFmpeg</a></td></tr>
     </table></div>
     <h3>3D &amp; ASSETS</h3>
     <div class="credwrap"><table class="credtab">
     <tr><th>Name</th><th>Version</th><th>License</th><th>What we use it for</th><th>Link</th></tr>
     <tr><td>Three.js</td><td>0.186.1</td><td>MIT</td><td>3D engine behind the Studio office and the Crew character viewer. Vendored with its license in vendor/three/. © three.js authors.</td><td><a href="https://threejs.org" target="_blank" rel="noopener">threejs.org</a></td></tr>
     <tr><td>Kenney Mini Characters 1.0 + Furniture Kit 2.0</td><td>—</td><td>CC0</td><td>Crew avatars and office furniture. Public-domain dedication, no attribution required (credited here anyway). © Kenney (kenney.nl).</td><td><a href="https://kenney.nl/assets/mini-characters" target="_blank" rel="noopener">Mini Characters</a> &middot; <a href="https://kenney.nl/assets/furniture-kit" target="_blank" rel="noopener">Furniture Kit</a></td></tr>
+    </table></div>
+    <h3>SERVICES</h3>
+    <div class="credwrap"><table class="credtab">
+    <tr><th>Name</th><th>Version</th><th>License</th><th>What we use it for</th><th>Link</th></tr>
+    <tr><td>Meta Model API — Muse Spark 1.3, Muse Image 1.0</td><td>—</td><td>Service (Meta terms)</td><td>Every crew agent&#x27;s model calls (muse-spark-1.3, also the knowledge-build worker) and Gene&#x27;s generated images (muse-image-1.0). Needs MODEL_API_KEY.</td><td><a href="https://dev.meta.ai/" target="_blank" rel="noopener">dev.meta.ai</a></td></tr>
+    <tr><td>Tavily</td><td>—</td><td>Service (Tavily terms)</td><td>Basic web search + extract for Cleo&#x27;s and Rex&#x27;s picks (optional; needs TAVILY_API_KEY).</td><td><a href="https://tavily.com/" target="_blank" rel="noopener">tavily.com</a></td></tr>
+    <tr><td>Wikimedia Commons, Openverse</td><td>—</td><td>Per picture (CC0, CC BY, CC BY-SA, public domain)</td><td>Pia&#x27;s photo search. Each picture&#x27;s license and source page link are stored with it in the Image PC (the author is credited on that source page); non-commercial (NC) licenses are refused.</td><td><a href="https://commons.wikimedia.org/" target="_blank" rel="noopener">Commons</a> &middot; <a href="https://openverse.org/" target="_blank" rel="noopener">Openverse</a></td></tr>
+    <tr><td>Baseten</td><td>—</td><td>Service (Baseten terms)</td><td>Optional hosting for meta-models/muse-spark-open-1026 when an employee is switched to it (needs BASETEN_API_KEY); not used by default.</td><td><a href="https://www.baseten.co/" target="_blank" rel="noopener">baseten.co</a></td></tr>
     </table></div>
     <p class="crednote"><i>Verification only (not shipped):</i> Headless Edge drives the automated browser checks. Never bundled, never required to run the app.</p>
     <!-- CREDITS:END -->
