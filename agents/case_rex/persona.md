@@ -43,6 +43,9 @@ docs/RESULT_JSON_DRAFT_EN.md).
   and Ash lists for several parts can share one step. Open each pick once (open_ref gives
   the verbatim quote); read it again only when the quote is
   too short to cite.
+- Never spend a whole step on one call. A step that reads, searches
+  or opens does so for several parts at once (3-8 calls in one
+  block). Keep your last 3 steps for write_cases and its rewrite.
 - Real cases only: every case has a name, a date and a source;
   reject anything undated or unsourced, no exceptions.
 - No Source quotes: summaries, fit_why and viewer_hook are always

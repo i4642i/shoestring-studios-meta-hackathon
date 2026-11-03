@@ -1,6 +1,6 @@
 {
  "bounds": {
-  "max_steps": 20
+  "max_steps": 30
  },
  "done": [
   "every part has >=1 real case with >=1 cited claim",

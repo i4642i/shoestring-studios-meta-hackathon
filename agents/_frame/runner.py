@@ -338,6 +338,7 @@ def run(agent_dir, run_dir, brief, input_md):
     fails = {}
     staged_seen = 0
     writer_fails = 0
+    single_streak = 0
     for step in range(1, agent["bounds"]["max_steps"] + 1):
         oai = [{"type": "function",
                 "function": {"name": n, "description": d, "parameters": s}}
@@ -446,6 +447,32 @@ def run(agent_dir, run_dir, brief, input_md):
                           "usage": total})
                     return {"ok": False, "events": events, "usage": total,
                             "reason": _exhaust_reason(events)}
+        # Step-budget steering (Cleo on ch02 spent 27 steps on one
+        # open_ref each and never wrote): tell the model how many
+        # steps remain, and break a one-call-per-step streak.
+        left = agent["bounds"]["max_steps"] - step
+        if not finished and left in (6, 3, 1):
+            messages.append({
+                "role": "user", "content":
+                "Step budget: %d step%s left of %d. Batch every read "
+                "you still need into ONE block of calls, then call %s "
+                "with the complete output. Do not spend a step on a "
+                "single read." % (left, "" if left == 1 else "s",
+                                  agent["bounds"]["max_steps"], writer)})
+            emit({"ev": "budget_nudge", "step": step, "left": left})
+        single_streak = (single_streak + 1
+                         if len(calls) == 1 and calls[0]["function"]["name"]
+                         != writer else 0)
+        if not finished and single_streak >= 3:
+            messages.append({
+                "role": "user", "content":
+                "The last %d steps each made a single call. Put all the "
+                "reads, searches and opens you still need into ONE block "
+                "of several calls now; then call %s." % (single_streak,
+                                                         writer)})
+            emit({"ev": "batch_nudge", "step": step,
+                  "streak": single_streak})
+            single_streak = 0
         staged, staged_seen = _vision_drain(run_dir, staged_seen)
         if staged:
             messages.append(_vision_message(staged))
