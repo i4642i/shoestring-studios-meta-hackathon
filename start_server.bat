@@ -96,6 +96,21 @@ if "%VHASH%"=="%OLDVHASH%" (
 )
 
 REM ---- Video toolchain, part 2: Remotion slide renderer (needs Node.js 16+) ----
+REM Node.js is installed automatically with winget when it is missing
+REM (24.x, the line the renderer was tested on; Windows may ask for admin).
+where node >nul 2>nul
+if errorlevel 1 if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
+where node >nul 2>nul
+if errorlevel 1 (
+  where winget >nul 2>nul
+  if errorlevel 1 (
+    echo [WARN] Node.js not found and winget is not available.
+  ) else (
+    echo [INFO] Node.js not found - installing Node.js 24 LTS with winget, please accept the prompts...
+    winget install --id OpenJS.NodeJS.LTS --exact --version 24.22.1 --silent --accept-package-agreements --accept-source-agreements
+    if exist "%ProgramFiles%\nodejs\node.exe" set "PATH=%ProgramFiles%\nodejs;%PATH%"
+  )
+)
 where node >nul 2>nul
 if errorlevel 1 (
   echo [WARN] Node.js not found. Remy cannot render slides, so no video can be made.
