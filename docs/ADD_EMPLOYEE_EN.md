@@ -59,7 +59,7 @@ A failed edit rolls back; no half-written member is ever kept.
   `write_structure`, `write_draft`, `write_request`, `query_graph`)
   or `tools/*.py`.
 - persona.md keeps `# Name` plus `## Persona` / `## Voice` / `## Rules`.
-- done is a non-empty list; max_steps is int 1–20; variant ends `.glb`.
+- done is a non-empty list; max_steps is int 1–60; variant ends `.glb`.
 
 ## After adding
 

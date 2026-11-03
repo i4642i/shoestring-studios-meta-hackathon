@@ -95,8 +95,8 @@ def validate(path):
         if not (model in ALLOW_MODELS or model.startswith(ALLOW_PREFIX)):
             errs.append("model not on allowlist: %s" % model)
         steps = (agent.get("bounds") or {}).get("max_steps")
-        if not isinstance(steps, int) or not 1 <= steps <= 20:
-            errs.append("bounds.max_steps must be int 1-20")
+        if not isinstance(steps, int) or not 1 <= steps <= 60:
+            errs.append("bounds.max_steps must be int 1-60")
         if not isinstance(agent.get("done"), list) or not agent.get("done"):
             errs.append("done needs >=1 item")
         for t in agent.get("tools", []):

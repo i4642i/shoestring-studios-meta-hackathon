@@ -62,7 +62,7 @@ Rules:
   `muse-glimmer-*`, `muse-spark-open-*`.
 - Every name in `tools` MUST exist in the registry (`agents/_frame/tools.py`)
   or in the employee's own `tools.py` (custom tools take precedence on collision).
-- `bounds.max_steps`: integer 1–20 (D11: bounded ReAct, no unbounded loops).
+- `bounds.max_steps`: integer 1–60 (D11: bounded ReAct, no unbounded loops).
 - `io.output`: single filename; the runner validates it against
   `agents/_frame/schemas.py` when a schema exists.
 - Builtin writers (`OUTPUTS` in `agents/_frame/tools.py`): `write_draft`
