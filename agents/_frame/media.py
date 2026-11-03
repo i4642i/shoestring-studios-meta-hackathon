@@ -29,13 +29,32 @@ USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
               "Chrome/126.0 Safari/537.36")
 
 
-def _json_headers():
+# Wikimedia (commons API + upload.wikimedia.org) wants a descriptive
+# User-Agent with a contact, and rate-limits generic browser strings
+# from scripts (429 on 13 of 15 downloads in run 043822). Openverse
+# still needs the browser UA (Cloudflare), so the UA is picked per host.
+WIKIMEDIA_UA = ("ShoestringStudios/0.1 "
+                "(https://github.com/i4642i/shoestring-studios-meta-hackathon; "
+                "ksh4642@nextopologix.com) python-urllib")
+
+
+def _ua_for(url):
+    try:
+        host = urllib.parse.urlsplit(url or "").netloc.lower()
+    except ValueError:
+        host = ""
+    if host.endswith("wikimedia.org") or host.endswith("wikipedia.org"):
+        return WIKIMEDIA_UA
+    return USER_AGENT
+
+
+def _json_headers(url=""):
     return {"Accept": "application/json",
-            "User-Agent": USER_AGENT}
+            "User-Agent": _ua_for(url)}
 
 
-def _bytes_headers():
-    return {"Accept": "image/*", "User-Agent": USER_AGENT}
+def _bytes_headers(url=""):
+    return {"Accept": "image/*", "User-Agent": _ua_for(url)}
 OPENVERSE_LICENSES = "by,by-sa,cc0,pdm"  # minus by-nd (we crop)
 IMAGE_QUERY_CAP = 2  # Openverse queries per cut per run
 OPENVERSE_PER_MIN = 20  # shared Openverse queue default
@@ -43,7 +62,7 @@ GEN_IMAGE_CAP = 6  # generated images per run
 GEN_IMAGE_COST = 0.01  # USD per muse-image, flat
 VERA_VIEW_CAP = 2  # candidate files viewed per cut per run
 IMAGE_FETCH_CAP = 20 * 1024 * 1024  # 20 MB per download
-IMAGE_PICK_GAP = 15  # seconds between pick downloads per run
+IMAGE_PICK_GAP = 8  # seconds between pick downloads, machine-wide
 LICENSE_OK = ("cc0", "pdm", "by", "by-sa")
 
 _HTTP_JSON = None  # fn(url) -> parsed JSON (tests inject fixtures)
@@ -140,7 +159,7 @@ def _owns(ctx, base):
 def _get_json(url, timeout=60):
     if _HTTP_JSON is not None:
         return _HTTP_JSON(url)
-    req = urllib.request.Request(url, headers=_json_headers())
+    req = urllib.request.Request(url, headers=_json_headers(url))
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.load(r)
@@ -162,7 +181,7 @@ def _retry_after(headers, default=10):
 def _get_bytes(url, cap, timeout=60, _tries=3):
     if _HTTP_BYTES is not None:
         return _HTTP_BYTES(url, cap)
-    req = urllib.request.Request(url, headers=_bytes_headers())
+    req = urllib.request.Request(url, headers=_bytes_headers(url))
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             blob = r.read(cap + 1)
@@ -306,7 +325,10 @@ def commons_search(query, limit=5):
         "action": "query", "format": "json",
         "generator": "search", "gsrsearch": query + " filetype:bitmap",
         "gsrnamespace": 6, "gsrlimit": limit,
-        "prop": "imageinfo", "iiprop": "url|extmetadata"})
+        "prop": "imageinfo", "iiprop": "url|extmetadata",
+        # a 1280 px thumbnail instead of the original: a few hundred
+        # KB from the thumb cache, not a 20 MB file from upload
+        "iiurlwidth": 1280})
     data = _get_json(COMMONS_URL + "?" + qs)
     out = []
     pages = (data.get("query", {}) or {}).get("pages", {}) or {}
@@ -326,7 +348,8 @@ def commons_search(query, limit=5):
             continue
         license, ver = lic
         out.append({"title": pg.get("title", ""),
-                    "image_url": _clean_url(info.get("url", "")),
+                    "image_url": _clean_url(info.get("thumburl")
+                                            or info.get("url", "")),
                     "page_url": info.get("descriptionurl", ""),
                     "license": license,
                     "license_version": ver,
@@ -409,13 +432,15 @@ def pc_search_images(ctx, args):
 
 
 def _pace_pick(ctx):
-    """One pick download per IMAGE_PICK_GAP seconds per run:
-    bursts get upload.wikimedia.org throttling the whole IP."""
+    """One pick download per IMAGE_PICK_GAP seconds for the whole
+    machine (parts run in parallel and share one IP): bursts get
+    upload.wikimedia.org throttling everyone. The mark lives in the
+    Image PC folder, not the clone's run dir."""
     try:
-        run_dir = (ctx or {}).get("run_dir", "")
-        if not run_dir:
+        if not (ctx or {}).get("run_dir", ""):
             return
-        mark = os.path.join(run_dir, "last_pick_download.json")
+        from . import pc as _pc
+        mark = os.path.join(_pc.pc_dir("image"), "_last_download.json")
         now = time.time()
         try:
             last = float(_counter(mark).get("at", 0))
