@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import sys
+import threading
 import time
 import traceback
 
@@ -20,8 +21,19 @@ sys.path.insert(0, ROOT)
 from agents._frame import graph, pc, runner  # noqa: E402
 from agents._frame import projlog  # noqa: E402
 
-LOCK_WAIT = 600
-LOCK_STALE = 1800
+# Index builds wait for each other as long as needed: a CPU index of a
+# large PDF can take well over 30 minutes (11-04 second PC: 600 s wait
+# ran out and two entries were marked failed while the PDF indexed).
+# The lock holder refreshes INFO every LOCK_BEAT seconds; a lock counts
+# as stale (holder crashed or killed) only when INFO has not been
+# refreshed for LOCK_STALE seconds. Never a fixed total wait.
+# A failed index build is tried again (user decision 11-04) before the
+# worker gives up: INDEX_TRIES attempts, INDEX_RETRY_WAIT * attempt
+# seconds apart. Only after the last one the entry is "failed".
+INDEX_TRIES = 3
+INDEX_RETRY_WAIT = 30
+LOCK_BEAT = 30
+LOCK_STALE = 300
 POLL = 5
 META_VISION_MODEL = "muse-spark-1.3"  # Meta Model API flagship; second
 # vision attempt when the primary model cannot take images.
@@ -69,11 +81,14 @@ def log(edir, obj):
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
-def _lock(idx):
-    """Serialize index writers per profile. Returns the lock dir."""
+def _lock(idx, edir=None):
+    """Serialize index writers per profile. Waits while another build
+    holds the lock and keeps it alive; takes over a lock whose holder
+    stopped refreshing it. Returns the lock dir."""
     lockd = os.path.join(idx, "BUILDING")
     info = os.path.join(lockd, "INFO")
-    t0 = time.time()
+    os.makedirs(idx, exist_ok=True)
+    noted = False
     while True:
         try:
             os.makedirs(lockd)
@@ -90,9 +105,22 @@ def _lock(idx):
         if age > LOCK_STALE:
             shutil.rmtree(lockd, ignore_errors=True)
             continue
-        if time.time() - t0 > LOCK_WAIT:
-            raise RuntimeError("index busy for %ds" % LOCK_WAIT)
+        if edir and not noted:
+            log(edir, {"ev": "index_wait",
+                       "note": "another index build is running; "
+                               "waiting for it"})
+            noted = True
         time.sleep(POLL)
+
+
+def _beat(lockd, stop):
+    """Holder heartbeat: refresh INFO so waiters see a live build."""
+    info = os.path.join(lockd, "INFO")
+    while not stop.wait(LOCK_BEAT):
+        try:
+            os.utime(info, None)
+        except OSError:
+            pass
 
 
 def _unlock(lockd):
@@ -622,12 +650,27 @@ def _run_index(mod, entry, edir, doc_id):
     prof = mod.embed_settings()["profile"]
     idx = pc.index_dir(entry.get("pc", "source"), prof)
     docs, ids = index_docs(entry)
-    lockd = _lock(idx)
+    lockd = _lock(idx, edir)
+    stop = threading.Event()
+    threading.Thread(target=_beat, args=(lockd, stop),
+                     daemon=True).start()
     try:
         before = len(_log_lines(idx))
         t1 = time.time()
-        res = mod.index_texts(docs, "pc-" + entry.get("pc", "source"),
-                              prof, idx, doc_id, ids)
+        for attempt in range(1, INDEX_TRIES + 1):
+            try:
+                res = mod.index_texts(docs,
+                                      "pc-" + entry.get("pc", "source"),
+                                      prof, idx, doc_id, ids)
+                break
+            except Exception as exc:  # noqa: BLE001 - retried, then raised
+                if attempt >= INDEX_TRIES:
+                    raise RuntimeError(
+                        "index failed after %d tries: %s"
+                        % (INDEX_TRIES, exc))
+                log(edir, {"ev": "index_retry", "attempt": attempt,
+                           "reason": str(exc)[:300]})
+                time.sleep(INDEX_RETRY_WAIT * attempt)
         calls, chars = 0, 0
         for ln in _log_lines(idx)[before:]:
             try:
@@ -642,6 +685,7 @@ def _run_index(mod, entry, edir, doc_id):
                    "dim": res["dim"]})
         print("index %s/%s: ok" % (doc_id, prof), flush=True)
     finally:
+        stop.set()
         _unlock(lockd)
 
 

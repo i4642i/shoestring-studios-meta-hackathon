@@ -28,6 +28,9 @@ def ok(cond, name):
 tmp = tempfile.mkdtemp()
 pc.ROOT_OVERRIDE = tmp
 old_search, old_extract = tmod._tavily_search, tmod._tavily_extract
+old_mode = tmod._pick_build_mode
+# a pick now waits for its map + index worker: no real worker in tests
+tmod._pick_build_mode = lambda *a: None  # noqa: E731 - stub
 tmod._tavily_search = lambda q, n: [  # noqa: E731 - stub
     {"title": "TWAP Guide", "url": "https://example.com/twap",
      "snippet": "TWAP slices orders."},
@@ -293,6 +296,7 @@ try:
             os.environ["TAVILY_API_KEY"] = saved
 finally:
     tmod._tavily_search, tmod._tavily_extract = old_search, old_extract
+    tmod._pick_build_mode = old_mode
     pc.ROOT_OVERRIDE = None
 
 print("FAILURES: %d" % len(FAILS) if FAILS else "ALL PASS")

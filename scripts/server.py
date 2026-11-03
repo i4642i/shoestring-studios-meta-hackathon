@@ -2509,12 +2509,19 @@ class Handler(BaseHTTPRequestHandler):
                 return  # worker still writing: wait for it to exit
         except (OSError, ValueError):
             pass
+        # The crew starts only after the map AND the index are ready
+        # (user decision 11-04): no time limit. The worker retries a
+        # failed index itself; if it still fails, the order stays
+        # waiting (the card shows the reason) until REBUILD INDEX on the
+        # PC page succeeds -- never a start on a failed index.
+        if self._pc_worker_state(oid, ref) in ("running", "failed"):
+            return
         self._pc_reap_finished()
         meta.pop("parse_pending", None)
         meta.pop("starting", None)
         self._order_save_meta(d, meta)
         projlog.log_event(oid, "order", "parse_done",
-                          "Source PC map ready (%s)" % ref,
+                          "Source PC map and index ready (%s)" % ref,
                           file="orders/%s/intake.json" % oid)
         run_id, auto_err = self._auto_start_flow(oid)
         if auto_err:
@@ -2662,6 +2669,31 @@ class Handler(BaseHTTPRequestHandler):
                   % (doc_id, "; ".join(parts) if parts else "no stages"),
                   flush=True)
             del _PC_JOBS[doc_id]
+
+    @staticmethod
+    def _pc_worker_state(oid, ref):
+        """State of the last pc_worker run for ref on the order
+        timeline: "running" (start, no end yet), "done", "failed", or
+        "none" (no worker line: map and index were already there)."""
+        p = os.path.join(ROOT, "orders", oid, "timeline.jsonl")
+        try:
+            with open(p, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+        except OSError:
+            return "none"
+        state = "none"
+        for ln in lines:
+            try:
+                e = json.loads(ln)
+            except ValueError:
+                continue
+            if not isinstance(e, dict) or e.get("source") != "pc_worker"                     or e.get("file") != ref:
+                continue
+            if e.get("ev") == "start":
+                state = "running"
+            elif e.get("ev") in ("done", "failed"):
+                state = e["ev"]
+        return state
 
     @staticmethod
     def _pc_indexed(prof, pcname, doc_id):

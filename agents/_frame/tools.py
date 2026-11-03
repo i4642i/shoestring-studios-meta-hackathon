@@ -1220,15 +1220,24 @@ def _pc_pick(ctx, args, pcname):
     _wmode = _pick_build_mode(pcname, r["doc_id"], _prof)
     worker_note = "map + index already done"
     if _wmode is not None:
+        # The picker waits for its own map + index (user decision
+        # 11-04: no work goes on while an index is building). CPU
+        # indexing is slow; there is no time limit, only the worker's
+        # own end (done or failed).
         try:
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 [sys.executable,
                  os.path.join("scripts", "pc_worker.py"),
                  r["doc_id"], _wmode, pcname],
                 cwd=pc._base(None), stdout=subprocess.DEVNULL,
                 stderr=subprocess.STDOUT)
-            worker_note = "mode %s spawned " % _wmode
-            worker_note += "(async; map/index pending)"
+            rc = proc.wait()
+            if rc == 0:
+                worker_note = "mode %s done (map + index ready)" % _wmode
+            else:
+                worker_note = "mode %s failed: %s" % (
+                    _wmode, _worker_reason(pc.entry_dir(
+                        pcname, r["doc_id"])) or "exit %d" % rc)
         except OSError as exc:
             worker_note = "worker start failed: %s" % exc
     out = {"ref": r["ref"], "doc_id": r["doc_id"],
@@ -1332,7 +1341,6 @@ def pc_read_article(ctx, args):
 
 
 # ---- Sam's intake tools (§8.1): send PDF, set recipients ----
-SEND_TIMEOUT = 900  # blocking worker wait per pc_send_source call
 INTAKE_PRODUCER = "sales_sam"
 
 
@@ -1487,11 +1495,11 @@ def pc_send_source(ctx, args):
                 log_off = f.tell()
         except OSError:
             log_off = 0
-        rc, t0 = None, time.time()
+        # No time limit: a CPU index of a large PDF can take a long
+        # time, and killing the worker would leave the index half
+        # built (user decision 11-04: wait for the index).
+        rc = None
         while True:
-            if time.time() - t0 > SEND_TIMEOUT:
-                rc = None
-                break
             rc = proc.poll()
             if callable(on_progress):
                 try:
@@ -1516,18 +1524,7 @@ def pc_send_source(ctx, args):
             if rc is not None:
                 break
             time.sleep(2)
-        if rc is None:
-            try:
-                proc.kill()
-            except OSError:
-                pass
-            proc.wait()
-            worker_note = "mode %s timed out after %ds" \
-                % (mode, SEND_TIMEOUT)
-            warning = ("worker timed out; map/index may still be "
-                       "pending (REBUILD from the PC page)")
-        else:
-            worker_note = "mode %s exit %d" % (mode, rc)
+        worker_note = "mode %s exit %d" % (mode, rc)
         if not warning:
             mp = pc.load_map_by_ref(r["ref"])
             map_done = isinstance(mp, dict) \
