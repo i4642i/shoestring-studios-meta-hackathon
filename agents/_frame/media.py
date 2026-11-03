@@ -523,9 +523,9 @@ def _muse_image(prompt):
 @readlog.logged("generated")
 def pc_generate_image(ctx, args):
     """Gene's image call: at most the part quota (one image per
-    cut that has no photo or source figure; 6 without a split
-    plan); the same prompt reuses the stored image without a
-    new call."""
+    cut of the part, from the split plan; GEN_IMAGE_CAP only when
+    no split plan exists); the same prompt reuses the stored image
+    without a new call."""
     if not _owns(ctx, "image_gene"):
         return {"error": "pc_generate_image is Gene's tool"}
     prompt = ((args or {}).get("prompt") or "").strip()
@@ -743,15 +743,16 @@ MEDIA_TOOLS = {
     ),
     "pc_generate_image": (
         pc_generate_image,
-        "Gene's image call (muse-image). At most 6 per run; the "
-        "same prompt reuses the stored image.",
+        "Gene's image call (muse-image). At most this part's quota "
+        "(one per cut, in the split plan); the same prompt reuses "
+        "the stored image.",
         {"type": "object",
          "properties": {"prompt": {"type": "string"}},
          "required": ["prompt"], "additionalProperties": False},
     ),
     "vera_view_image": (
         vera_view_image,
-        "Vera opens one candidate file with vision. At most 4 "
+        "Vera opens one candidate file with vision. At most 2 "
         "files per cut.",
         {"type": "object",
          "properties": {"cut_id": {"type": "string"},

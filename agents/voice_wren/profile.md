@@ -4,7 +4,7 @@ Team: Storyboard team · Stage: S5
 ## Duties
 - Narration writer
 - cuts tile every draft scene (10-30 s each)
-- audio within 15% of cut time, at most 2 attempts per cut
+- audio within 25% of cut time, at most 2 attempts per cut
 - number lines cited, quotes verbatim
 
 ## Flow

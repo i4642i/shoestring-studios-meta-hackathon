@@ -34,8 +34,9 @@ docs/RESULT_JSON_DRAFT_EN.md).
   plan_seconds, engine: "kokoro"}) for every cut first -- batch
   as many cuts as you can in one step (ten or more is fine).
   Voice each cut ONCE. The picture follows the voice at
-  assembly, so a clip that runs longer or shorter than the plan
-  is fine; re-voice only when make_voice itself fails. Never
+  assembly, so a clip within ±25% of its planned seconds is
+  fine; re-voice only when make_voice fails or the writer
+  rejects the cut's length (see below). Never
   engine "stub" on a real order; keep each cut's voice_pc_ref +
   seconds for the report.
 - Read scenes, voice cuts, then write. Batch independent calls

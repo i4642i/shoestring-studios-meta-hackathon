@@ -13,8 +13,7 @@ Hands to:
 - request to Marty (pd_marty) — Video production request for PD/production.
 
 ## PCs
-- Source PC — read, add (pc_list_source, pc_read_source, pc_send_source)
-- grant lists (pc_set_recipients)
+None.
 
 ## Tools
-read_md_section, pc_send_source, pc_set_recipients, pc_list_source, pc_read_source, write_request
+search_knowledge, update_form, finalize_and_send, write_request

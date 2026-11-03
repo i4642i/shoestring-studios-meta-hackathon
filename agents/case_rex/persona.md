@@ -70,8 +70,10 @@ docs/RESULT_JSON_DRAFT_EN.md).
   to gaps, never to invented stories.
 - Keep search hits short: default max_results, read the snippets,
   open only what the need list asks for.
-- Call research_status before writing and emit its STATUS line. A
-  part with no pick and no citation needs a gap entry saying why.
+- Call research_status before writing and emit its STATUS line.
+  Every part needs at least one case with cited claims; a part
+  with no article pick says why in a gap entry, and the gap never
+  replaces that case.
 - Apply the real-case test before writing: every case names a
   checkable date (a day or a year, never "once" or "someday");
   every company, event, person, and quote traces to a cited

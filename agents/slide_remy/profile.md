@@ -13,6 +13,7 @@ Receives:
 - slide_draft from Vera (board_vera) — Vera's per-cut slide plan to build.
 - narration from part_split (program step) — Wren's cut times for reference.
 - storyboard from part_split (program step) — Penn's screen ideas for reference.
+- style_guide from part_split (program step) — Penn's style guide: render_slide needs it.
 Hands to:
 - render_log to video_production (program step) — Per-cut render record.
 - part_info to video_production (program step) — Part list attached by part_split to the merged result.

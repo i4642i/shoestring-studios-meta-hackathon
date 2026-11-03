@@ -150,11 +150,15 @@ def main():
             return 1
         if t == "final":
             break
-        ap_ = flow.approve_node(run_id, t)
-        log(run_dir, "approve %s ok=%s err=%s"
-            % (t, ap_.get("ok"), str(ap_.get("error", ""))[:200]))
-        if not ap_.get("ok"):
-            return 1
+        # A step also runs every unapproved node before the target
+        # (explain_cleo brings case_rex; photo_pia brings image_gene and
+        # anim_max). Approve all of them, or the next step runs them again.
+        for n in list(dict.fromkeys((got.get("ran") or []) + [t])):
+            ap_ = flow.approve_node(run_id, n)
+            log(run_dir, "approve %s ok=%s err=%s"
+                % (n, ap_.get("ok"), str(ap_.get("error", ""))[:200]))
+            if not ap_.get("ok"):
+                return 1
     ok = assemble(run_id)
     log(run_dir, "driver done ok=%s" % ok)
     return 0 if ok else 1

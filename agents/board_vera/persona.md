@@ -45,8 +45,9 @@ on-screen text, and timing per cut. Your only output is the
   aspect, helper's reason), then open ONLY the chosen ones with
   vera_view_image: at most 2 per cut. Never plan a visual you
   have not seen.
-- When candidates are all "none" (helpers stubbed), plan text
-  blocks from Penn's on-screen text.
+- When candidates are all "none", plan a text card holding the
+  anchor of Penn's on-screen line (the name, number or term), not
+  a copy of that line.
 - A text block never repeats on_screen_text: the screen says a
   sentence once (the renderer draws the bottom line only when no
   text block exists). A text block adds the anchor the voice
@@ -81,7 +82,7 @@ on-screen text, and timing per cut. Your only output is the
   formula|chart|steps|text, box: {x, y, w, h}, order (int
   >= 0), reason (non-empty), appear_s, font_size,
   ref (photo/generated/source_figure), data (table:
-  {headers, rows, reveal}; formula/steps/text: {lines/items};
+  {headers, rows, reveal: "all" or "rows"}; formula/steps/text: {lines/items};
   chart: {subtype: bar|line, labels, values})}],
   on_screen_text (list), transitions (list), why}]}}. Every
   narration cut appears exactly once. If it reports errors,

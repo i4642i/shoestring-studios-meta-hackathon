@@ -20,4 +20,4 @@ Hands to:
 - grant lists (pc_set_recipients)
 
 ## Tools
-read_md_section, pc_list_source, pc_read_source, open_ref, pc_search_theory, pc_pick_theory, pc_read_theory, write_concepts, research_status, pc_set_recipients
+pc_list_source, pc_read_source, open_ref, pc_search_theory, pc_pick_theory, pc_read_theory, write_concepts, research_status, pc_set_recipients

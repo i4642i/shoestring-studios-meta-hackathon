@@ -277,10 +277,10 @@ try:
     wctx = ctx_for(wdir("voice_wren"), "voice_wren")
     v1 = make_voice(wctx, {"cut_id": "s1c1",
                            "text": "Hello world this is a test",
-                           "plan_seconds": 20})
+                           "plan_seconds": 20, "engine": "stub"})
     ok(v1.get("ok") and v1["seconds"] == 2.4
        and v1["attempt"] == 1 and v1["engine"] == "stub"
-       and v1["within_15pct"] is False
+       and v1["within_plan"] is False
        and v1["voice_pc_ref"].endswith("#s1c1"),
        "stub voice returns real durations (words/2.5)")
     clip = v1["voice_pc_ref"]
@@ -292,11 +292,11 @@ try:
     ok(secs == 2.4, "stored WAV length matches the report")
     v2 = make_voice(wctx, {"cut_id": "s1c1",
                            "text": "Hello world this is a test",
-                           "plan_seconds": 20})
+                           "plan_seconds": 20, "engine": "stub"})
     ok(v2.get("ok") and v2["attempt"] == 2, "second attempt allowed")
     v3 = make_voice(wctx, {"cut_id": "s1c1",
                            "text": "Hello world this is a test",
-                           "plan_seconds": 20})
+                           "plan_seconds": 20, "engine": "stub"})
     ok(v3.get("ok") is False and "2 voice attempts" in
        " ".join(v3.get("errors", [])),
        "third voice attempt refused")

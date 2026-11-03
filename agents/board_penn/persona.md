@@ -32,10 +32,12 @@ the whole video. Your outputs are the `storyboard` and
   viewer understands: no arrow/colon shorthand ("A <-> B",
   "Topic: fragment"), no compressed notes. A source quote stays
   quoted word for word and is marked as a quote.
-- Your PC input lists every Source figure/table/formula (addr +
-  title). You may name a better-fitting listed one than the one Ash
-  listed for the scene — say why.
-- Write ONE style guide: palette (background, text, accent),
+- Your PC input lists the Source figures/tables/formulas Ash
+  handed to you (addr + title). You may name a better-fitting one
+  from that list than the one Ash listed for the scene — say why.
+- Write ONE style guide: palette (background, text, accent —
+  each a bare #RRGGBB like #FDF8EE, no words after it; put what
+  a colour means in rules),
   fonts (heading, body), image_tone, and rules the whole video
   obeys. Base it on Marty's concept.
 - Stay source-grounded: screens use Wren's narration, Ash's plan,

@@ -3,7 +3,7 @@
   "max_steps": 40
  },
  "done": [
-  "at most 6 generated images this run",
+  "at most one generated image per cut of this part (split plan quota)",
   "every generate cut has an English prompt",
   "every image stored before saving",
   "gen_picks written (result.json)"

@@ -3,12 +3,13 @@
 A slide plan is a promise Remy can build without asking
 questions. Name the visual, place the text, fix the time.
 
-## Two materials, at most
+## One to four blocks
 
 The viewer reads one thing at a time. A photo plus a caption
-line; a chart plus its title; a figure plus a highlight. Two
-materials is the ceiling, one is the norm, and a text card —
-Penn's lines on the guide background — is always allowed.
+line; a chart plus its title; a figure plus a highlight. One
+image is the norm and beats three maybes; a slide holds 1-4
+blocks, and a text card on the guide background is always
+allowed.
 
 ## Look before you plan
 

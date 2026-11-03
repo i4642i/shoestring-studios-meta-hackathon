@@ -26,9 +26,11 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Generate only for concept cuts: metaphors, overviews, scenes no
   camera could take. Photos, figures, formulas, and tables are
   other agents' work — decide "none" there.
-- One image per cut that has no photo or source figure: your
-  part's split plan carries the quota (one per such cut). Count
-  before you generate; past the quota the call is refused.
+- At most one image per cut: your part's split plan carries the
+  quota (its cut count). You run at the same time as Pia, so you
+  do not see her photos: judge from Penn's storyboard and Ash's
+  materials which cuts are concept cuts. Count before you
+  generate; past the quota the call is refused.
 - Work in batches: read the input once, then call
   pc_generate_image for five to seven cuts in ONE step, and keep
   batching until every generate cut has its image. One image per

@@ -635,16 +635,34 @@ try:
        "remy base row skipped, part_split expands it")
     good = json.loads(json.dumps(D))
     good["scenes"][0]["handoff"][0]["to"] = ["photo_pia"]
-    ok("Penn, Wren and/or Remy only" in " ".join(
+    ok("names only board_penn, voice_wren, slide_remy" in " ".join(
         write_storyboard_draft(
             actx, {"storyboard_draft": good}).get("errors", [])),
-       "handoff to pia refuses")
+       "handoff to pia refuses (no flow targets given)")
     bad = json.loads(json.dumps(D))
     bad["scenes"][0]["handoff"][0]["to"] = ["sales_sam"]
-    ok("Penn, Wren and/or Remy only" in " ".join(
+    ok("names only board_penn, voice_wren, slide_remy" in " ".join(
         write_storyboard_draft(
             actx, {"storyboard_draft": bad}).get("errors", [])),
-       "handoff to a stranger refuses")
+       "handoff to a stranger refuses (no flow targets given)")
+    # targets read from the flow lines (flow.handoff_targets)
+    from agents._frame import flow as _flowmod
+    tg = _flowmod.handoff_targets(_flowmod.load_flow("default"))
+    ok(tg == {"direct": ["board_penn", "voice_wren"],
+              "deferred": ["anim_max", "board_vera", "image_gene",
+                           "photo_pia", "slide_remy"]},
+       "default flow: Ash's handoff targets derived from its lines")
+    tctx = dict(actx, handoff_targets=tg)
+    ok(write_storyboard_draft(
+        tctx, {"storyboard_draft": good}).get("ok") is True,
+       "flow targets: handoff to pia accepted (deferred)")
+    ok(_pc.entry_access(_pc.load_entry_by_ref(sref),
+                        "photo_pia", "o7") is None,
+       "deferred target gets no row (part_split feeds clones)")
+    ok("names only board_penn, voice_wren" in " ".join(
+        write_storyboard_draft(
+            tctx, {"storyboard_draft": bad}).get("errors", [])),
+       "flow targets: a stranger is still refused")
     bad = json.loads(json.dumps(D))
     bad["scenes"][0]["end_s"] = 5
     bad["scenes"][1]["start_s"] = 5

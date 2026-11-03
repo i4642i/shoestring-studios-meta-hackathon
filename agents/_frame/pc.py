@@ -2032,7 +2032,8 @@ def twin_refs(entry, refs):
     return out
 
 
-def apply_handoff(order_id, draft, set_by="plan_ash", root=None):
+def apply_handoff(order_id, draft, set_by="plan_ash", root=None,
+                  targets=None):
     """Apply storyboard_draft scenes[].handoff[] as recipient rows
     (kind map + parts). Same lister rule as the tool: set_by must
     hold a row on each entry, and every handoff ref must sit inside
@@ -2086,15 +2087,30 @@ def apply_handoff(order_id, draft, set_by="plan_ash", root=None):
                                                    ref, set_by)}
             for a in tos:
                 base = a.split("@")[0]
-                if base in ("photo_pia", "image_gene",
-                            "anim_max", "board_vera"):
-                    return {"error": "scene %s: handoff to %r"
-                                     " must be voice_wren or board_penn"
-                                     " (video-team clones are listed"
-                                     " by part_split)"
-                                     % (sc.get("n", "?"), a)}
-                if base == "slide_remy":
-                    continue
+                if targets:
+                    # from the flow lines (flow.handoff_targets):
+                    # deferred agents get their rows from part_split
+                    if base in (targets.get("deferred") or []):
+                        continue
+                    if base not in (targets.get("direct") or []):
+                        return {"error": "scene %s: handoff to %r is "
+                                         "not a target of this flow "
+                                         "(%s)" % (
+                                             sc.get("n", "?"), a,
+                                             ", ".join(
+                                                 (targets.get("direct")
+                                                  or []) + (targets.get(
+                                                      "deferred") or [])))}
+                else:
+                    if base in ("photo_pia", "image_gene",
+                                "anim_max", "board_vera"):
+                        return {"error": "scene %s: handoff to %r"
+                                         " must be voice_wren or "
+                                         "board_penn (video-team clones"
+                                         " are listed by part_split)"
+                                         % (sc.get("n", "?"), a)}
+                    if base == "slide_remy":
+                        continue
                 if not os.path.isfile(os.path.join(
                         ROOT, "agents", a, "agent.json")):
                     return {"error": "scene %s: unknown agent %r"

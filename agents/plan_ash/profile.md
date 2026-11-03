@@ -2,10 +2,10 @@
 Team: Storyboard team · Stage: S3
 
 ## Duties
-- Your job: take the concept, structure (with time plan), concepts, and cases and write the scene plan — timed scenes, refs per scene, and the Penn/Wren handoff lists. Your only output is the `storyboard_draft` category (see docs/RESULT_JSON_DRAFT_EN.md).
+- Your job: take the concept, structure (with time plan), concepts, and cases and write the scene plan — timed scenes, refs per scene, and the per-scene handoff lists. Your only output is the `storyboard_draft` category (see docs/RESULT_JSON_DRAFT_EN.md).
 - scenes cover every structure part in order
 - scene times contiguous 0..total_s, parts within +-15%
-- every pick used or explained
+- every Cleo/Rex pick used or explained in unused_picks
 
 ## Flow
 Receives:

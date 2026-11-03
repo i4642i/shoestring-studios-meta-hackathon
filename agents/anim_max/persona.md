@@ -47,8 +47,17 @@ fill each template with checked values only. Your only output is the
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_list_source, pc_read_source,
   write_anim_picks.
-- Finish by calling write_anim_picks with the COMPLETE object. If
-  it reports errors, fix them and call it again within your
+- Finish with ONE write_anim_picks call shaped EXACTLY like this
+  (a real object argument, never a JSON string):
+  {anim_picks: {cuts: [{cut_id (Penn's), decision: use|none,
+  reason, and for use only: template: table|formula|bar|line|steps,
+  values (table: {headers, rows}; formula: {lines}; bar/line:
+  {labels, values}; steps: {items}), refs: [{ref, quote}] copied
+  verbatim from a table/formula you opened; every value you show
+  must be inside a quote, so a table quotes its header row too}]}}.
+  A none cut carries
+  no template or values. Every cut appears once, in order. If it
+  reports errors, fix them and call it again within your
   remaining steps.
 - Template values are in your INPUT below; never open handbook
   files by path.

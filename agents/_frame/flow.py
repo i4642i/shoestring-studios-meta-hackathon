@@ -34,6 +34,9 @@ ORDERS_DIR = os.path.join(ROOT, "orders")
 FINAL_NODE = "final"
 INTAKE_AGENT = "sales_sam"
 CODE_NODE = "video_production"
+# The agent whose handoff[].to targets are read from the flow lines
+# (handoff_targets); its validator and apply_handoff use that list.
+HANDOFF_PRODUCER = "plan_ash"
 PC_KINDS = ("source", "theory", "article", "image", "generated",
             "voice")
 CODE_REQUIRED = ["narration", "render_log"]
@@ -61,6 +64,43 @@ def _write_json(path, obj):
 
 
 _STATUS_LOCK = threading.Lock()
+
+
+def handoff_targets(flow, producer="plan_ash",
+                    category="storyboard_draft"):
+    """Who `producer` may name in handoff[].to, read from the flow's
+    lines instead of hard-coded names (the flow is the design).
+    direct: agents a `category` line from `producer` reaches; they get
+    recipient rows now. deferred: agents reached from the code nodes
+    that line feeds (part_split); part_split gives those clones their
+    rows, so a handoff to them is a recommendation, not a row."""
+    nodes = {n.get("id"): n for n in (flow or {}).get("nodes", [])
+             if isinstance(n, dict)}
+    code = {nid for nid, n in nodes.items() if n.get("code")}
+    lines = [ln for ln in (flow or {}).get("lines", [])
+             if isinstance(ln, dict)]
+
+    def carries(ln):
+        cats = ln.get("categories", "*")
+        return cats == "*" or category in (cats or [])
+
+    direct, via = [], []
+    for ln in lines:
+        if ln.get("from") != producer or not carries(ln):
+            continue
+        to = ln.get("to")
+        if to in code:
+            via.append(to)
+        elif to and to != FINAL_NODE and to not in direct:
+            direct.append(to)
+    deferred = []
+    for ln in lines:
+        to = ln.get("to")
+        if ln.get("from") in via and to and to not in code \
+                and to != FINAL_NODE and to not in direct \
+                and to not in deferred:
+            deferred.append(to)
+    return {"direct": direct, "deferred": sorted(deferred)}
 
 
 def load_flow(flow_id):
@@ -843,7 +883,8 @@ def _sam_stored_result(order_id):
 def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
                     run_agent_fn, emit, note=None,
                     want_summary=False, parallel=False,
-                    flow_settings=None, approved=None, only=None):
+                    flow_settings=None, approved=None, only=None,
+                    handoff=None):
     """Run one agent: gather transfers, run, expect result.json, check it,
     promote to checked, refresh the report. Sam reuses his stored
     order result when the chat already ran him (no double spend)."""
@@ -910,6 +951,10 @@ def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
              "flow_run_id": os.path.basename(run_dir),
              "answers": (order_brief or {}).get("answers", {}),
              "want_summary_ko": bool(want_summary)}
+    if handoff is not None:
+        # the BRIEF is shown to the model: handoff targets come from the
+        # flow lines, so the persona carries no names
+        brief["handoff_targets"] = handoff
     try:
         out = run_agent_fn(os.path.join(AGENTS, agent_id), adir, brief,
                            input_md)
@@ -1294,7 +1339,9 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
                 run_dir, nid, order_id, order["brief"],
                 incoming.get(nid, []), run_agent_fn, emit,
                 parallel=settings.get("parallel_parts", False),
-                flow_settings=settings)
+                flow_settings=settings,
+                handoff=(handoff_targets(flow, nid)
+                         if nid == HANDOFF_PRODUCER else None))
         if not step["ok"]:
             return fail(step["error"])
         completed.append(nid)
@@ -2068,7 +2115,9 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
                 flow_settings=settings, approved=approved,
                 only=(target if nid == base_target
                       and parts.parse_clone_id(target)[1]
-                      is not None else None))
+                      is not None else None),
+                handoff=(handoff_targets(flow, nid)
+                         if nid == HANDOFF_PRODUCER else None))
         if not step["ok"]:
             return fail(step["error"])
         ran.append(nid)

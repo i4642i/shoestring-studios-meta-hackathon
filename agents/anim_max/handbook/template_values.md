@@ -6,7 +6,7 @@ shape needs it — and each one is only as honest as its values.
 ## The four templates
 
 - bar/line chart: a table row or column over time or categories.
-- step arrows: a process in 3–6 steps, one arrow at a time.
+- step arrows: a process in 2–8 steps, one arrow at a time.
 - formula line by line: an equation revealed term by term, each
   term named.
 - table highlight: the source table itself, rows lit in reading

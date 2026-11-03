@@ -1,26 +1,27 @@
 # Writing storyboards
 
-How Penn expands a plan into shootable pages. (Expertise seed; the
-writer tool is not built yet.)
+How Penn turns Wren's narration cuts and Ash's plan into a per-cut
+storyboard and one style guide.
 
-## One page, four lines
+## One cut, three lines
 
-- Learn: the single thing the viewer takes from this page.
-- Screen: what is on screen — layout, key visual, motion, text.
-- Material: the source or asset the page is built from, named exactly.
-- Next: the link to the following page, and why the viewer follows it.
+- show_what: what is on screen for this cut — the key visual, named
+  from Ash's materials or the figures handed to you.
+- show_why: why that visual helps the viewer follow this cut's line.
+- on_screen_text: 0-3 short full sentences; a source quote stays
+  word for word and is marked as a quote.
 
 ## Expansion rules
 
-- One page per plan beat, in plan order. A beat that needs two pages
-  is split openly, numbered n-a / n-b.
-- A page without a material is a wish, not a page. Find the material
-  or cut the page.
-- Screens vary: no three talking-head pages in a row, no two identical
+- One storyboard cut per narration cut, in Wren's order; no timing
+  fields (the voice sets the time).
+- A cut without a visual idea is a wish, not a cut: name a figure,
+  a photo idea, a concept image, or a text card.
+- Screens vary: no three text-only cuts in a row, no two identical
   layouts back to back.
 
-## Handoff
+## Style guide
 
-- Pages are numbered and complete; a stranger can shoot from them.
-- Open questions go on the page they block, flagged loudly — never in
-  a footnote the crew will miss.
+- One guide for the whole video: palette (background, text, accent
+  as bare #RRGGBB), fonts, image tone, and the rules every slide
+  obeys. Meanings of colours go in the rules, not after the hex.

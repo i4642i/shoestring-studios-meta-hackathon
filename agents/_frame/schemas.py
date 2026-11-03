@@ -546,7 +546,7 @@ def render_cite_md(ref, quote):
     return "[%s](api/ref?ref=%s)" % (quote, _urlquote(ref, safe=""))
 
 
-def validate_storyboard_draft(obj, struct):
+def validate_storyboard_draft(obj, struct, targets=None):
     """Ash's scene plan: shape + times vs Marty's structure (with
     duration). PC-side rules (verbatim, readability, pick coverage)
     live in write_storyboard_draft. Returns [errors]."""
@@ -657,16 +657,21 @@ def validate_storyboard_draft(obj, struct):
                                       % (where, j))
                     elif key == "handoff":
                         tos = it.get("to")
+                        if targets:
+                            # from the flow lines (flow.handoff_targets)
+                            ok_to = (list(targets.get("direct") or [])
+                                     + list(targets.get("deferred") or []))
+                        else:
+                            ok_to = ["board_penn", "voice_wren",
+                                     "slide_remy"]
                         if not isinstance(tos, list) or not tos \
-                                or any(t not in ("board_penn",
-                                                 "voice_wren",
-                                                 "slide_remy")
-                                       for t in tos):
-                            errors.append("%s.handoff[%d].to names "
-                                          "Penn, Wren and/or Remy only"
-                                          " (rows land on their clones"
-                                          " through part_split)"
-                                          % (where, j))
+                                or any(t not in ok_to for t in tos):
+                            errors.append(
+                                "%s.handoff[%d].to names only %s "
+                                "(BRIEF.handoff_targets: direct get "
+                                "rows now, deferred reach their clones "
+                                "through part_split)"
+                                % (where, j, ", ".join(ok_to)))
         if isinstance(total, int) and prev_end != total:
             errors.append("scenes end at %d, not total_s %d"
                           % (prev_end, total))
@@ -757,7 +762,7 @@ def validate_storyboard(obj, narration):
 
 def validate_narration(obj, draft):
     """Wren's lines v2: cuts tile their scenes (10-30 s), words
-    counted, audio within ±15% of the cut, attempts 1-2. Citation
+    counted, audio within ±25% (TTS_FIT) of the cut, attempts 1-2. Citation
     rules live in write_narration. Returns [errors]."""
     errors = []
     if not isinstance(obj, dict):
@@ -1155,7 +1160,8 @@ def _license_core(lic):
 PICK_LICENSES = ("cc0", "pdm", "by", "by-sa")
 LAYOUT_FIELDS = ("position", "size", "font_size", "alignment",
                  "crop", "zoom", "padding", "accent", "x", "y",
-                 "width", "height", "font")
+                 "width", "height", "font",
+                 "w", "h", "align")  # render_slide override keys
 
 
 def _cut_id_map(cuts):
@@ -1332,11 +1338,11 @@ def validate_gen_picks(obj, storyboard):
 ANIM_TEMPLATES = ("bar", "line", "table", "formula", "steps")
 
 
-_ANIM_EXAMPLE = ('valid shape e.g. {"template": "steps", "values": '
-                 '{"items": ["First the desk logs the claim", "Then '
-                 'the reviewer checks the table"]}, "refs": [{"ref": '
-                 '"pc://source/<id>#s1.2/p7", "quote": "<verbatim '
-                 'paragraph holding both sentences>"}], "reason": '
+_ANIM_EXAMPLE = ('valid shape e.g. {"template": "table", "values": '
+                 '{"headers": ["#", "Pitfall"], "rows": [["10", '
+                 '"Backtest overfitting"]]}, "refs": [{"ref": '
+                 '"pc://source/<id>#tab1.5.1", "quote": "<verbatim '
+                 'row or cell text>"}], "reason": '
                  '"<why this cut needs motion>"}')
 
 

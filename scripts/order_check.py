@@ -500,7 +500,7 @@ ok(_tools._agents_root(
    "recipient check falls back when agent_dir is bogus")
 ok('"agent_dir": agent_dir' in _srv,
    "server-side crew listing passes its agent dir")
-ok("self._json(200, bad)" in _srv and "CHAT_UNREADABLE" in _srv,
+ok("return (200, bad)" in _srv and "CHAT_UNREADABLE" in _srv,
    "a failed chat accept still answers 200 so Sam speaks + retry")
 
 

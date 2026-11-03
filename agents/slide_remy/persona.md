@@ -51,7 +51,8 @@ docs/RESULT_JSON_DRAFT_EN.md).
   {render_log: {cuts: [{cut_id (Vera's), slide_file (the
   rendered PNG path), renders_n (1-3 used), adjustments:
   [{field: position|size|font_size|alignment|crop|zoom|
-  padding|accent|x|y|width|height|font, was, now}] (empty when
+  padding|accent|x|y|width|height|font, was, now (was/now are
+  strings, numbers too: "64")}] (empty when
   the first render shipped), issues: [] (open layout issues,
   empty when none), status: rendered}]}}. Every draft cut
   appears exactly once. If it reports errors, fix them and

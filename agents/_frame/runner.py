@@ -346,7 +346,8 @@ def run(agent_dir, run_dir, brief, input_md):
            "producer": brief_obj.get("clone_id") or agent["id"],
            "order_id": order_id, "run_id": run_id,
            "gene_quota": brief_obj.get("gene_quota"),
-           "flow_settings": brief_obj.get("flow_settings", {})}
+           "flow_settings": brief_obj.get("flow_settings", {}),
+           "handoff_targets": brief_obj.get("handoff_targets")}
     messages = [
         {"role": "system", "content": system_base},
         {"role": "user", "content":
@@ -356,12 +357,12 @@ def run(agent_dir, run_dir, brief, input_md):
            "Finish by calling %s with the complete output object." % writer},
     ]
     # A fresh attempt of this node starts with clean per-attempt
-    # counters (voice attempts, image queries, render counts, views,
-    # search breaker, download pacing). Counters left by an earlier
+    # counters (voice attempts, image queries, generated images, render
+    # counts, views, search breaker, download pacing). Counters left by an earlier
     # attempt otherwise refuse the tools ("already used 2 attempts"),
     # the runner closes the tool, and the re-run dies.
     for name in ("voice_attempts.json", "image_queries.json",
-                 "render_counts.json", "vera_views.json",
+                 "gen_images.json", "render_counts.json", "vera_views.json",
                  "openverse_dead.json", "last_pick_download.json"):
         try:
             os.remove(os.path.join(run_dir, name))
@@ -443,6 +444,10 @@ def run(agent_dir, run_dir, brief, input_md):
             return {"ok": False, "events": events, "usage": total,
                     "reason": "model stopped without tool call"}
         finished = False
+        # Notes for the model wait until every tool result of this turn
+        # is in: a user message between tool results of one assistant
+        # turn is refused by the model API (HTTP 400).
+        notes = []
         for call in calls:
             name = call["function"]["name"]
             try:
@@ -480,7 +485,7 @@ def run(agent_dir, run_dir, brief, input_md):
             if fails[name] >= MAX_TOOL_FAILS and name in play:
                 del play[name]
                 emit({"ev": "tool_closed", "step": step, "tool": name})
-                messages.append({
+                notes.append({
                     "role": "user", "content":
                     "Tool %s failed %d times in a row and is now closed "
                     "for this run. Finish with what you have." % (name, MAX_TOOL_FAILS)})
@@ -502,6 +507,7 @@ def run(agent_dir, run_dir, brief, input_md):
                           "usage": total})
                     return {"ok": False, "events": events, "usage": total,
                             "reason": _exhaust_reason(events)}
+        messages.extend(notes)
         # Step-budget steering (Cleo on ch02 spent 27 steps on one
         # open_ref each and never wrote): tell the model how many
         # steps remain, and break a one-call-per-step streak.

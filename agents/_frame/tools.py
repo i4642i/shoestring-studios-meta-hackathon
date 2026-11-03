@@ -26,7 +26,7 @@ from . import pdfingest
 from . import readlog
 from . import results
 from .media import MEDIA_TOOLS
-from .schemas import (VOICE_MAX_ATTEMPTS, _license_core,
+from .schemas import (TTS_FIT, VOICE_MAX_ATTEMPTS, _license_core,
                       list_headings,
                       validate_anim_picks, validate_cases,
                       validate_concept, validate_concepts,
@@ -645,7 +645,8 @@ def write_storyboard_draft(ctx, args):
     if not struct:
         return {"ok": False, "errors": [
             "no structure received in this run"]}
-    errors = validate_storyboard_draft(obj, struct)
+    errors = validate_storyboard_draft(obj, struct,
+                                       ctx.get("handoff_targets"))
     if errors:
         return {"ok": False, "errors": errors +
                 _omitted_hints(ctx, errors)}
@@ -713,7 +714,8 @@ def write_storyboard_draft(ctx, args):
     if errors:
         return {"ok": False, "errors": errors}
     applied = pc.apply_handoff(order_id, obj, set_by=producer or
-                               "plan_ash")
+                               "plan_ash",
+                               targets=ctx.get("handoff_targets"))
     if "error" in applied:
         return {"ok": False, "errors": [applied["error"]]}
     return _save_category(ctx, "storyboard_draft", obj)
@@ -2558,7 +2560,9 @@ def make_voice(ctx, args):
             or plan <= 0:
         return {"ok": False, "errors": [
             "call with {cut_id, text, plan_seconds}"]}
-    engine = (args or {}).get("engine", "stub")
+    # kokoro by default: a forgotten engine must not ship silence
+    # (stub stays for tests, asked for explicitly)
+    engine = (args or {}).get("engine", "kokoro")
     if engine not in ("stub", "kokoro"):
         return {"ok": False, "errors": [
             "engine must be stub or kokoro"]}
@@ -2582,7 +2586,7 @@ def make_voice(ctx, args):
     _counter_save(attp, attempts)
     return {"ok": True, "voice_pc_ref": saved["ref"],
             "seconds": seconds, "attempt": n,
-            "within_15pct": abs(seconds - plan) <= plan * 0.15,
+            "within_plan": abs(seconds - plan) <= plan * TTS_FIT,
             "engine": engine}
 
 
@@ -2885,7 +2889,7 @@ TOOLS = {
         make_voice,
         "Synthesize one cut's text into the Voice PC (Wren only). "
         "Returns the voice ref and the real duration. Max 2 "
-        "attempts per cut; engine stub (default) or kokoro.",
+        "attempts per cut; engine kokoro (default) or stub (tests only).",
         {"type": "object",
          "properties": {"cut_id": {"type": "string"},
                         "text": {"type": "string"},

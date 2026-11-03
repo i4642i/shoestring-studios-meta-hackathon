@@ -17,6 +17,8 @@ Hands to:
 
 ## PCs
 - Source PC — read (pc_list_source, pc_read_source, open_ref)
+- Theory PC — read (pc_read_theory, open_ref)
+- Article PC — read (pc_read_article, open_ref)
 
 ## Tools
-read_md_section, open_ref, pc_list_source, pc_read_source, write_anim_picks
+read_md_section, open_ref, pc_list_source, pc_read_source, pc_read_theory, pc_read_article, write_anim_picks

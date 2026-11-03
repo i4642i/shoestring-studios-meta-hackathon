@@ -1,12 +1,12 @@
 {
  "bounds": {
-  "max_steps": 14
+  "max_steps": 18
  },
  "done": [
   "scenes cover every structure part in order",
   "scene times contiguous 0..total_s, parts within +-15%",
-  "every pick used or explained",
-  "handoff lists Penn/Wren per scene",
+  "every Cleo/Rex pick used or explained in unused_picks",
+  "handoff lists name only BRIEF.handoff_targets per scene",
   "storyboard_draft written (result.json)"
  ],
  "frame_version": 1,

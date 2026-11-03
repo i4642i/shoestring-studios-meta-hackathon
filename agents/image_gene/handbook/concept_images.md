@@ -19,8 +19,8 @@ light, and the style words from Penn's image tone ("flat
 vector", "soft paper texture", "muted blues"). Name what to
 avoid at the end ("no text, no watermark").
 
-## Six per run
+## One per cut, at most
 
-Six images cost six cents and six render slots. Spend them on
+Each image costs a cent and a render slot. Spend them on
 the cuts where the viewer would otherwise stare at words alone.
 When in doubt between two cuts, illustrate the harder idea.

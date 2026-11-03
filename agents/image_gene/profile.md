@@ -3,7 +3,7 @@ Team: Video team · Stage: S7
 
 ## Duties
 - Image generator
-- at most 6 generated images this run
+- at most one generated image per cut of this part (split plan quota)
 - every generate cut has an English prompt
 - every image stored before saving
 
@@ -16,8 +16,7 @@ Hands to:
 - gen_picks to Vera (board_vera) — Per-cut generated image or none.
 
 ## PCs
-- Source PC — read (pc_read_source, open_ref)
 - Generated Image PC — read, add (pc_generate_image, open_ref)
 
 ## Tools
-read_md_section, open_ref, pc_read_source, pc_generate_image, write_gen_picks
+read_md_section, open_ref, pc_generate_image, write_gen_picks

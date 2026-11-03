@@ -64,9 +64,10 @@ category (see docs/RESULT_JSON_DRAFT_EN.md).
   linked; citations carry refs, never URLs.
 - Keep search hits short: default max_results, read the snippets,
   open only what the need list asks for.
-- Call research_status before writing and emit its STATUS line. A
-  part with no pick and no citation needs a gap entry saying why
-  the source alone sufficed.
+- Call research_status before writing and emit its STATUS line.
+  Every part needs at least one claim with a verbatim citation
+  (the source itself counts); a part with no theory pick says why
+  in a gap entry, and the gap never replaces that citation.
 - Apply the easy test before writing: a curious adult can follow
   every explanation; every jargon word is explained on the spot; an
   analogy or concrete example is present; the core idea works

@@ -630,8 +630,10 @@ try:
          "prompt": "City at dusk", "reason": "b"}],
         "images": [
             {"cut_id": "s1c1", "file": "gen.png",
+             "ref": "pc://generated/0123456789ab",
              "prompt": "Lake at dawn", "reused": False},
             {"cut_id": "s1c2", "file": "gen.png",
+             "ref": "pc://generated/0123456789ac",
              "prompt": "City at dusk", "reused": False}]}
     ctx1 = dict(ctx, gene_quota=1)
     r = _tools.write_gen_picks(ctx1, {"gen_picks": over})
@@ -643,6 +645,7 @@ try:
         {"cut_id": "s1c2", "decision": "none"}],
         "images": [
             {"cut_id": "s1c1", "file": "gen.png",
+             "ref": "pc://generated/0123456789ab",
              "prompt": "Lake at dawn", "reused": False}]}
     r = _tools.write_gen_picks(ctx, {"gen_picks": mixed})
     ok(r.get("ok"), "writer accepts own cuts within quota")
