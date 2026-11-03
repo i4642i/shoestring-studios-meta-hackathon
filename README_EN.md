@@ -100,9 +100,11 @@ installed versions/licenses):
 | KaTeX | Formula rendering on slides |
 | Inter (Google Fonts) | Slide typeface |
 | three.js, Kenney assets (`vendor/`) | 3D studio office |
-| Tavily API | Web research for Cleo/Rex |
-| Wikimedia Commons, Openverse APIs | Licensed photo search for Pia |
-| Meta Model API (`muse-spark-1.3`) / Baseten (`meta-models/*`) | Every crew agent's model calls (Meta direct since Baseten credits ran out 2026-11-03) |
+| Tavily API | Web research for Cleo/Rex (optional) |
+| Wikimedia Commons, Openverse APIs | Licensed photo search for Pia (per-picture licenses; non-commercial refused) |
+| Meta Model API: Muse Spark 1.3 (crew + knowledge build), Muse Image 1.0 (Gene) / Baseten (optional) | Model calls (Meta direct since Baseten credits ran out 2026-11-03) |
+
+GPL note: phonemizer-fork and eSpeak NG are GPL-3.0-or-later, pip-installed only, never bundled in this repository.
 
 `vendor/`, `node_modules/`, `.venv/`, `storage/_pc/`, `orders/`,
 `runs/`, and secrets (`.env`, `shk/`) are either third-party,

@@ -305,6 +305,24 @@
    "group": "Video"
   },
   {
+   "name": "Inter (via @remotion/google-fonts)",
+   "version": "@remotion/google-fonts 4.0.539",
+   "license": "SIL Open Font License 1.1 (font); package under the Remotion license",
+   "group": "Video",
+   "credit": "Inter by Rasmus Andersson.",
+   "blurb": "Slide typeface (Inter Regular / SemiBold), loaded at render time by the Remotion composition. Installed via npm, never bundled.",
+   "links": [
+    {
+     "label": "Google Fonts",
+     "url": "https://fonts.google.com/specimen/Inter"
+    },
+    {
+     "label": "OFL",
+     "url": "https://openfontlicense.org/"
+    }
+   ]
+  },
+  {
    "name": "Kokoro",
    "version": "0.9.4",
    "license": "Apache-2.0",

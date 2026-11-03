@@ -59,11 +59,22 @@ Our code imports pdfplumber, lightrag-hku, sentence-transformers, numpy and Pill
 | Remotion | 4.0.539 (via npm, never bundled) | PROPRIETARY Free License (free for ≤3 people) | cut-slide PNG stills |
 | KaTeX | 0.19.1 (via npm, never bundled) | MIT | formula rendering in the Remotion composition |
 | React (+ react-dom) | 19.2.3 (via npm, never bundled) | MIT | UI library behind the Remotion composition |
+| @remotion/google-fonts → Inter | 4.0.539 (via npm, never bundled) | Remotion license (package); SIL OFL 1.1 (Inter font) | slide typeface |
+| kokoro | 0.9.4 | Apache-2.0 | Wren's local text-to-speech voice |
+| Kokoro-82M (voice model) | downloaded on first use | Apache-2.0 | voice model weights |
+| misaki | 0.9.4 | Apache-2.0 | text-to-phoneme behind Kokoro |
+| spaCy + en_core_web_sm | 3.8.18 / 3.8.0 | MIT | English sentence analysis behind misaki |
+| phonemizer-fork | 3.3.2 | GPL-3.0-or-later | phonemizer behind misaki's fallback (pip-installed, not bundled) |
+| espeakng-loader (with eSpeak NG) | 0.2.4 | eSpeak NG GPL-3.0-or-later; loader license not stated in its metadata | words Kokoro cannot spell (pip-installed, not bundled) |
+| soundfile | 0.14.0 | BSD-3-Clause | WAV output |
+| imageio-ffmpeg (with FFmpeg) | 0.7.0 | BSD-2-Clause; FFmpeg binary LGPL/GPL depending on its build | MP4 assembly when no system ffmpeg |
 
 Models (licenses read from their Hugging Face model cards): BAAI/bge-m3 (MIT; both profiles — on the Jetson server or on this PC through sentence-transformers).
 
 Bundled assets: Three.js 0.186.1 (MIT, vendored with its license in `vendor/three/`) and Kenney Mini Characters + Furniture Kit (CC0, no attribution required).
 
-External services used at runtime (not open source): Meta Model API (Muse Spark — LLM for non-`meta-models/*` models), Baseten (OpenAI-compatible hosting for `meta-models/muse-spark-open-1026` — optional, only when an employee is switched to that model), Tavily (basic web search + extract for Cleo/Rex picks).
+External services used at runtime (not open source): Meta Model API — Muse Spark 1.3 for every crew agent and the knowledge-build worker, Muse Image 1.0 for Gene's pictures (needs `MODEL_API_KEY`); Tavily (web search + extract for Cleo/Rex picks, optional, `TAVILY_API_KEY`); Wikimedia Commons and Openverse (Pia's photo search — each picture keeps its own license, stored with its source page link; non-commercial licenses are refused); Baseten (optional hosting for `meta-models/muse-spark-open-1026`, not used by default).
+
+GPL note: phonemizer-fork and eSpeak NG (inside espeakng-loader) are GPL-3.0-or-later. They are installed by pip from `requirements-video.txt` and are never copied into this repository.
 
 Per-item credits with links live in `data/third_party.json` (source of truth; `THIRD_PARTY.md` and the About page card are generated from it by `scripts/gen_credits.py`).
