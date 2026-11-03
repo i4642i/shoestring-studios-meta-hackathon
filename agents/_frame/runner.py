@@ -18,6 +18,39 @@ LLM_MODELS = ["meta-models/muse-spark-open-1026", "muse-spark-1.3",
 MAX_JSON_RETRIES = 5  # failed writer calls per RUN (errors go back with tools on)
 MAX_TOOL_FAILS = 5  # consecutive failures before a tool is closed for the run
 CHAT_TRANSPORT_RETRIES = 2  # transient net failures retried per model call
+MAX_NO_CALL_NUDGES = 2  # text-only replies answered with "use a tool" per run
+
+_TEXT_INVOKE_RE = re.compile(
+    r"<(?:[\w-]+:)?invoke\s+name=\"([^\"]+)\"\s*>(.*?)"
+    r"(?:</(?:[\w-]+:)?invoke>|\Z)", re.S)
+_TEXT_PARAM_RE = re.compile(
+    r"<(?:[\w-]+:)?parameter\s+name=\"([^\"]+)\"\s*>(.*?)"
+    r"(?:</(?:[\w-]+:)?parameter>|(?=<(?:[\w-]+:)?parameter\s)|\Z)", re.S)
+
+
+def _text_tool_calls(text, play):
+    """Tool calls the model wrote as text instead of using the tool
+    interface: `<ns:invoke name="default.write_cases"><ns:parameter
+    name="cases">{...}</ns:parameter></ns:invoke>`. Returns OpenAI-shaped
+    calls for tools in `play` (a `default.` style prefix is dropped);
+    a parameter value that parses as JSON is passed as JSON."""
+    out = []
+    for i, m in enumerate(_TEXT_INVOKE_RE.finditer(text or "")):
+        name = m.group(1).strip().split(".")[-1]
+        if name not in play:
+            continue
+        args = {}
+        for p in _TEXT_PARAM_RE.finditer(m.group(2)):
+            raw = p.group(2).strip()
+            try:
+                args[p.group(1).strip()] = json.loads(raw)
+            except ValueError:
+                args[p.group(1).strip()] = raw
+        out.append({"id": "text_call_%d" % (i + 1), "type": "function",
+                    "function": {"name": name,
+                                 "arguments": json.dumps(
+                                     args, ensure_ascii=False)}})
+    return out
 CHAT_RETRY_SLEEP = 15  # seconds between transport retries (x attempt)
 
 DATA_TAG = ("<external-data tool=\"%s\">\n"
@@ -339,6 +372,7 @@ def run(agent_dir, run_dir, brief, input_md):
     staged_seen = 0
     writer_fails = 0
     single_streak = 0
+    no_call_nudges = 0
     for step in range(1, agent["bounds"]["max_steps"] + 1):
         oai = [{"type": "function",
                 "function": {"name": n, "description": d, "parameters": s}}
@@ -376,17 +410,38 @@ def run(agent_dir, run_dir, brief, input_md):
         total["prompt"] += usage.get("prompt_tokens", 0)
         total["completion"] += usage.get("completion_tokens", 0)
         msg = resp["choices"][0]["message"]
-        messages.append(msg)
         calls = msg.get("tool_calls") or []
+        if not calls:
+            # The model sometimes writes the call into its text
+            # (`<x:invoke name="default.write_cases"><x:parameter ...>`)
+            # instead of the tool interface (Rex, 11-03, a finished
+            # report). Run those calls; ask once more when there is none.
+            calls = _text_tool_calls(msg.get("content") or "", play)
+            if calls:
+                msg = dict(msg, content=None, tool_calls=calls)
+                emit({"ev": "text_tool_calls", "step": step,
+                      "tools": [c["function"]["name"] for c in calls]})
+        messages.append(msg)
         emit({"ev": "llm", "step": step,
               "tool_calls": [c["function"]["name"] for c in calls],
               "usage": usage})
         if not calls:
             _obj, verdict = parse_json_answer(msg.get("content") or "")
+            if no_call_nudges < MAX_NO_CALL_NUDGES:
+                no_call_nudges += 1
+                emit({"ev": "no_call_nudge", "step": step,
+                      "text": (msg.get("content") or "")[:300]})
+                messages.append({
+                    "role": "user", "content":
+                    "You answered without a tool call. Use the tool "
+                    "interface: call the next tool you need, or call %s "
+                    "with the complete output object." % writer})
+                continue
             emit({"ev": "run_fail", "reason": "model stopped without tool call",
                   "parse": verdict,
                   "text": (msg.get("content") or "")[:300]})
-            return {"ok": False, "events": events, "usage": total}
+            return {"ok": False, "events": events, "usage": total,
+                    "reason": "model stopped without tool call"}
         finished = False
         for call in calls:
             name = call["function"]["name"]
