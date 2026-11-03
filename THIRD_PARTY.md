@@ -27,8 +27,8 @@ Built on free software (open source except the Remotion slide renderer, which is
 | tiktoken | 0.14.0 | MIT | Token counting behind LightRAG. | [PyPI](https://pypi.org/project/tiktoken/) |
 | scikit-learn | 1.9.1 | BSD-3-Clause | Behind sentence-transformers. | [PyPI](https://pypi.org/project/scikit-learn/) |
 | huggingface_hub | 2.3.0 | Apache-2.0 | Model download behind sentence-transformers/transformers. | [PyPI](https://pypi.org/project/huggingface-hub/) |
-| all-MiniLM-L6-v2 | — | Apache-2.0 | Local embedding model for the LightRAG index (384-dim vectors, CPU). License read from its Hugging Face model card. | [Hugging Face](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) |
-| BAAI/bge-m3 | — | MIT | Multilingual embedding model served by the Jetson profile over LAN. License read from its Hugging Face model card. | [Hugging Face](https://huggingface.co/BAAI/bge-m3) |
+| BAAI/bge-m3 | — | MIT | Multilingual embedding model for the LightRAG index (1024-dim vectors): on this PC through sentence-transformers (local profile, CPU) or served by our Jetson LAN server (jetson profile). License read from its Hugging Face model card. | [Hugging Face](https://huggingface.co/BAAI/bge-m3) |
+| all-MiniLM-L6-v2 | — | Apache-2.0 | Optional lightweight embedding model (384-dim, CPU) for small machines: the "Local light" profile on the Settings tab; also served by scripts/embed_server.py. License read from its Hugging Face model card. | [Hugging Face](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) |
 
 ## Video
 

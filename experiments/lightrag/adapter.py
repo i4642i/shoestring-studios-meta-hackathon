@@ -6,7 +6,8 @@ Config: experiments/lightrag/config.json (LLM + per-profile embeddings).
 Storage (gitignored): experiments/lightrag/storage/<eid>/<profile>/.
 LLM calls are logged with chars/seconds to llm_log.jsonl next to the storage.
 
-Embedding profiles ("jetson" default, "local"): one index per profile,
+Embedding profiles ("local" default: bge-m3 on this PC; "local_lite":
+MiniLM on this PC; "jetson": bge-m3 on the LAN server): one index per profile,
 never mixed. Active profile: data/settings.json wins, .env EMBED_PROFILE
 is the default. The Jetson server only computes embeddings (read-only
 API use); the token lives in .env EMBED_REMOTE_TOKEN and is never
@@ -28,7 +29,7 @@ os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME",
                       os.path.join(HERE, "models"))
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-PROFILES = ("local", "jetson")
+PROFILES = ("local", "local_lite", "jetson")
 QUERY_MODES = ("local", "global", "hybrid", "naive", "mix")
 DEFAULT_JETSON_URL = "http://192.168.0.4:8790"
 TOP_K_MIN, TOP_K_MAX = 5, 100
@@ -54,7 +55,7 @@ def clean_settings(d):
     if "embed_profile" in d:
         v = str(d["embed_profile"] or "").strip().lower()
         if v not in PROFILES:
-            raise RuntimeError("profile must be local|jetson")
+            raise RuntimeError("profile must be local|local_lite|jetson")
         out["embed_profile"] = v
     if "jetson_url" in d:
         v = str(d["jetson_url"] or "").strip().rstrip("/")
@@ -82,7 +83,7 @@ def clean_settings(d):
             raise RuntimeError("top_k must be %d..%d"
                                % (TOP_K_MIN, TOP_K_MAX))
         out["top_k"] = v
-    for k in ("chunk_local", "chunk_jetson"):
+    for k in ("chunk_local", "chunk_local_lite", "chunk_jetson"):
         if k in d:
             try:
                 v = int(d[k])
@@ -154,11 +155,12 @@ def embed_settings():
             pass
     env = _read_dotenv()
     prof = (prof or env.get("EMBED_PROFILE")
-            or os.environ.get("EMBED_PROFILE") or "jetson")
+            or os.environ.get("EMBED_PROFILE") or "local")
     prof = prof.strip().lower()
     if prof not in PROFILES:
         raise RuntimeError(
-            "unknown embedding profile: %r (want local|jetson)" % prof)
+            "unknown embedding profile: %r (want local|local_lite|jetson)"
+            % prof)
     url = (url or env.get("JETSON_EMBED_URL")
            or os.environ.get("JETSON_EMBED_URL")
            or load_config().get("jetson_url")
@@ -171,7 +173,8 @@ def profile_config(profile=None):
     prof = (profile or embed_settings()["profile"]).strip().lower()
     if prof not in PROFILES:
         raise RuntimeError(
-            "unknown embedding profile: %r (want local|jetson)" % prof)
+            "unknown embedding profile: %r (want local|local_lite|jetson)"
+            % prof)
     pcfg = (cfg.get("profiles") or {}).get(prof) or {}
     if not pcfg.get("model") or not pcfg.get("dim"):
         raise RuntimeError(
@@ -236,7 +239,7 @@ def resolved_settings():
     try:
         st = embed_settings()
     except RuntimeError as e:
-        st = {"profile": "jetson", "jetson_url": DEFAULT_JETSON_URL}
+        st = {"profile": "local", "jetson_url": DEFAULT_JETSON_URL}
         probs.append(str(e))
     try:
         lm = llm_settings()["model"]
@@ -249,7 +252,7 @@ def resolved_settings():
         q = {"mode": "hybrid", "top_k": 40}
         probs.append(str(e))
     chunks = {}
-    for p, fb in (("local", 256), ("jetson", 512)):
+    for p, fb in (("local", 512), ("local_lite", 256), ("jetson", 512)):
         try:
             chunks[p] = profile_config(p)["chunk_size"]
         except RuntimeError as e:
@@ -263,6 +266,7 @@ def resolved_settings():
     return {"profile": st["profile"], "jetson_url": st["jetson_url"],
             "llm_model": lm, "query_mode": q["mode"], "top_k": q["top_k"],
             "chunk_local": chunks["local"],
+            "chunk_local_lite": chunks["local_lite"],
             "chunk_jetson": chunks["jetson"],
             "office_fps": fps, "problems": probs}
 

@@ -394,8 +394,8 @@ class Handler(BaseHTTPRequestHandler):
             "appearance": self._appearance(path),
             "handbook": hb, "graph": graph.get_status(path),
             "available_tools": available,
-            "available_models": ["meta-models/muse-spark-open-1026",
-                                 "muse-spark-1.3", "muse-spark-1.2",
+            "available_models": ["muse-spark-1.3",
+                                 "meta-models/muse-spark-open-1026", "muse-spark-1.2",
                                  "muse-spark-1.1", "muse-wonder-1.0"],
         })
 
@@ -528,7 +528,7 @@ class Handler(BaseHTTPRequestHandler):
         path = os.path.join(ROOT, "agents", eid)
         if os.path.exists(path):
             return self._json(409, {"error": "employee exists: " + eid})
-        model = body.get("model") or "meta-models/muse-spark-open-1026"
+        model = body.get("model") or "muse-spark-1.3"
         os.makedirs(os.path.join(path, "handbook"))
         agent = {"frame_version": 1, "id": eid, "name": name, "title": title,
                  "team": team,
@@ -1049,7 +1049,7 @@ class Handler(BaseHTTPRequestHandler):
                         entries.append(doc_id)
             pcs_out[pcname] = {
                 prof: self._pc_profile_cell(pcname, prof, entries)
-                for prof in ("local", "jetson")}
+                for prof in ("local", "local_lite", "jetson")}
         mem_out = []
         rdir = flows.RUNS_DIR
         if os.path.isdir(rdir):
@@ -1079,6 +1079,7 @@ class Handler(BaseHTTPRequestHandler):
         out = {"profile": eff["profile"], "jetson_url": eff["jetson_url"],
                "llm_model": eff["llm_model"], "query_mode": eff["query_mode"],
                "top_k": eff["top_k"], "chunk_local": eff["chunk_local"],
+               "chunk_local_lite": eff["chunk_local_lite"],
                "chunk_jetson": eff["chunk_jetson"],
                "office_fps": eff["office_fps"],
                "llm_models": [{"model": m,
@@ -2754,7 +2755,7 @@ class Handler(BaseHTTPRequestHandler):
                             and job.poll() is None,
                             "index": {
                                 p: self._pc_indexed(p, pcname, doc_id)
-                                for p in ("local", "jetson")}})
+                                for p in ("local", "local_lite", "jetson")}})
         out.sort(key=lambda r: r["parsed_at"], reverse=True)
         return self._json(200, {"entries": out})
 
@@ -2796,7 +2797,7 @@ class Handler(BaseHTTPRequestHandler):
         job = _PC_JOBS.get(doc_id)
         entry["building"] = job is not None and job.poll() is None
         entry["index"] = {p: self._pc_indexed(p, pcname, doc_id)
-                          for p in ("local", "jetson")}
+                          for p in ("local", "local_lite", "jetson")}
         return self._json(200, {"entry": entry, "map": m})
 
     def _api_pc_entry_picks(self, pcname, doc_id):
@@ -3006,7 +3007,7 @@ class Handler(BaseHTTPRequestHandler):
             row["size_bytes"] = self._pc_size(pid)
             row["profile"] = prof
             row["index"] = {p: self._pc_index_info(pid, p)
-                            for p in ("local", "jetson")}
+                            for p in ("local", "local_lite", "jetson")}
             out.append(row)
         return self._json(200, {"pcs": out})
 

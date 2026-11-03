@@ -1214,7 +1214,7 @@ def _pc_pick(ctx, args, pcname):
     try:
         _prof = graph._adapter().embed_settings()["profile"]
     except (RuntimeError, KeyError):
-        _prof = "jetson"
+        _prof = "local"
     _wmode = _pick_build_mode(pcname, r["doc_id"], _prof)
     worker_note = "map + index already done"
     if _wmode is not None:
@@ -1422,7 +1422,7 @@ def pc_send_source(ctx, args):
     try:
         prof = graph._adapter().embed_settings()["profile"]
     except (RuntimeError, KeyError):
-        prof = "jetson"
+        prof = "local"
     mp = pc.load_map_by_ref(r["ref"])
     map_done = isinstance(mp, dict) and mp.get("status") == "done"
     indexed = _indexed("source", prof, r["doc_id"])

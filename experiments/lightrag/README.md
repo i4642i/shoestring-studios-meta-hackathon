@@ -22,9 +22,17 @@ Two profiles, one index each (`storage/<eid>/<profile>/`, never mixed):
   embedded by the LAN server (read-only API use: `GET /health`,
   `POST /embed`; token from `.env` `EMBED_REMOTE_TOKEN`, never logged
   or sent to browsers).
-- `local`: `sentence-transformers/all-MiniLM-L6-v2`, 384 dims, chunk
-  256 tokens, embedded on this PC. Models download into `models/`
-  (gitignored) on first run.
+- `local`: `BAAI/bge-m3`, 1024 dims, chunk 512 tokens, embedded on
+  this PC through sentence-transformers (CPU). Same model as the Jetson
+  server, so both profiles build equivalent indexes. Download ~2.2 GB
+  on first run (measured 2026-11-03 on the dev PC: 196 s download+load,
+  32 sentences in 4.4 s on CPU).
+- Lightweight alternative (kept for small machines): set
+  `profiles.local` in `config.json` to
+  `{"model": "sentence-transformers/all-MiniLM-L6-v2", "dim": 384,
+  "chunk_size": 256}`. Indexes are per model: rebuild after switching.
+  `scripts/embed_server.py` serves MiniLM as an OpenAI-shaped shim and
+  `bench_embed.py` compares the two.
 
 Active profile: `data/settings.json` wins (Settings tab), `.env`
 `EMBED_PROFILE` is the default. Querying an index built with another
@@ -35,9 +43,10 @@ model name: `meta-models/*` → Baseten, else Meta API), the retrieval
 mode / top_k (apply to the next query), and per-profile chunk sizes
 (apply to newly built indexes only).
 
-MiniLM was picked over local bge-m3 (1024 dims, ~9GB, 15min load,
-72ms/sent vs 6ms/sent on this PC) because the handbook corpus is small
-English text; see `bench_embed.py` for the bake-off.
+History: MiniLM was the first local default (bake-off in
+`bench_embed.py`: 72 ms/sentence for bge-m3 vs 6 ms for MiniLM on the
+dev PC). Since 2026-11-03 the local default is bge-m3 so that a PC
+without the Jetson builds the same index as the LAN server.
 
 LLM calls go to Baseten (`meta-models/muse-spark-open-1026`,
 `https://inference.baseten.co/v1`, key `BASETEN_API_KEY` from repo

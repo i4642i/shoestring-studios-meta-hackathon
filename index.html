@@ -809,7 +809,8 @@
     <h3>EMBEDDINGS (RAG)</h3>
     <p class="hint">One index per profile. Switching profile never deletes the other index.</p>
     <div id="se-profile">
-      <label><input type="radio" name="se-prof" value="local"> Local - all-MiniLM-L6-v2 (this PC)</label>
+      <label><input type="radio" name="se-prof" value="local"> Local - BAAI/bge-m3 (this PC, CPU)</label>
+      <label><input type="radio" name="se-prof" value="local_lite"> Local light - all-MiniLM-L6-v2 (this PC, small machines)</label>
       <label><input type="radio" name="se-prof" value="jetson"> Jetson - BAAI/bge-m3 (LAN server)</label>
     </div>
     <div class="addform">
@@ -838,6 +839,7 @@
     <p class="hint">Chunk sizes apply when an index is built, not to existing indexes.</p>
     <div class="addform">
       <label>Local <input id="se-chunk-local" type="number" min="64" max="1024" aria-label="Local chunk size"></label>
+      <label>Local light <input id="se-chunk-local_lite" type="number" min="64" max="1024" aria-label="Local light chunk size"></label>
       <label>Jetson <input id="se-chunk-jetson" type="number" min="64" max="1024" aria-label="Jetson chunk size"></label>
     </div>
         </div>
@@ -856,7 +858,7 @@
     <p class="se-meta">PC indexes build when entries are added; rebuild one entry from its PC page (REBUILD INDEX). Memories build when a report is approved.</p>
     <div id="se-tablewrap">
     <table id="se-table">
-      <thead><tr><th>INDEX</th><th id="se-th-local">LOCAL</th><th id="se-th-jetson">JETSON</th></tr></thead>
+      <thead><tr><th>INDEX</th><th id="se-th-local">LOCAL</th><th id="se-th-local_lite">LOCAL LIGHT</th><th id="se-th-jetson">JETSON</th></tr></thead>
       <tbody id="se-rows"><tr><td colspan="3">Loading…</td></tr></tbody>
     </table>
     </div>
@@ -2275,8 +2277,8 @@ button.linklike { background: none; border: none; padding: 0;
     <tr><td>tiktoken</td><td>0.14.0</td><td>MIT</td><td>Token counting behind LightRAG.</td><td><a href="https://pypi.org/project/tiktoken/" target="_blank" rel="noopener">PyPI</a></td></tr>
     <tr><td>scikit-learn</td><td>1.9.1</td><td>BSD-3-Clause</td><td>Behind sentence-transformers.</td><td><a href="https://pypi.org/project/scikit-learn/" target="_blank" rel="noopener">PyPI</a></td></tr>
     <tr><td>huggingface_hub</td><td>2.3.0</td><td>Apache-2.0</td><td>Model download behind sentence-transformers/transformers.</td><td><a href="https://pypi.org/project/huggingface-hub/" target="_blank" rel="noopener">PyPI</a></td></tr>
-    <tr><td>all-MiniLM-L6-v2</td><td>—</td><td>Apache-2.0</td><td>Local embedding model for the LightRAG index (384-dim vectors, CPU). License read from its Hugging Face model card.</td><td><a href="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2" target="_blank" rel="noopener">Hugging Face</a></td></tr>
-    <tr><td>BAAI/bge-m3</td><td>—</td><td>MIT</td><td>Multilingual embedding model served by the Jetson profile over LAN. License read from its Hugging Face model card.</td><td><a href="https://huggingface.co/BAAI/bge-m3" target="_blank" rel="noopener">Hugging Face</a></td></tr>
+    <tr><td>BAAI/bge-m3</td><td>—</td><td>MIT</td><td>Multilingual embedding model for the LightRAG index (1024-dim vectors): on this PC through sentence-transformers (local profile, CPU) or served by our Jetson LAN server (jetson profile). License read from its Hugging Face model card.</td><td><a href="https://huggingface.co/BAAI/bge-m3" target="_blank" rel="noopener">Hugging Face</a></td></tr>
+    <tr><td>all-MiniLM-L6-v2</td><td>—</td><td>Apache-2.0</td><td>Optional lightweight embedding model (384-dim, CPU) for small machines: the &quot;Local light&quot; profile on the Settings tab; also served by scripts/embed_server.py. License read from its Hugging Face model card.</td><td><a href="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2" target="_blank" rel="noopener">Hugging Face</a></td></tr>
     </table></div>
     <h3>VIDEO</h3>
     <div class="credwrap"><table class="credtab">
@@ -5432,8 +5434,10 @@ button.linklike { background: none; border: none; padding: 0;
           esc(last.jetson_url || "") + ")</b> \u2014 " +
           esc(conn);
       } else {
-        el.innerHTML = "Active: <b>Local " +
-          "(all-MiniLM-L6-v2)</b> \u2014 no connection needed";
+        el.innerHTML = "Active: <b>" + (last.profile === "local_lite"
+          ? "Local light (all-MiniLM-L6-v2 on this PC)"
+          : "Local (BAAI/bge-m3 on this PC)") +
+          "</b> \u2014 no connection needed";
       }
     }
     function pcCell(st, prof, active) {
@@ -5481,6 +5485,7 @@ button.linklike { background: none; border: none; padding: 0;
         modeSel.value = s.query_mode || "hybrid";
         document.getElementById("se-topk").value = s.top_k;
         document.getElementById("se-chunk-local").value = s.chunk_local;
+        document.getElementById("se-chunk-local_lite").value = s.chunk_local_lite;
         document.getElementById("se-chunk-jetson").value = s.chunk_jetson;
         const fps = [15, 20, 30].indexOf(s.office_fps) >= 0
           ? s.office_fps : 20;
@@ -5490,6 +5495,8 @@ button.linklike { background: none; border: none; padding: 0;
         if (s.settings_error) errline.textContent = s.settings_error;
         document.getElementById("se-th-local").className =
           s.profile === "local" ? "se-on" : "";
+        document.getElementById("se-th-local_lite").className =
+          s.profile === "local_lite" ? "se-on" : "";
         document.getElementById("se-th-jetson").className =
           s.profile === "jetson" ? "se-on" : "";
         rows.innerHTML = "";
@@ -5499,7 +5506,7 @@ button.linklike { background: none; border: none; padding: 0;
           article: "Article PC" };
         ["source", "theory", "article"].forEach(p => {
           const tr = document.createElement("tr");
-          const tds = ["local", "jetson"].map(prof => {
+          const tds = ["local", "local_lite", "jetson"].map(prof => {
             const st = ((pcs[p] || {})[prof]) || {};
             if (st.building) anyBuilding = true;
             return '<td class="' +
@@ -5564,12 +5571,13 @@ button.linklike { background: none; border: none; padding: 0;
         errline.textContent = "";
         const checked = document.querySelector('input[name="se-prof"]:checked');
         await api.send("POST", "api/settings", {
-          embed_profile: checked ? checked.value : "jetson",
+          embed_profile: checked ? checked.value : "local",
           jetson_url: document.getElementById("se-url").value.trim(),
           llm_model: document.getElementById("se-llm").value,
           query_mode: document.getElementById("se-mode").value,
           top_k: parseInt(document.getElementById("se-topk").value, 10),
           chunk_local: parseInt(document.getElementById("se-chunk-local").value, 10),
+          chunk_local_lite: parseInt(document.getElementById("se-chunk-local_lite").value, 10),
           chunk_jetson: parseInt(document.getElementById("se-chunk-jetson").value, 10),
           office_fps: (() => {
             const c = document.querySelector('input[name="se-fps"]:checked');
@@ -5625,7 +5633,7 @@ button.linklike { background: none; border: none; padding: 0;
       return n + " B";
     }
     function idxText(ix) {
-      return ["local", "jetson"].map((p) => {
+      return ["local", "local_lite", "jetson"].map((p) => {
         const v = (ix || {})[p] || {};
         return p + " " + (v.built ? "built(" + v.entries + ")" : "—");
       }).join(" · ");
@@ -5673,7 +5681,7 @@ button.linklike { background: none; border: none; padding: 0;
       const facts = document.createElement("p");
       facts.className = "pc-facts";
       const ix = p.index || {};
-      const ixT = ["local", "jetson"].map(q => {
+      const ixT = ["local", "local_lite", "jetson"].map(q => {
         const v = ix[q] || {};
         return q + " " + (v.built ? "built" : "\u2014");
       }).join(" \u00b7 ");

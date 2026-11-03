@@ -10,10 +10,10 @@ Prereqs: Python 3.10+, Git, an LLM key (see `.env` below).
 
 1. `pip install -r requirements.txt` (includes the LightRAG knowledge backend; first install downloads ~1GB of ML packages)
 2. Copy `.env.example` to `.env` next to this file and fill it in (never commit it). Keys the app reads:
-   - `BASETEN_API_KEY` — LLM calls for every crew agent (they all use `meta-models/*`, routed to Baseten).
-   - `MODEL_API_KEY` — only for non-`meta-models/*` models (Meta Model API). `META_API_KEY` still works as a legacy alias.
+   - `MODEL_API_KEY` — Meta Model API key. Every crew agent and the knowledge-build worker use `muse-spark-1.3` through it. `META_API_KEY` still works as a legacy alias.
+   - `BASETEN_API_KEY` — only if you switch an employee to a `meta-models/*` model (Baseten hosting); not needed by default.
    - `TAVILY_API_KEY` — web research for Cleo/Rex picks. Optional: without it, search tools report "not configured".
-   - `EMBED_PROFILE` — `jetson` (default, LAN server) or `local` (embed on your own PC; or pick Local in the Settings tab).
+   - `EMBED_PROFILE` — `local` (default: embeds on your own PC with BAAI/bge-m3 — the same model as the Jetson server, ~2.2 GB downloaded on first use, CPU is fine but slow) or `jetson` (our LAN embed server; needs the two settings below). On a new PC leave it `local`.
    - `JETSON_EMBED_URL`, `EMBED_REMOTE_TOKEN` — only for the `jetson` profile: where the LAN embed server lives and its token.
 3. Double-click `start_server.bat` (or run `python scripts/server.py`).
 4. Open the printed URL (usually http://localhost:8000) → Crew tab → click Marty.
@@ -51,10 +51,10 @@ Our code imports pdfplumber, lightrag-hku, sentence-transformers, numpy and Pill
 | KaTeX | 0.19.1 (via npm, never bundled) | MIT | formula rendering in the Remotion composition |
 | React (+ react-dom) | 19.2.3 (via npm, never bundled) | MIT | UI library behind the Remotion composition |
 
-Models (licenses read from their Hugging Face model cards): all-MiniLM-L6-v2 (Apache-2.0, local profile) and BAAI/bge-m3 (MIT, Jetson profile).
+Models (licenses read from their Hugging Face model cards): BAAI/bge-m3 (MIT; both profiles — on the Jetson server or on this PC through sentence-transformers).
 
 Bundled assets: Three.js 0.186.1 (MIT, vendored with its license in `vendor/three/`) and Kenney Mini Characters + Furniture Kit (CC0, no attribution required).
 
-External services used at runtime (not open source): Meta Model API (Muse Spark — LLM for non-`meta-models/*` models), Baseten (OpenAI-compatible hosting for `meta-models/muse-spark-open-1026` — every crew agent), Tavily (basic web search + extract for Cleo/Rex picks).
+External services used at runtime (not open source): Meta Model API (Muse Spark — LLM for non-`meta-models/*` models), Baseten (OpenAI-compatible hosting for `meta-models/muse-spark-open-1026` — optional, only when an employee is switched to that model), Tavily (basic web search + extract for Cleo/Rex picks).
 
 Per-item credits with links live in `data/third_party.json` (source of truth; `THIRD_PARTY.md` and the About page card are generated from it by `scripts/gen_credits.py`).
