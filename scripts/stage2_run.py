@@ -86,8 +86,10 @@ def assemble(run_id):
            "error": out.get("error", "")}
     mp = os.path.join(vdir, "video.mp4")
     raw = os.path.join(run_dir, "video.mp4")
-    if rec["ok"] and not os.path.isfile(mp) \
-            and os.path.isfile(raw):
+    # The fresh MP4 always replaces video_production/video.mp4: a
+    # re-assembly after a fix must not leave the old file in place
+    # (the first run 043822 showed the black build for 16 minutes).
+    if rec["ok"] and os.path.isfile(raw):
         try:
             os.replace(raw, mp)
         except OSError:
