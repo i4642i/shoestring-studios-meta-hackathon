@@ -17,6 +17,7 @@ import asyncio
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -105,6 +106,11 @@ def clean_settings(d):
     return out
 JETSON_DOWN = ("Jetson embed server not reachable at %s. "
                "It may be off or in parser mode.")
+JETSON_TOKEN = ("Jetson embed server at %s refused the token "
+                "(HTTP %s): check EMBED_REMOTE_TOKEN in .env.")
+# A wireless hop can drop for a few seconds (2nd PC, 11-03 19:55):
+# retry before calling the server down. Waits between tries, seconds.
+JETSON_RETRY_WAITS = (2, 5, 10)
 
 _RAGS = {}
 _ST = {}
@@ -305,6 +311,25 @@ def _jetson_auth():
     return url, token
 
 
+def _jetson_call(base, req, timeout):
+    """One Jetson request with retries on network failures. A token
+    refusal (HTTP 401/403) is not retried and says so; any other
+    failure after the last retry raises JETSON_DOWN."""
+    for wait in JETSON_RETRY_WAITS + (None,):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                raise RuntimeError(JETSON_TOKEN % (base, exc.code))
+        except Exception:  # noqa: BLE001 - network, timeout, bad JSON
+            pass
+        if wait is None:
+            break
+        time.sleep(wait)
+    raise RuntimeError(JETSON_DOWN % base)
+
+
 def jetson_health(base=None, token=None):
     """GET /health. Raises JETSON_DOWN (never falls back silently)."""
     if base is None or token is None:
@@ -312,11 +337,7 @@ def jetson_health(base=None, token=None):
     req = urllib.request.Request(base + "/health", method="GET")
     req.add_header("X-Embed-Token", token)
     t0 = time.time()
-    try:
-        with urllib.request.urlopen(req, timeout=10) as r:
-            d = json.loads(r.read().decode("utf-8"))
-    except Exception:
-        raise RuntimeError(JETSON_DOWN % base)
+    d = _jetson_call(base, req, 10)
     if not isinstance(d, dict) or not d.get("ok"):
         raise RuntimeError(JETSON_DOWN % base)
     d["ms"] = round((time.time() - t0) * 1000)
@@ -336,11 +357,7 @@ def jetson_embed(base, token, texts):
                                      method="POST")
         req.add_header("Content-Type", "application/json")
         req.add_header("X-Embed-Token", token)
-        try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                d = json.loads(r.read().decode("utf-8"))
-        except Exception:
-            raise RuntimeError(JETSON_DOWN % base)
+        d = _jetson_call(base, req, 60)
         vecs = d.get("vectors") if isinstance(d, dict) else None
         if not isinstance(vecs, list) or len(vecs) != len(b):
             got = len(vecs) if isinstance(vecs, list) else "no"
