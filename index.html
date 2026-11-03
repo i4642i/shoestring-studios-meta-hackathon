@@ -3704,6 +3704,17 @@ button.linklike { background: none; border: none; padding: 0;
           chatMissing = Array.isArray(r.missing) ? r.missing : [];
           checkReady();
           if (lastSam) samSay(lastSam);
+          // Hand the turn back to Sam right away: the client should not
+          // have to type "I did" before she asks the next question.
+          if (mode === "free" && !locked) {
+            const note = "I attached " + (r.name || file.name) + ".";
+            if (form.dataset.busy) {
+              queued.push(note);
+            } else {
+              input.value = note;
+              form.requestSubmit();
+            }
+          }
         } catch (err) {
           addMsg("sys", "Attach failed: " + err.message);
         }
