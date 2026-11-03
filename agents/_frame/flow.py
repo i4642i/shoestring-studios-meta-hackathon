@@ -900,8 +900,7 @@ def _run_agent_node(run_dir, agent_id, order_id, order_brief, incoming,
     except Exception as exc:  # noqa: BLE001 - agent crash aborts the flow
         return {"ok": False, "error": "%s crashed: %s" % (agent_id, exc)}
     if not isinstance(out, dict) or not out.get("ok"):
-        reason = (out.get("reason") or out.get("error") or "unknown") if isinstance(out, dict) \
-            else "bad return"
+        reason = _fail_reason(out)
         return {"ok": False, "error": "%s failed: %s" % (agent_id, reason)}
     done = _finish_stage_run(adir, agent_id, out)
     if not done["ok"]:
@@ -987,8 +986,7 @@ def _run_one_clone(run_dir, agent_id, order_id, order_brief,
     except Exception as exc:  # noqa: BLE001 - agent crash aborts
         return {"ok": False, "error": "%s crashed: %s" % (cid, exc)}
     if not isinstance(out, dict) or not out.get("ok"):
-        reason = (out.get("reason") or out.get("error") or "unknown") \
-            if isinstance(out, dict) else "bad return"
+        reason = _fail_reason(out)
         return {"ok": False, "error": "%s failed: %s" % (cid, reason)}
     done = _finish_stage_run(cdir, cid, out)
     if not done["ok"]:
@@ -1674,6 +1672,21 @@ def write_control(run_dir, patch):
     return ctl
 
 
+def _fail_reason(out):
+    """Why a stage failed, for STATUS/events. runner.run reports the
+    reason in its last run_fail event (its return dict has none), so
+    look there before giving up with "unknown"."""
+    if not isinstance(out, dict):
+        return "bad return"
+    reason = out.get("reason") or out.get("error")
+    if not reason:
+        for ev in reversed(out.get("events") or []):
+            if isinstance(ev, dict) and ev.get("ev") == "run_fail":
+                reason = ev.get("reason") or ev.get("error")
+                break
+    return str(reason or "unknown")
+
+
 def _patch_status(run_dir, patch):
     st = _read_step_status(run_dir)
     st.update(patch or {})
@@ -1990,6 +2003,11 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
     code_nodes = {n.get("id") for n in flow.get("nodes", [])
                   if isinstance(n, dict) and n.get("code")}
     emit({"ev": "step_start", "target": target, "run": run_id})
+    # A resumed run is running again: a stale "failed" state and its
+    # error text would otherwise stay in STATUS until the step ends,
+    # and the Studio shows that old error on whoever works now.
+    _patch_status(run_dir, {"state": "running", "error": "",
+                            "current": ""})
     ran = []
     stop_at = sequence.index(base_target) if base_target in sequence \
         else len(sequence)
