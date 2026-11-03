@@ -42,9 +42,25 @@ PART_SPLIT_REQUIRED = ["structure", "concept", "storyboard_draft",
 
 
 def _write_json(path, obj):
+    """Atomic JSON write: dump to a sibling temp file, then replace.
+    Readers (UI polls, other threads) never see a half-written file
+    — a half-read STATUS.json parsed as {} and the next patch wiped
+    run_id/state/approved (ch02 run, 15:07, parallel clones)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp = "%s.%d.tmp" % (path, threading.get_ident())
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=1)
+    for attempt in range(5):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            # Windows: a reader still holds the target open
+            time.sleep(0.05 * (attempt + 1))
+    os.replace(tmp, path)
+
+
+_STATUS_LOCK = threading.Lock()
 
 
 def load_flow(flow_id):
@@ -1180,26 +1196,24 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
     completed = []
 
     def fail(msg):
-        # Merge into the existing STATUS: a failure must not drop
-        # the approvals already recorded, or a resume re-runs
-        # every stage from the top.
-        st = _read_step_status(run_dir)
-        st.update({"run_id": run_id, "flow_id": flow_id,
-                   "order_id": order_id, "state": "failed",
-                   "error": msg, "current": "",
-                   "completed": list(completed),
-                   "cost": _run_cost(run_dir)})
-        _write_json(os.path.join(run_dir, "STATUS.json"), st)
+        # Merge into the existing STATUS (under the status lock): a
+        # failure must not drop the approvals already recorded, or a
+        # resume re-runs every stage from the top.
+        _patch_status(run_dir, {"run_id": run_id, "flow_id": flow_id,
+                                "order_id": order_id, "state": "failed",
+                                "error": msg, "current": "",
+                                "completed": list(completed),
+                                "cost": _run_cost(run_dir)})
         emit({"ev": "flow_error", "error": msg})
         return {"ok": False, "run_id": run_id, "error": msg}
 
     def halted(where, nid):
-        _write_json(os.path.join(run_dir, "STATUS.json"),
-                    {"run_id": run_id, "flow_id": flow_id,
-                     "order_id": order_id, "state": "stopped",
-                     "error": "", "current": "",
-                     "completed": list(completed),
-                     "cost": _run_cost(run_dir)})
+        _patch_status(run_dir,
+                      {"run_id": run_id, "flow_id": flow_id,
+                       "order_id": order_id, "state": "stopped",
+                       "error": "", "current": "",
+                       "completed": list(completed),
+                       "cost": _run_cost(run_dir)})
         emit({"ev": "step_stopped", "at": nid})
         return {"ok": False, "run_id": run_id,
                 "error": "stopped: halted %s %s" % (where, nid)}
@@ -1688,9 +1702,13 @@ def _fail_reason(out):
 
 
 def _patch_status(run_dir, patch):
-    st = _read_step_status(run_dir)
-    st.update(patch or {})
-    _write_json(_step_status_path(run_dir), st)
+    # Read-modify-write under one lock: parallel clone threads patch
+    # `current` at the same time, and two unlocked patches lost
+    # everything but the last writer's keys.
+    with _STATUS_LOCK:
+        st = _read_step_status(run_dir)
+        st.update(patch or {})
+        _write_json(_step_status_path(run_dir), st)
 
 
 def _run_cost(run_dir):
@@ -1969,11 +1987,9 @@ def step_run(flow, order_id, run_agent_fn, target, run_id=None,
             projlog.mirror_run_event(order_id, run_id, ev)
 
     def fail(msg):
-        st = _read_step_status(run_dir)
-        st.update({"run_id": run_id, "flow_id": flow_id,
-                   "order_id": order_id, "state": "failed",
-                   "error": msg})
-        _write_json(_step_status_path(run_dir), st)
+        _patch_status(run_dir, {"run_id": run_id, "flow_id": flow_id,
+                                "order_id": order_id, "state": "failed",
+                                "error": msg})
         emit({"ev": "flow_error", "error": msg})
         return {"ok": False, "run_id": run_id, "error": msg}
 
