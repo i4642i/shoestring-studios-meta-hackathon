@@ -342,6 +342,134 @@ function TextBlock({b, order, card}) {
   );
 }
 
+// Text-only cuts: the boxes the planner wrote are ignored and every
+// text block is stacked in one centered column that fills the safe
+// area (the "card" layout), largest readable font for the whole
+// stack. Blocks keep their order and appear_s fades. This replaces
+// the corner-scattered small boxes of a plan that had no image.
+const CARD_GAP = 28;
+const cardFont = (textBlocks) => {
+  const allLines = textBlocks.flatMap((b) => (b.data && b.data.lines) || []);
+  const longest = Math.max(1, ...allLines.map((t) => String(t).length));
+  const n = Math.max(1, allLines.length);
+  const byW = CARD_BOX.w / (longest * 0.55);
+  const byH =
+    (CARD_BOX.h - CARD_GAP * Math.max(0, textBlocks.length - 1)) /
+    (n * 1.3);
+  return Math.max(
+    TEXT_MIN_FONT,
+    Math.min(TEXT_MAX_FONT, Math.floor(Math.min(byW, byH))),
+  );
+};
+
+function CardStack({blocks, frame, fps, heading}) {
+  const ordered = blocks.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  const font = cardFont(ordered);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: CARD_BOX.x,
+        top: CARD_BOX.y,
+        width: CARD_BOX.w,
+        height: CARD_BOX.h,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
+        gap: CARD_GAP,
+        textAlign: "center",
+        fontSize: font,
+        lineHeight: 1.25,
+      }}
+    >
+      {ordered.map((b, i) =>
+        frame >= (b.appear_s || 0) * fps ? (
+          <div
+            key={i}
+            style={{
+              ...enterStyle(frame, fps, b.appear_s || 0),
+              fontWeight: i === 0 ? heading.fontWeight : undefined,
+            }}
+          >
+            {((b.data && b.data.lines) || []).map((t, j) => (
+              <div key={j}>{t}</div>
+            ))}
+          </div>
+        ) : null,
+      )}
+    </div>
+  );
+}
+
+// One image plus text only: the planner's boxes are ignored and the
+// cut is laid out as a big image on the left (full safe height) with
+// the text blocks stacked and centered on the right. Fills the screen
+// instead of leaving the lower half empty.
+const SIDE_IMAGE_BOX = {x: 64, y: 64, w: 576, h: 592};
+const SIDE_TEXT_BOX = {x: 688, y: 64, w: 528, h: 592};
+// Largest font whose wrapped rows fit the column: each line wraps into
+// ceil(chars * 0.55 * font / width) rows of 1.25 em.
+const sideFont = (textBlocks) => {
+  const allLines = textBlocks.flatMap((b) => (b.data && b.data.lines) || []);
+  const gaps = CARD_GAP * Math.max(0, textBlocks.length - 1);
+  for (let font = TEXT_MAX_FONT; font > TEXT_MIN_FONT; font -= 2) {
+    const rows = allLines.reduce(
+      (n, t) =>
+        n + Math.max(1, Math.ceil((String(t).length * 0.55 * font) / SIDE_TEXT_BOX.w)),
+      0,
+    );
+    if (rows * font * 1.25 + gaps <= SIDE_TEXT_BOX.h) return font;
+  }
+  return TEXT_MIN_FONT;
+};
+
+function SideLayout({image, textBlocks, frame, fps, seconds, heading}) {
+  const ordered = textBlocks.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+  const font = sideFont(ordered);
+  const img = {...image, box: SIDE_IMAGE_BOX};
+  return (
+    <>
+      {frame >= (image.appear_s || 0) * fps ? (
+        <div style={enterStyle(frame, fps, image.appear_s || 0)}>
+          <ImageBlock b={img} order={0} frame={frame} fps={fps} seconds={seconds} />
+        </div>
+      ) : null}
+      <div
+        style={{
+          position: "absolute",
+          left: SIDE_TEXT_BOX.x,
+          top: SIDE_TEXT_BOX.y,
+          width: SIDE_TEXT_BOX.w,
+          height: SIDE_TEXT_BOX.h,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          gap: CARD_GAP,
+          fontSize: font,
+          lineHeight: 1.25,
+        }}
+      >
+        {ordered.map((b, i) =>
+          frame >= (b.appear_s || 0) * fps ? (
+            <div
+              key={i}
+              style={{
+                ...enterStyle(frame, fps, b.appear_s || 0),
+                fontWeight: i === 0 ? heading.fontWeight : undefined,
+              }}
+            >
+              {((b.data && b.data.lines) || []).map((t, j) => (
+                <div key={j}>{t}</div>
+              ))}
+            </div>
+          ) : null,
+        )}
+      </div>
+    </>
+  );
+}
+
 function Block({b, frame, fps, guide, seconds, preset}) {
   const order = b.order || 0;
   if (frame < b.appear_s * fps) return null;
@@ -409,15 +537,53 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide, o
   const g = guide || {};
   const pal = g.palette || {};
   const fonts = g.fonts || {};
-  const bg = pal.background || "#101418";
-  const fg = pal.text || "#f5f2ea";
-  const accent = pal.accent || "#e0a458";
+  // A guide value may carry prose ("#FDF8EE warm paper for trust"):
+  // keep only the color token, or the whole slide turns black.
+  const cssColor = (v, fallback) => {
+    const s = String(v || "");
+    const m =
+      s.match(/#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/) ||
+      s.match(/rgba?\([^)]*\)/);
+    return m ? m[0] : fallback;
+  };
+  const bg = cssColor(pal.background, "#101418");
+  const fg = cssColor(pal.text, "#f5f2ea");
+  const accent = cssColor(pal.accent, "#e0a458");
   const body = mapGuideFont(fonts.body, 400);
   const heading = mapGuideFont(fonts.heading, 600);
   const shown = (blocks || []).filter((b) => frame >= b.appear_s * CUT_FPS);
   // A text block owns the words: the bottom line stays silent then.
   const hasTextBlock = (blocks || []).some((b) => b && b.kind === "text");
   const bottomLines = hasTextBlock ? [] : onScreenText || [];
+  // No image, table, chart, formula or steps: one centered card.
+  const textOnly =
+    (blocks || []).length > 0 &&
+    (blocks || []).every((b) => b && b.kind === "text");
+  const useCard = textOnly || preset === "card";
+  // Exactly one image and otherwise only text: side layout.
+  const imageBlocks = (blocks || []).filter(
+    (b) => b && ["photo", "generated", "source_figure"].includes(b.kind),
+  );
+  const useSide =
+    !useCard &&
+    imageBlocks.length === 1 &&
+    (blocks || []).every(
+      (b) => b && (b.kind === "text" || imageBlocks.includes(b)),
+    ) &&
+    (blocks || []).some((b) => b && b.kind === "text");
+  // One image and nothing else: the image fills the safe area (the
+  // bottom line, if any, sits on its band below). A photo in a
+  // 340 px planner box on an otherwise empty screen is wasted.
+  const useHero =
+    !useCard && !useSide && imageBlocks.length === 1 &&
+    (blocks || []).length === 1;
+  const heroBlocks = useHero ? [{...imageBlocks[0], box: CARD_BOX}] : null;
+  // When the bottom line is drawn, the whole block layer shrinks to
+  // sit above its band so nothing is covered (general rule, item 12).
+  const bandH = bottomLines.length
+    ? 24 + bottomLines.length * (onScreenTextFont || 36) * 1.3
+    : 0;
+  const layerScale = bandH ? (CUT_H - bandH) / CUT_H : 1;
   return (
     <div
       style={{
@@ -432,20 +598,52 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide, o
       }}
     >
       <div style={{position: "absolute", left: 0, top: 0, width: CUT_W, height: 14, background: accent}} />
-      {shown
-        .slice()
-        .sort((a, b) => (a.order || 0) - (b.order || 0))
-        .map((b, i) => (
-          <Block
-            key={i}
-            b={b}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: CUT_W,
+          height: CUT_H,
+          transformOrigin: "top center",
+          transform: layerScale < 1 ? `scale(${layerScale})` : undefined,
+        }}
+      >
+        {useCard ? (
+          <CardStack
+            blocks={(blocks || []).filter((b) => b && b.kind === "text")}
             frame={frame}
             fps={CUT_FPS}
-            guide={{palette: pal}}
-            seconds={seconds}
-            preset={preset}
+            heading={heading}
           />
-        ))}
+        ) : null}
+        {useSide ? (
+          <SideLayout
+            image={imageBlocks[0]}
+            textBlocks={(blocks || []).filter((b) => b && b.kind === "text")}
+            frame={frame}
+            fps={CUT_FPS}
+            seconds={seconds}
+            heading={heading}
+          />
+        ) : null}
+        {(useHero ? heroBlocks : shown)
+          .slice()
+          .filter((b) => !useCard && !useSide)
+          .filter((b) => frame >= (b.appear_s || 0) * CUT_FPS)
+          .sort((a, b) => (a.order || 0) - (b.order || 0))
+          .map((b, i) => (
+            <Block
+              key={i}
+              b={b}
+              frame={frame}
+              fps={CUT_FPS}
+              guide={{palette: {...pal, background: bg, text: fg, accent}}}
+              seconds={seconds}
+              preset={preset}
+            />
+          ))}
+      </div>
       {bottomLines.length ? (
         <div
           style={{
@@ -459,6 +657,7 @@ export const CutSlide = ({cutId, seconds, preset, blocks, onScreenText, guide, o
             fontWeight: heading.fontWeight,
             padding: "12px 80px",
             background: "rgba(0, 0, 0, 0.55)",
+            color: "#F7F5F0", // always light on the dark band
           }}
         >
           {bottomLines.map((t, i) => (
