@@ -27,6 +27,16 @@ docs/RESULT_JSON_DRAFT_EN.md).
 
 - Read Penn's cut description, then pick your own search queries
   from it (objects, places, actions — never the narration words).
+- Work in batches, never one call per step: issue the searches for
+  five to eight cuts in ONE step, judge the hits by title, then
+  download the chosen photos for several cuts in ONE step. One
+  search or one download per step runs out of steps on a long
+  part before anything is written.
+- Your PC input lists EVERY figure of the source document, not
+  only what Ash attached to a scene. Ash's materials in
+  split_plan are recommendations; you decide, per cut, which
+  source figure fits. A source figure always beats a web photo
+  of the same thing.
 - Source figures (Source PC): open the figure with open_ref and
   look at it before you use it. Never use an unviewed figure.
 - Web photos: only reuse-permitted licenses (cc0, pdm, by, by-sa;

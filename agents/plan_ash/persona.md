@@ -45,7 +45,12 @@ and the Penn/Wren handoff lists. Your only output is the
 - Decide which source figures/tables each scene uses (from the
   figure list in your inputs): every used figure/table is a
   material AND a handoff (to Remy for rendering, to Pia who
-  prefers source figures over web photos).
+  prefers source figures over web photos). Go through that list
+  item by item: a figure, table or formula from the source is
+  the strongest visual we have, so place each one in the scene
+  it teaches unless you can say in that scene's why why it does
+  not fit. A draft that uses none of them while the list is not
+  empty needs that reason written down.
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_read_theory, pc_read_article, pc_list_source,
   pc_read_source, write_storyboard_draft.

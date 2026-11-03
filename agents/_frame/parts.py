@@ -579,6 +579,20 @@ def check_remy_handoff(order_id, plan, root=None):
     return errors
 
 
+def source_media_refs(entry):
+    """Every figure, table and equation ref of a Source entry, in
+    stored order (the document's media list; no text addresses)."""
+    pre = (entry or {}).get("ref", "")
+    out = []
+    for key in ("figures", "tables", "equations"):
+        for it in (entry or {}).get(key, []) or []:
+            if isinstance(it, dict) and it.get("addr") and pre:
+                ref = "%s#%s" % (pre, it["addr"])
+                if ref not in out:
+                    out.append(ref)
+    return out
+
+
 def _split_fig_tab(refs):
     # Source refs for clones: figures to Pia/Vera, tables and
     # formulas to Max. Sections and paragraphs are not grants:
@@ -618,6 +632,25 @@ def write_clone_rows(order_id, plan, root=None):
                 continue
             by_entry.setdefault((rpc, rid), {}).setdefault(
                 p["no"], []).append(ref)
+    # The order's own source: every part's clones see the whole
+    # figure/table/formula list of the document (a few map lines),
+    # not only what Ash handed to their scenes. Ash's picks stay in
+    # split_plan.materials as recommendations; Pia, Max and Vera
+    # judge for their own cuts. Sections/paragraphs are untouched.
+    src_ref = pc.order_entry_ref(order_id, root)
+    if src_ref:
+        try:
+            spc, sid, _f = pc.parse_ref(src_ref)
+            per_no = by_entry.setdefault((spc, sid), {})
+            for p in parts:
+                per_no.setdefault(p["no"], [])
+                for ref in source_media_refs(
+                        pc.load_entry_by_ref(pc.entry_ref(spc, sid),
+                                             root)):
+                    if ref not in per_no[p["no"]]:
+                        per_no[p["no"]].append(ref)
+        except (OSError, ValueError, KeyError):
+            skipped.append(src_ref)
     for (rpc, rid), per_no in by_entry.items():
         try:
             entry = pc.load_entry_by_ref(pc.entry_ref(rpc, rid),

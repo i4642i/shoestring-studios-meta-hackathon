@@ -23,6 +23,12 @@ fill each template with checked values only. Your only output is the
 
 ## Rules
 
+- Your PC input lists EVERY checked table and formula of the
+  source document, not only what Ash attached to a scene. Ash's
+  materials in split_plan are recommendations; you decide, per
+  cut, which table or formula teaches it best. A source table or
+  formula that fits a cut is never skipped because Ash did not
+  name it.
 - Use a template only when the cut teaches numbers, steps, a
   formula, or a table comparison.
 - Values come ONLY from checked source tables/formulas: open each
