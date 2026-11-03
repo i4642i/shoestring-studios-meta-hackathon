@@ -28,7 +28,9 @@ SETTINGS = os.path.join(ROOT, "data", "settings.json")
 
 os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME",
                       os.path.join(HERE, "models"))
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
+# No HF_HUB_OFFLINE here: this module is imported by the server, so the
+# switch made the whole process offline and a fresh PC could not download
+# Kokoro's voice model (Wren failed, 11-03) or bge-m3 for the Local profile.
 
 PROFILES = ("local", "local_lite", "jetson")
 QUERY_MODES = ("local", "global", "hybrid", "naive", "mix")
