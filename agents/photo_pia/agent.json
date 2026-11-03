@@ -1,6 +1,6 @@
 {
  "bounds": {
-  "max_steps": 24
+  "max_steps": 40
  },
  "done": [
   "every cut answered use or none",
@@ -24,7 +24,9 @@
   "read_md_section",
   "open_ref",
   "pc_list_source",
-  "pc_read_source", "pc_read_theory", "pc_read_article",
+  "pc_read_source",
+  "pc_read_theory",
+  "pc_read_article",
   "pc_search_images",
   "pc_pick_image",
   "write_photo_picks"
