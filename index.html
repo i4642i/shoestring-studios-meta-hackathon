@@ -363,6 +363,8 @@
   .oreceived h3 { margin: 0 0 8px; font-size: 18px; }
   .oreceived p { margin: 6px 0; font-size: 13px; }
   .oreceived .osub { color: var(--dim); font-size: 12px; }
+  .oreceived .olive { font-size: 15px; font-weight: 700; margin-top: 12px;
+    color: var(--ink); }
   .oreceived .obtns { margin-top: 12px; display: flex; gap: 8px;
     justify-content: center; }
   .oreceived .obtns button { font-size: 13px; font-weight: 700;
@@ -4062,21 +4064,37 @@ button.linklike { background: none; border: none; padding: 0;
       samSay(RECEIVED_LINE);
       const scene = document.getElementById("o-scene");
       scene.classList.add("locked");
+      // The start card (chat orders) already dimmed the room, so the
+      // received card is built on its own, not only with a new dim.
+      const startCard = document.getElementById("o-startcard");
+      if (startCard) startCard.remove();
       if (!scene.querySelector(".olockdim")) {
         const dim = document.createElement("div");
         dim.className = "olockdim";
         scene.appendChild(dim);
+      }
+      if (!document.getElementById("o-livecard")) {
         const card = document.createElement("div");
         card.className = "oreceived";
+        card.id = "o-livecard";
         const h = document.createElement("h3");
-        h.textContent = "Order received \u2713";
+        h.textContent = "Order received \u2713 \u2014 the crew is working";
         const l1 = document.createElement("p");
+        l1.className = "osub";
+        l1.id = "o-live-ids";
         l1.textContent = "Order " + oid + " \u00b7 run " +
-          (lockedRun || "\u2014");
+          (lockedRun || "starts after the PDF is read");
+        const now = document.createElement("p");
+        now.className = "olive";
+        now.id = "o-live-now";
+        now.textContent = "Checking progress\u2026";
+        const nowSub = document.createElement("p");
+        nowSub.className = "osub";
+        nowSub.id = "o-live-sub";
         const l2 = document.createElement("p");
         l2.className = "osub";
-        l2.textContent = "Track progress in Studio (live office)" +
-          " and Board (every step, inputs and logs).";
+        l2.textContent = "Watch each employee work live in Studio; " +
+          "every step's inputs, results and logs are on Board.";
         const btns = document.createElement("div");
         btns.className = "obtns";
         const bS = document.createElement("button");
@@ -4100,9 +4118,10 @@ button.linklike { background: none; border: none; padding: 0;
           } catch (e) { /* storage blocked */ }
           newOrder().catch(fail);
         };
-        card.append(h, l1, l2, btns, nw);
+        card.append(h, l1, now, nowSub, l2, btns, nw);
         scene.appendChild(card);
       }
+      startLivePoll();
       input.disabled = true;
       form.querySelector("button").disabled = true;
       document.querySelectorAll("#o-modes [data-m]")
@@ -4118,7 +4137,70 @@ button.linklike { background: none; border: none; padding: 0;
       if (pb) pb.remove();
       if (window.__recepLock) window.__recepLock(true);
     }
+    // Live line on the received card: what the crew is doing right now.
+    let liveTimer = null;
+    function startLivePoll() {
+      if (liveTimer) clearInterval(liveTimer);
+      liveTimer = setInterval(livePoll, 3000);
+      livePoll();
+    }
+    function stopLivePoll() {
+      if (liveTimer) clearInterval(liveTimer);
+      liveTimer = null;
+    }
+    async function livePoll() {
+      const nowEl = document.getElementById("o-live-now");
+      const subEl = document.getElementById("o-live-sub");
+      if (!locked || !oid || !nowEl) { stopLivePoll(); return; }
+      let p = null;
+      try { p = await api.get("api/orders/" + oid + "/progress"); }
+      catch (e) { /* server busy: try again next tick */ }
+      if (p && p.run_id && p.run_id !== lockedRun) {
+        lockedRun = p.run_id;
+        const ids = document.getElementById("o-live-ids");
+        if (ids) ids.textContent = "Order " + oid + " · run " + lockedRun;
+      }
+      if (!lockedRun) {
+        const lines = (p && p.lines) || [];
+        nowEl.textContent = "Reading your PDF…";
+        subEl.textContent = lines.length ? lines[lines.length - 1]
+          : "The crew starts as soon as the PDF is parsed.";
+        return;
+      }
+      let st = null;
+      try {
+        st = await api.get("api/flows/runs/" +
+          encodeURIComponent(lockedRun) + "/state");
+      } catch (e) { return; }
+      const done = (st.completed || []).length;
+      const doneTxt = done + " stage" + (done === 1 ? "" : "s") + " done";
+      const cur = st.current || "";
+      const m = member(cur.split("@")[0]);
+      const who = m ? m.name + " — " + m.title : (cur || "the crew");
+      const part = cur.indexOf("@p") > 0 ? " (part " + cur.split("@p")[1] + ")" : "";
+      const head = document.querySelector("#o-livecard h3");
+      if (head) head.textContent = st.state === "done"
+        ? "Order received ✓ — production finished"
+        : "Order received ✓ — the crew is working";
+      if (st.state === "done") {
+        nowEl.textContent = "All stages done ✓";
+        subEl.textContent = "The video shows up in Gallery once it is assembled.";
+      } else if (st.state === "error" || st.state === "failed") {
+        nowEl.textContent = "Stopped: " + String(st.error || "a stage failed").slice(0, 140);
+        subEl.textContent = doneTxt + ". Open Board to see the failed step and run it again.";
+      } else if (st.state === "paused" || st.state === "pausing") {
+        nowEl.textContent = "Paused" + (cur ? " at " + who + part : "");
+        subEl.textContent = doneTxt + ". Resume it in Studio.";
+      } else if (st.state === "stopped") {
+        nowEl.textContent = "Stopped by the owner";
+        subEl.textContent = doneTxt + ".";
+      } else {
+        nowEl.textContent = "Now working: " + who + part;
+        subEl.textContent = doneTxt + ".";
+      }
+    }
     function unlockReceived() {
+      stopLivePoll();
       locked = false;
       lockedRun = "";
       const scene = document.getElementById("o-scene");
