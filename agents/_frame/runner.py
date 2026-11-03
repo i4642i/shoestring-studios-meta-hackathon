@@ -322,6 +322,18 @@ def run(agent_dir, run_dir, brief, input_md):
          + "\n\nDo the job. Use tools. Read before writing. "
            "Finish by calling %s with the complete output object." % writer},
     ]
+    # A fresh attempt of this node starts with clean per-attempt
+    # counters (voice attempts, image queries, render counts, views,
+    # search breaker, download pacing). Counters left by an earlier
+    # attempt otherwise refuse the tools ("already used 2 attempts"),
+    # the runner closes the tool, and the re-run dies.
+    for name in ("voice_attempts.json", "image_queries.json",
+                 "render_counts.json", "vera_views.json",
+                 "openverse_dead.json", "last_pick_download.json"):
+        try:
+            os.remove(os.path.join(run_dir, name))
+        except OSError:
+            pass
     emit({"ev": "run_start", "agent": agent["id"], "model": agent["model"]})
     fails = {}
     staged_seen = 0
