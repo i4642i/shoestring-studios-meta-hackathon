@@ -72,6 +72,15 @@ also wants espeak-ng and `kokoro>=0.9.4`).
 | Vera (`board_vera`) | Slide planner — per-cut layouts |
 | Remy (`slide_remy`) | Slide builder — renders every cut |
 
+## License
+
+Our code is licensed under the PolyForm Noncommercial License 1.0.0
+(see `LICENSE`): free to read, run and modify for noncommercial
+purposes; commercial use needs permission from the author.
+Third-party files keep their own licenses: Three.js (MIT, `vendor/three/`),
+Kenney assets (CC0, `vendor/kenney/`); Python and npm packages are
+installed, not bundled (see the table above / `THIRD_PARTY.md`).
+
 ## Third-party software and services
 
 Our code calls these; we did not write them (`requirements*.txt`

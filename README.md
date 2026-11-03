@@ -27,6 +27,15 @@ Prereqs: Python 3.10+, Git, an LLM key (see `.env` below).
 - `docs/` — planning docs and meeting minutes (English).
 - `requirements.txt` — install list (`pdfplumber` + frozen LightRAG pins; the server code itself is Python stdlib).
 
+## License
+
+Our code is licensed under the PolyForm Noncommercial License 1.0.0
+(see `LICENSE`): free to read, run and modify for noncommercial
+purposes; commercial use needs permission from the author.
+Third-party files keep their own licenses: Three.js (MIT, `vendor/three/`),
+Kenney assets (CC0, `vendor/kenney/`); Python and npm packages are
+installed, not bundled (see the table above / `THIRD_PARTY.md`).
+
 ## Third-party software and services
 
 Our code imports pdfplumber, lightrag-hku, sentence-transformers, numpy and Pillow directly; the rest arrive as their dependencies (pinned versions in `requirements.txt`, installed versions/licenses verified with `python scripts/list_licenses.py`):
