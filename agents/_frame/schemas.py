@@ -829,8 +829,11 @@ def validate_narration(obj, draft):
         elif isinstance(dur, (int, float)) and dur > 0:
             sec = audio["seconds"]
             if abs(sec - dur) > dur * TTS_FIT:
-                errors.append("%s.audio %ss strays from cut %ss "
-                              "(±15%%)" % (where, sec, dur))
+                errors.append("%s.audio %ss vs cut %ss (more than "
+                              "±%d%%): write about %d words for this "
+                              "cut (%d now) and voice it once more"
+                              % (where, sec, dur, int(TTS_FIT * 100),
+                                 int(round(dur * WORDS_PER_S)), words))
     for n, group in by_scene.items():
         if n not in want:
             continue
@@ -1137,7 +1140,10 @@ def _parent_part(number, parts):
 
 CUT_MIN_S = 10
 CUT_MAX_S = 30
-TTS_FIT = 0.15  # cut audio must sit within ±15% of the cut plan
+TTS_FIT = 0.25  # cut audio may stray up to ±25% from the plan: the
+# picture follows the measured voice at assembly, so small drift is
+# fine, but a half-length clip means the cut was under-written
+WORDS_PER_S = 2.6  # measured Kokoro pace (runs 0471/043822: 2.5-2.7)
 VOICE_MAX_ATTEMPTS = 2
 REMY_MAX_RENDERS = 3
 def _license_core(lic):
@@ -1184,6 +1190,12 @@ def validate_style_guide(obj):
             if not pal.get(k) or not isinstance(pal[k], str):
                 errors.append("palette.%s must be a non-empty "
                               "string" % k)
+            elif not re.fullmatch(r"#[0-9A-Fa-f]{6}", pal[k].strip()):
+                # "#FDF8EE warm paper for trust" is not a CSS color:
+                # the whole slide rendered black in run 043822
+                errors.append("palette.%s must be a bare hex color "
+                              "like #FDF8EE (no words after it; put "
+                              "the meaning in rules)" % k)
     fonts = obj.get("fonts")
     if not isinstance(fonts, dict):
         errors.append("fonts must be an object")
