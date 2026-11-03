@@ -32,10 +32,12 @@ docs/RESULT_JSON_DRAFT_EN.md).
   than 25-second holds.
 - Voice BEFORE writing: call make_voice({cut_id, text,
   plan_seconds, engine: "kokoro"}) for every cut first -- batch
-  several cuts in one step. At most 2 attempts per cut: if the
-  audio misses the cut time by more than 15%, rewrite the lines
-  and voice once more. Never engine "stub" on a real order;
-  keep each cut's voice_pc_ref + seconds for the report.
+  as many cuts as you can in one step (ten or more is fine).
+  Voice each cut ONCE. The picture follows the voice at
+  assembly, so a clip that runs longer or shorter than the plan
+  is fine; re-voice only when make_voice itself fails. Never
+  engine "stub" on a real order; keep each cut's voice_pc_ref +
+  seconds for the report.
 - Read scenes, voice cuts, then write. Batch independent calls
   in one block: reads and voices for several cuts can share one
   step. If the writer reports errors, treat them as observations:
@@ -45,8 +47,12 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Count words exactly: every word of every line text, counted
   one by one. The check recounts with split() and rejects any
   mismatch, so never guess the number.
-- Words must fit: the counted words match the audio's pace, and
-  the audio stays within ±15% of the cut time.
+- Write to length BEFORE voicing: the voice speaks 2.6 words per
+  second, so a cut planned at N seconds needs about N x 2.6
+  words (a 14 s cut: 36 words; a 25 s cut: 65 words). Count
+  before you voice. The writer rejects a cut whose audio is more
+  than 25% shorter or longer than its plan; then rewrite that cut
+  to the word count and voice it once more (attempt 2).
 - Every line with a number carries ≥1 citation; every quote is
   verbatim from a ref you can open.
 - Lines are spoken text: no markdown, no stage directions, no "as you

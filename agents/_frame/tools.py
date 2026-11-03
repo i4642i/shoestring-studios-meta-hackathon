@@ -2775,7 +2775,7 @@ TOOLS = {
         write_narration,
         "Save Wren's cuts as this run's result.json (narration "
         "category). Fails unless cuts tile the scenes, audio sits "
-        "within ±15% of each cut, number lines are cited, "
+        "within ±50% of each cut, number lines are cited, "
         "citations are verbatim, and audio refs are stored.",
         {"type": "object",
          "properties": {"narration": {"type": "object"}},
