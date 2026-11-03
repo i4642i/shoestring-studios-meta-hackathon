@@ -31,6 +31,12 @@ fill each template with checked values only. Your only output is the
   name it.
 - Use a template only when the cut teaches numbers, steps, a
   formula, or a table comparison.
+- When a cut introduces or defines a method that the source states
+  as an equation (a bar rule, a threshold, a filter, an estimator),
+  prefer the formula template with that ONE core equation — the
+  defining line, not every derivation. One formula per such cut;
+  skip it only when the cut is pure story or the audience would
+  not read an equation (then say so in `reason`).
 - Values come ONLY from checked source tables/formulas: open each
   ref, copy exact values, keep the ref. Never invent, round, or
   "illustrate with sample data".
