@@ -1321,8 +1321,15 @@ button.linklike { background: none; border: none; padding: 0;
       B.run = "";
       return;
     }
-    sel.value = B.runs.some(r => r.run_id === keep) ? keep
+    let pick = B.runs.some(r => r.run_id === keep) ? keep
       : B.runs[0].run_id;
+    // Follow a run that is working now, unless the owner picked a run by
+    // hand: the Board stayed on an old finished run and looked frozen.
+    const live = B.runs.find(r => r.state === "running");
+    const kept = B.runs.find(r => r.run_id === pick) || {};
+    if (!B.wantRun && !B.userPicked && live && kept.state !== "running")
+      pick = live.run_id;
+    sel.value = pick;
     B.run = sel.value;
     B.wantRun = "";
     const cur = B.runs.find(r => r.run_id === B.run) || {};
@@ -1457,16 +1464,36 @@ button.linklike { background: none; border: none; padding: 0;
       '<th colspan="6" class="bd-grp-video">VIDEO TEAM</th></tr><tr>' +
       COLS.map(c => "<th>" + esc(c.title) + "<small>" + esc(c.who) +
         "</small></th>").join("") + "</tr></thead><tbody>";
-    if (!parts.length ||
-        !parts.some(p => (p.scenes || []).some(s => (s.cuts || [])
-          .length))) {
+    const stages = B.board.stages || [];
+    const doneWho = stages.filter(s => s.status === "done" ||
+      s.status === "approved").map(s => s.who).filter(Boolean);
+    const runWho = stages.filter(s => s.status === "run")
+      .map(s => s.who).filter(Boolean);
+    const progressNote = (doneWho.length ? "Done: " + doneWho.join(", ") +
+      ". " : "") + (runWho.length ? "Working now: " + runWho.join(", ") +
+      ". " : "") + "Click a name in the row above to read its report.";
+    if (!parts.length) {
+      // Parts come from Marty; until then show who has finished.
       t.innerHTML = h + '</tbody><tbody><tr><td colspan="12">' +
-        "No cuts yet \u2014 run Marty, Ash and Wren first.</td></tr></tbody>";
+        "Parts appear when Marty finishes. " + esc(progressNote) +
+        "</td></tr></tbody>";
       return;
     }
     let cum = 0;
     parts.forEach(part => {
       const scenes = part.scenes || [];
+      if (!scenes.length) {
+        // Marty's part exists, Ash's scenes not yet: show the part now.
+        const ms = (stages.find(s => s.key === "marty") || {}).status || "wait";
+        h += '<tr><td class="st-' + ms + '"><b>' + esc(fmtT(part.time)) +
+          '</b></td><td class="bd-cell st-' + ms + '" data-part="' +
+          part.no + '" data-col="part"><b>Part ' + part.no + "</b><br>" +
+          esc(part.title || "") + '</td><td colspan="10" class="st-wait">' +
+          "Scenes, lines and slides fill in as Ash, Wren and the video " +
+          "team finish. " + esc(progressNote) + "</td></tr>";
+        cum += Number(part.time) || 0;
+        return;
+      }
       const rows = scenes.reduce(
         (n, s) => n + ((s.cuts || []).length || 1), 0);
       let firstPart = true;
@@ -2142,6 +2169,14 @@ button.linklike { background: none; border: none; padding: 0;
     if (running && B.run)
       B.timer = setTimeout(() => loadBoard().catch(e =>
         err("Error: " + e.message)), 3000);
+    else if (B.run)
+      // Idle run on screen: look for a newly started run every 10 s.
+      B.timer = setTimeout(() => {
+        if (!document.getElementById("p-board").classList.contains("active")) return;
+        const before = B.run;
+        loadRuns().then(() => B.run !== before ? loadBoard() : armRefresh())
+          .catch(e => err("Error: " + e.message));
+      }, 10000);
   }
   function init() {
     B.loaded = true;
@@ -2152,6 +2187,7 @@ button.linklike { background: none; border: none; padding: 0;
       '<span><i style="background:' + x[0] + '"></i>' + esc(x[1]) +
       "</span>").join("");
     $("bd-run").onchange = () => {
+      B.userPicked = true;  // the owner chose: stop following new runs
       B.run = $("bd-run").value;
       const cur = B.runs.find(r => r.run_id === B.run) || {};
       B.flowId = cur.flow_id || "";
