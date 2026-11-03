@@ -1182,12 +1182,16 @@ def run_flow(flow, order_id, run_agent_fn, run_id=None, flow_id="adhoc",
     completed = []
 
     def fail(msg):
-        _write_json(os.path.join(run_dir, "STATUS.json"),
-                    {"run_id": run_id, "flow_id": flow_id,
-                     "order_id": order_id, "state": "failed",
-                     "error": msg, "current": "",
-                     "completed": list(completed),
-                     "cost": _run_cost(run_dir)})
+        # Merge into the existing STATUS: a failure must not drop
+        # the approvals already recorded, or a resume re-runs
+        # every stage from the top.
+        st = _read_step_status(run_dir)
+        st.update({"run_id": run_id, "flow_id": flow_id,
+                   "order_id": order_id, "state": "failed",
+                   "error": msg, "current": "",
+                   "completed": list(completed),
+                   "cost": _run_cost(run_dir)})
+        _write_json(os.path.join(run_dir, "STATUS.json"), st)
         emit({"ev": "flow_error", "error": msg})
         return {"ok": False, "run_id": run_id, "error": msg}
 

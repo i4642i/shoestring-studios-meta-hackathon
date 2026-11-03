@@ -29,6 +29,10 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - One image per cut that has no photo or source figure: your
   part's split plan carries the quota (one per such cut). Count
   before you generate; past the quota the call is refused.
+- Work in batches: read the input once, then call
+  pc_generate_image for five to seven cuts in ONE step, and keep
+  batching until every generate cut has its image. One image per
+  step would run out of steps on a long part.
 - Never a photoreal-fact look: no fake documents, no fake people
   as evidence, no invented data in the frame.
 - Match the style guide's image tone in every prompt.
@@ -38,6 +42,12 @@ docs/RESULT_JSON_DRAFT_EN.md).
 - Ask for nothing; bounded tools only: read_md_section,
   open_ref, pc_generate_image, write_gen_picks. No Source PC
   input: concept cuts are described, never read from the source.
-- Finish by calling write_gen_picks with the COMPLETE object. If
-  it reports errors, fix them and call it again within your
-  remaining steps.
+- Finish with ONE write_gen_picks call shaped EXACTLY like this
+  (a real object argument, never a JSON string):
+  {gen_picks: {cuts: [{cut_id (Penn's), decision: generate|none,
+  prompt (the generate prompt), reason}], images: [{cut_id,
+  file (the "file" pc_generate_image returned), prompt,
+  reused (its "reused_entry" true/false)}]}}. Every storyboard
+  cut appears once in cuts; every generate cut has one images[]
+  entry. If it reports errors, fix them and call it again within
+  your remaining steps.
