@@ -1538,7 +1538,18 @@ class Handler(BaseHTTPRequestHandler):
                           encoding="utf-8") as f:
                     out["start_result"] = json.load(f)
             except (OSError, ValueError):
-                pass
+                # start_result.json is only written by the START
+                # button path. A chat order (Sam's finalize + parser +
+                # auto-start) has none, and the card then said "the
+                # start did not finish" although the run was on.
+                # Build the same payload from what is on disk.
+                try:
+                    code, obj = self._do_complete(oid, d, meta, {},
+                                                  meta.get("status"))
+                    if code == 200 and isinstance(obj, dict):
+                        out["start_result"] = obj
+                except (OSError, ValueError, RuntimeError):
+                    pass
         return self._json(200, out)
 
     def _api_order_projectlog(self, oid):
@@ -2243,7 +2254,7 @@ class Handler(BaseHTTPRequestHandler):
             intake.CHAT_UNREADABLE, False,
             self._form_missing(form, meta), form)
         bad["accepted"] = False
-        return self._json(200, bad)
+        return (200, bad)  # the caller sends it (see _handover)
 
     def _handover(self, oid, d, meta, last_user, say, out):
         """Accepted payload for a finished finalize_and_send call."""
@@ -2263,7 +2274,10 @@ class Handler(BaseHTTPRequestHandler):
                         "source": out.get("source"),
                         "stages": out.get("stages"),
                         "form": out.get("form")})
-        return self._json(200, payload)
+        # _sam_turn returns (code, payload) and _api_order_chat sends
+        # it; sending here as well left the caller unpacking None
+        # (TypeError in the log on every successful finalize).
+        return (200, payload)
     @staticmethod
     def _chat_append(d, user, reply, raw=None):
         rec = {"user": user, "reply": reply}
