@@ -7,7 +7,8 @@ All code in this repository was written during the Meta Global AI Developer Hack
 ## Author
 
 Sangho KIM, NexTopologix (Changwon, South Korea)
-Website: http://nextopologix.com/
+Open to job offers, contract projects and collaborations on AI agents.
+Website: https://nextopologix.com
 GitHub: https://github.com/i4642i
 LinkedIn: https://www.linkedin.com/in/sangho-kim-839a4799/
 
