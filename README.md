@@ -4,6 +4,12 @@ AI-agent video team: dense source material in, publish-grade narrated explainer 
 
 All code in this repository was written during the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026).
 
+## Author
+
+Sangho KIM, NexTopologix (Changwon, South Korea)
+GitHub: https://github.com/i4642i
+LinkedIn: https://www.linkedin.com/in/sangho-kim-839a4799/
+
 ## Run it (first time)
 
 Prereqs: Python 3.10+, Git, **Node.js 16+** (LTS from nodejs.org; needed to render slides), an LLM key (see `.env` below).

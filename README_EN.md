@@ -7,6 +7,12 @@ Your World). All of our code in this repository was written during
 the hackathon; everything we did not write is listed under
 Third-party below.
 
+## Author
+
+Sangho KIM, NexTopologix (Changwon, South Korea)
+GitHub: https://github.com/i4642i
+LinkedIn: https://www.linkedin.com/in/sangho-kim-839a4799/
+
 ## What was built
 
 - **Nextop Agentic Workers (NAW)** — the multi-agent framework in
