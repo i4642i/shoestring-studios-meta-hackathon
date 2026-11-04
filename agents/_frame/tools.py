@@ -168,6 +168,8 @@ def _request_depth(run_dir):
 
 def write_structure(ctx, args):
     bundle = args.get("result")
+    if isinstance(bundle, str):
+        bundle = _lenient_json(bundle)
     if not isinstance(bundle, dict):
         return {"ok": False, "errors": [
             "call with {result: {concept: {...}, structure: {...}}}"]}
@@ -728,6 +730,10 @@ def write_storyboard(ctx, args):
     cut_id from the narration into the saved result."""
     obj = (args or {}).get("storyboard")
     guide = (args or {}).get("style_guide")
+    if isinstance(obj, str):
+        obj = _lenient_json(obj)
+    if isinstance(guide, str):
+        guide = _lenient_json(guide)
     if not isinstance(obj, dict) or not isinstance(guide, dict):
         return {"ok": False, "errors": [
             "call with {storyboard: {...}, style_guide: {...}}"]}
@@ -1981,9 +1987,12 @@ def write_photo_picks(ctx, args):
     """Pia's picks: cut match vs Penn's received storyboard, every
     use pick licensed and (web) stored, source figures readable."""
     obj = (args or {}).get("photo_picks")
+    if isinstance(obj, str):
+        obj = _lenient_json(obj)
     if not isinstance(obj, dict):
         return {"ok": False, "errors": [
-            "call with {photo_picks: {...}}"]}
+            "call with {photo_picks: {...}} -- pass the object "
+            "itself, not a JSON string"]}
     board = _received_data(ctx, "storyboard")
     if not board:
         return {"ok": False, "errors": [
@@ -2038,9 +2047,12 @@ def write_gen_picks(ctx, args):
     """Gene's choices: cut match, prompt per generate cut, ≤6
     images, every image stored in the Generated PC."""
     obj = (args or {}).get("gen_picks")
+    if isinstance(obj, str):
+        obj = _lenient_json(obj)
     if not isinstance(obj, dict):
         return {"ok": False, "errors": [
-            "call with {gen_picks: {...}}"]}
+            "call with {gen_picks: {...}} -- pass the object "
+            "itself, not a JSON string"]}
     board = _received_data(ctx, "storyboard")
     if not board:
         return {"ok": False, "errors": [
@@ -2088,9 +2100,12 @@ def write_anim_picks(ctx, args):
     use, every ref quoted verbatim (steps cuts may cite paragraphs),
     every data value traced to the quotes."""
     obj = (args or {}).get("anim_picks")
+    if isinstance(obj, str):
+        obj = _lenient_json(obj)
     if not isinstance(obj, dict):
         return {"ok": False, "errors": [
-            "call with {anim_picks: {...}}"]}
+            "call with {anim_picks: {...}} -- pass the object "
+            "itself, not a JSON string"]}
     board = _received_data(ctx, "storyboard")
     if not board:
         return {"ok": False, "errors": [
