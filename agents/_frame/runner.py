@@ -450,12 +450,20 @@ def run(agent_dir, run_dir, brief, input_md):
         notes = []
         for call in calls:
             name = call["function"]["name"]
+            raw_args = call["function"].get("arguments") or "{}"
             try:
-                args = json.loads(call["function"].get("arguments") or "{}")
+                args = json.loads(raw_args)
             except ValueError:
-                args = {}
+                # Same repair the writers use (an extra "}" at the end);
+                # never call the tool with {} in place of broken args.
+                from .tools import _lenient_json
+                args = _lenient_json(raw_args)
             if name not in play:
                 result = {"error": "unknown tool: " + name}
+            elif not isinstance(args, dict):
+                args = {}
+                result = {"error": "tool arguments were not valid JSON: "
+                                   "send one JSON object"}
             else:
                 try:
                     result = play[name][0](ctx, args)

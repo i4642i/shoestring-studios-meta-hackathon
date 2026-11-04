@@ -215,6 +215,8 @@ def write_request(ctx, args):
     pointer is NOT a category: the crew gets the entry through the
     order's pc_ref plus recipient rows."""
     obj = (args or {}).get("request")
+    if isinstance(obj, str):
+        obj = _lenient_json(obj)
     errors = validate_request(obj)
     if errors:
         return {"ok": False, "errors": errors}
@@ -1617,6 +1619,10 @@ def pc_set_recipients(ctx, args):
     args = args or {}
     maps = args.get("map", [])
     fulls = args.get("full", [])
+    if isinstance(maps, str):
+        maps = _lenient_json(maps)
+    if isinstance(fulls, str):
+        fulls = _lenient_json(fulls)
     for key, grp in (("map", maps), ("full", fulls)):
         if not isinstance(grp, list) \
                 or any(not isinstance(a, str) or not a for a in grp):
@@ -2665,6 +2671,8 @@ def render_slide(ctx, args):
     if not cut_id:
         return {"ok": False, "errors": ["call with {cut_id}"]}
     overrides = (args or {}).get("overrides")
+    if isinstance(overrides, str):
+        overrides = _lenient_json(overrides)
     if overrides is not None and not isinstance(overrides, dict):
         return {"ok": False, "errors": [
             "overrides must be {blocks: {<i>: {font_size, x, y, "
