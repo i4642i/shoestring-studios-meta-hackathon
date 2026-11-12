@@ -1,0 +1,191 @@
+{
+  "id": "designer",
+  "name": "Vera",
+  "title": "Screen designer",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [
+    "layout_fit"
+  ],
+  "inputs": [
+    {
+      "name": "narration"
+    },
+    {
+      "name": "visuals"
+    },
+    {
+      "name": "storyboard"
+    },
+    {
+      "name": "brief"
+    },
+    {
+      "name": "photo_candidates"
+    },
+    {
+      "name": "chart_candidates"
+    },
+    {
+      "name": "gen_candidates"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "slide_plan",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "part_id": {
+            "type": "string",
+            "description": "the part id of this scene, copied from the input (p1, p2, ...)"
+          },
+          "cuts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cut_id": {
+                  "type": "string"
+                },
+                "layout": {
+                  "type": "string",
+                  "pattern": "^(title|end|L[0-9]{2})$",
+                  "description": "layout id (L01-L11) whose material capacity equals the cut's material count (1: L01 L03 L04 L05 L10; 2: L06 L10 L11; 3: L07 L08 L09 L10 L11); title for the title cut, end for the end cut"
+                },
+                "fill": {
+                  "type": "array",
+                  "maxItems": 6,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "slot": {
+                        "type": "string",
+                        "description": "a slot id of the layout (main, text, sub1, ...)"
+                      },
+                      "use": {
+                        "type": "string",
+                        "description": "a candidate id exactly as listed, or lines for text you write yourself"
+                      },
+                      "lines": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "only when use is lines: 1-3 lines of screen text, final (shown exactly as written)"
+                      },
+                      "at": {
+                        "type": "string",
+                        "description": "only in a sequence slot (order sequence): the word of the line, copied exactly, at which this material appears"
+                      }
+                    },
+                    "required": [
+                      "slot",
+                      "use"
+                    ]
+                  },
+                  "description": "the material for each slot: 1-3 candidate materials per content cut (text you write with use lines does not count). Empty list for title and end cuts"
+                },
+                "why_layout": {
+                  "type": "string",
+                  "description": "one sentence: why this layout and slot fill, based on the layout_fit verdict"
+                },
+                "considered": {
+                  "type": "array",
+                  "maxItems": 2,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "layout": {
+                        "type": "string"
+                      },
+                      "why_not": {
+                        "type": "string",
+                        "description": "one sentence: why not chosen, based on the layout_fit verdict"
+                      }
+                    },
+                    "required": [
+                      "layout",
+                      "why_not"
+                    ]
+                  },
+                  "description": "1-2 layouts compared but not chosen. Empty list for title and end cuts"
+                },
+                "why_in": {
+                  "type": "string",
+                  "description": "one short sentence: why these materials fit this line. Only the conclusion; no template or field names"
+                },
+                "dropped": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "why_not": {
+                        "type": "string",
+                        "description": "one short sentence"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "why_not"
+                    ]
+                  }
+                },
+                "title": {
+                  "type": "string",
+                  "description": "the small kicker at the top of the screen (scene title). For title and end cuts, the card text"
+                },
+                "highlight": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "0-2 words to stress, copied exactly from this cut's lines; empty when the cut has no lines",
+                  "maxItems": 2
+                },
+                "source": {
+                  "type": "string"
+                },
+                "focus": {
+                  "type": "string",
+                  "description": "what this cut points at on screen (e.g. the 4th stop, the 2nd step, the 7.43% bar). Empty means nothing changes"
+                }
+              },
+              "required": [
+                "cut_id",
+                "layout",
+                "fill",
+                "why_layout",
+                "considered",
+                "why_in",
+                "dropped",
+                "title"
+              ]
+            }
+          }
+        },
+        "required": [
+          "part_id",
+          "cuts"
+        ]
+      }
+    }
+  ],
+  "max_calls": 40,
+  "tool_notes": {
+    "layout_fit": "Measure each content cut's chosen layout (title and end cuts have an empty fill and are not measured) and the material for each slot (fill) exactly as you will save them. Its capacity sentence says whether the layout holds your material count (1-3); other_layouts hold the same count. When comparing 2-3 layouts, call it once per layout, then choose by the returned sentences (slot fill, text size, whether the standard holds) and the vs_now of other_layouts. The fill you save must be exactly the one you measured last (if you change it, measure again). Do not add up or compare numbers yourself; pass on the tool's verdict sentences as your reasons.",
+    "save_output": "Save slide_plan once, after every content cut's fill has been measured with layout_fit. If it is refused, change only the slots, materials or layouts the message names, measure the changed cuts again, then save.",
+    "image_get": "Candidate photos are already listed in the input candidate lists, so you usually do not open them. Open a photo by its address (fs://image/N) only when you must see it.",
+    "generated_get": "Generated pictures (gn-) are already listed in the input candidate lists, so you usually do not open them. Open one by its address (fs://generated/N) only when you must see it.",
+    "materials_get": "Chart, formula, steps and contents values are already in the input candidate lists, so you usually do not open them. Open one by its address (fs://materials/N) only when you must check its values."
+  },
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

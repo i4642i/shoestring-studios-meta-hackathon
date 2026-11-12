@@ -1,0 +1,19 @@
+{
+  "name": "theory",
+  "description": "THEORY: news and explainer articles the explainer writer (Cleo) collected for easy explanations and background",
+  "map_llm": "qwen3.8-flash-next",
+  "shares": [
+    {
+      "from": "explainer",
+      "to": [
+        "planner"
+      ]
+    },
+    {
+      "from": "planner",
+      "to": [
+        "board"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "image",
+  "description": "IMAGE: photo and picture candidates the photo researcher (Pia) found per cut (web photos and source figures)",
+  "map_llm": "qwen3.8-flash-next",
+  "shares": [
+    {
+      "from": "photo",
+      "to": [
+        "designer"
+      ]
+    },
+    {
+      "from": "designer",
+      "to": [
+        "editor"
+      ]
+    }
+  ]
+}

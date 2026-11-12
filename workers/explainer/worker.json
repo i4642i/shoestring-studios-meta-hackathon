@@ -1,0 +1,95 @@
+{
+  "id": "explainer",
+  "name": "Cleo",
+  "title": "Explainer writer",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [
+    "news_search"
+  ],
+  "tool_notes": {
+    "news_search": "Only when a part has a gap in the source: write up to 3 English keywords at a time that fill that gap. per_keyword is the number of articles per keyword (default 3, at most 5). The same article does not come back again. Read the results before you upload.",
+    "source_get": "Use it only for the source document. Open the part by its address (fs://source/<number>#<part>) to check a sentence you quote in evidence.",
+    "source_query": "When the part that holds a concept is hard to find in the map, ask one short, specific question. Write the sentence and the address you get back in evidence.",
+    "theory_upload": "Upload only the 2–3 articles that fill the gap. file = the file news_search returned, title = article title, source = article URL. Use the fs://theory/<number> you get back as the address in evidence. Only the articles you cite in evidence go on to the story planner (all uploaded ones if you cite none).",
+    "theory_get": "Use it to read an article you uploaded again. Put the address fs://theory/<number> in as is."
+  },
+  "inputs": [
+    {
+      "name": "brief"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "concepts",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "part_id": {
+                  "type": "string",
+                  "description": "the id of the producer's part this item covers, copied from the brief as is (p1, p2, ...)"
+                },
+                "concept": {
+                  "type": "string"
+                },
+                "easy_explanation": {
+                  "type": "string"
+                },
+                "analogy": {
+                  "type": "string",
+                  "description": "an analogy; an empty string if no analogy fits the facts"
+                },
+                "misunderstanding": {
+                  "type": "string",
+                  "description": "a common misunderstanding of this concept; an empty string if none really fits"
+                },
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string"
+                      },
+                      "address": {
+                        "type": "string"
+                      },
+                      "gap": {
+                        "type": "string",
+                        "description": "for an article (fs://theory/...): in one sentence, what this article fills that the source lacks; leave it empty for the source document"
+                      }
+                    },
+                    "required": [
+                      "text",
+                      "address"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "part_id",
+                "concept",
+                "easy_explanation",
+                "analogy",
+                "misunderstanding"
+              ]
+            }
+          }
+        },
+        "required": [
+          "parts"
+        ]
+      }
+    }
+  ],
+  "max_calls": 40,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

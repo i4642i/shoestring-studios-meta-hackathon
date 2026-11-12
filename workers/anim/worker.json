@@ -1,0 +1,127 @@
+{
+  "id": "anim",
+  "name": "Max",
+  "title": "Animation maker",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [
+    "preview_materials"
+  ],
+  "tool_notes": {
+    "preview_materials": "Before saving, look at the materials as they will look on screen. Put items [{id, template, values}] in exactly as you will save them, up to 6 at a time; a material used in several cuts is looked at once. Check that shapes and text do not overlap, are not cut off, are not too small or too large, and that the meaning of the cut shows. If there is a problem, fix values (shorter names, fewer items, boxes instead of circles, moved positions) and look again. A fixed material must be looked at again before saving.",
+    "save_output": "Call it once at the end, after previewing every material and uploading it with materials_upload. List every content cut once, in scene order, each with its one material, as the form says.",
+    "materials_upload": "Before saving, upload the previewed materials, once each (a material used in several cuts is uploaded once), up to 10 at a time. name is \"<material id>.json\", text the material {id, template, values, refs} as JSON text, title the material id, description the why_fit, source the source address the values come from, \"line <cut id>\" for a number taken from a line, or \"made here\" for steps, route and text drawn from the line and the brief.",
+    "source_get": "Open the parts of the map with tables, formulas or numbers (fs://source/<number>#p<number>) and copy the values exactly; for steps, check names and order there. Write that address and the source passage in refs."
+  },
+  "inputs": [
+    {
+      "name": "narration"
+    },
+    {
+      "name": "visuals"
+    },
+    {
+      "name": "storyboard"
+    },
+    {
+      "name": "brief"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "chart_candidates",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "part_id": {
+            "type": "string",
+            "description": "the part id of this scene; copy it from the input as is (p1, p2, ...)"
+          },
+          "cuts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cut_id": {
+                  "type": "string",
+                  "description": "a content cut of this scene (every visuals cut that is not the title or end card); copy the input's cut id as is (c01, c02, ...)"
+                },
+                "material": {
+                  "type": "object",
+                  "description": "the one material of this cut (never empty: a text card when nothing else fits). A material that fits several cuts is made once and put in each of them.",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "ch-<cut_id>-1 (e.g. ch-c03-1), with the cut_id of the first cut this material is listed in. The same material listed in later cuts keeps this id and is copied identically."
+                    },
+                    "why_fit": {
+                      "type": "string",
+                      "description": "one short sentence on why it fits the cut; the conclusion only, no template or field names; English only"
+                    },
+                    "template": {
+                      "type": "string",
+                      "enum": [
+                        "numbers",
+                        "bar",
+                        "line",
+                        "curve",
+                        "scatter",
+                        "formula",
+                        "steps",
+                        "route",
+                        "text"
+                      ]
+                    },
+                    "values": {
+                      "type": "object"
+                    },
+                    "refs": {
+                      "type": "array",
+                      "description": "the source address and quote the values come from; needed for numbers, bar, line, curve, scatter and formula, not for steps, route and text",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ref": {
+                            "type": "string"
+                          },
+                          "quote": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "ref",
+                          "quote"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "why_fit",
+                    "template",
+                    "values"
+                  ]
+                }
+              },
+              "required": [
+                "cut_id",
+                "material"
+              ],
+              "additionalProperties": false
+            },
+            "description": "one entry per content cut, every content cut once, in scene order, no other cuts"
+          }
+        },
+        "required": [
+          "part_id",
+          "cuts"
+        ]
+      }
+    }
+  ],
+  "max_calls": 49,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

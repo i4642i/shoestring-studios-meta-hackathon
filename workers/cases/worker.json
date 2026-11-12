@@ -1,0 +1,86 @@
+{
+  "id": "cases",
+  "name": "Rex",
+  "title": "Case researcher",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [
+    "news_search"
+  ],
+  "tool_notes": {
+    "news_search": "Give up to 3 English keywords at a time. per_keyword is the number of articles per keyword (default 3, at most 5). The same article does not come back again. Read the results before you upload.",
+    "article_upload": "Upload only the articles you will use, one per case you write. file = the file news_search returned, title = article title, source = article URL. Write the fs://article/<number> you get back in the case's address. Only the articles whose address you write in a case go on to the story planner (all uploaded ones if you write none).",
+    "article_get": "Use it to read a case article you uploaded again. Put the address fs://article/<number> in as is. Do not use it for source document addresses (fs://source/...)."
+  },
+  "inputs": [
+    {
+      "name": "brief"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "cases",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "part_id": {
+                  "type": "string",
+                  "description": "the id of the producer's part this item covers, copied from the brief as is (p1, p2, ...)"
+                },
+                "cases": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      },
+                      "date": {
+                        "type": "string",
+                        "description": "a date you checked in the article; an empty string if unknown"
+                      },
+                      "summary": {
+                        "type": "string"
+                      },
+                      "why_fit": {
+                        "type": "string",
+                        "description": "one short sentence; write only the conclusion, no frames or field names"
+                      },
+                      "address": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "date",
+                      "summary",
+                      "why_fit",
+                      "address"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "part_id",
+                "cases"
+              ]
+            }
+          }
+        },
+        "required": [
+          "parts"
+        ]
+      }
+    }
+  ],
+  "max_calls": 40,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Office Layout Editor</title>
+<style>
+  :root {
+    --bg: #14141a; --panel: #1d1d26; --panel2: #262632; --line: #3a2a18;
+    --text: #ffe9c4; --dim: #a8a08f; --accent: #ffd166; --danger: #e86a5a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: ui-monospace, Consolas, monospace; background: var(--bg); color: var(--text); font-size: 13px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 3px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 15px; letter-spacing: 3px; margin: 0 12px 0 0; }
+  header .sp { flex: 1; }
+  button, select, input { font: inherit; color: var(--text); background: var(--panel2); border: 2px solid var(--line); border-radius: 0; padding: 4px 8px; }
+  button { cursor: pointer; box-shadow: 2px 2px 0 #000; }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 #000; }
+  button.on { background: var(--accent); color: #222; border-color: var(--accent); }
+  button.danger { border-color: var(--danger); }
+  input[type=color] { padding: 0; width: 34px; height: 26px; }
+  input[type=number] { width: 64px; }
+  input[type=text] { width: 100%; }
+  main { display: grid; grid-template-columns: 210px 1fr 240px; min-height: calc(100vh - 52px); }
+  aside { background: var(--panel); padding: 12px; overflow-y: auto; }
+  aside#palette { border-right: 3px solid var(--line); }
+  aside#props { border-left: 3px solid var(--line); }
+  h3 { font-size: 11px; letter-spacing: 2px; color: var(--dim); margin: 14px 0 6px; text-transform: uppercase; }
+  h3:first-child { margin-top: 0; }
+  .pal { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .pal button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px; font-size: 10px; }
+  .pal canvas { width: 72px; height: 48px; image-rendering: pixelated; background: #a87844; }
+  #stage { padding: 16px; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #wrap { border: 8px solid var(--line); background: #000; line-height: 0; }
+  #cv { image-rendering: pixelated; display: block; cursor: crosshair; touch-action: none; }
+  #status { color: var(--dim); min-height: 18px; text-align: center; max-width: 960px; }
+  .row { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
+  .row label { width: 72px; color: var(--dim); flex-shrink: 0; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .help { color: var(--dim); font-size: 11px; line-height: 1.6; }
+  .help kbd { color: var(--text); border: 1px solid var(--line); padding: 0 3px; }
+  .tag { display: inline-block; background: var(--panel2); border: 1px solid var(--line); padding: 1px 6px; font-size: 11px; }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    aside#palette, aside#props { border: 0; border-top: 3px solid var(--line); }
+    aside#palette { order: 2; } #stage { order: 1; } aside#props { order: 3; }
+    .pal { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>SHOESTRING STUDIOS · OFFICE LAYOUT EDITOR</h1>
+  <button id="btnUndo" title="Ctrl+Z">Undo</button>
+  <button id="btnRedo" title="Ctrl+Y">Redo</button>
+  <button id="btnPlay" title="Preview the crew walking around">▶ Play</button>
+  <span class="sp"></span>
+  <button id="btnImport">Import JSON</button>
+  <button id="btnExport">Export JSON</button>
+  <button id="btnCopy">Copy JSON</button>
+  <button id="btnReset" class="danger">Reset</button>
+</header>
+<main>
+  <aside id="palette">
+    <h3>Floor</h3>
+    <div class="pal" id="palFloor"></div>
+    <h3>Wall</h3>
+    <div class="pal" id="palWall"></div>
+    <h3>Crew</h3>
+    <div class="row"><input type="text" id="seatName" value="NEW HIRE" maxlength="14"></div>
+    <button id="btnSeat" style="width:100%">+ Place crew member</button>
+  </aside>
+  <section id="stage">
+    <div id="wrap"><canvas id="cv" width="320" height="210"></canvas></div>
+    <div id="status"></div>
+  </section>
+  <aside id="props"></aside>
+</main>
+<input type="file" id="file" accept=".json,application/json" hidden>
+
+<script>
+"use strict";
+const W = 320, H = 210, WALL = 30;
+const STORE = "shoestring.officeLayout.v1", PREFS = "shoestring.officeEditorPrefs.v1";
+const SPRITE_W = 12, SPRITE_H = 14;
+
+// Same pixel-art person as office_mockup.html (S=skin H=hair T=shirt P=pants E=eye)
+const BASE = [
+  "....HHHH....", "..HHHHHHHH..", "..HHSSSSH...", "..HHSSSSH...", "...SESESS...",
+  "....SSSS....", "...TTTTTT...", "..TTTTTTTT..", "..STTTTTTS..", "..STTTTTTS..", "....PPPP....",
+];
+const LEGS_A = ["....PPPP....", "...PP..PP...", "...PP..PP..."];
+const LEGS_B = ["....PPPP....", "....PPPP....", "....PPPP...."];
+
+const TYPES = {
+  rug:        { zone: "floor", layer: 0, w: 130, h: 70, resize: true, color: "#2e7d6e", label: "Rug" },
+  desk:       { zone: "floor", layer: 1, w: 55, h: 26, resize: true, color: "#5b3a1e", label: "Desk" },
+  table:      { zone: "floor", layer: 1, w: 40, h: 22, resize: true, color: "#8a5f33", label: "Meeting table" },
+  chair:      { zone: "floor", layer: 1, w: 10, h: 12, label: "Chair" },
+  sofa:       { zone: "floor", layer: 1, w: 40, h: 16, resize: true, color: "#7a3b3b", label: "Sofa" },
+  plant:      { zone: "floor", layer: 1, w: 10, h: 16, label: "Plant" },
+  bookshelf:  { zone: "floor", layer: 1, w: 24, h: 30, label: "Bookshelf" },
+  copier:     { zone: "floor", layer: 1, w: 20, h: 18, label: "Copier" },
+  coffee:     { zone: "floor", layer: 1, w: 12, h: 18, label: "Coffee machine" },
+  cooler:     { zone: "floor", layer: 1, w: 10, h: 20, label: "Water cooler" },
+  lamp:       { zone: "floor", layer: 1, w: 6, h: 20, label: "Floor lamp" },
+  storyboard: { zone: "wall", layer: 1, w: 44, h: 22, label: "Storyboard" },
+  whiteboard: { zone: "wall", layer: 1, w: 40, h: 20, resize: true, label: "Whiteboard" },
+  window:     { zone: "wall", layer: 1, w: 30, h: 18, resize: true, label: "Window" },
+  poster:     { zone: "wall", layer: 1, w: 14, h: 20, color: "#c2571b", label: "Poster" },
+  clock:      { zone: "wall", layer: 1, w: 10, h: 10, label: "Clock" },
+  door:       { zone: "wall", layer: 1, w: 16, h: 28, label: "Door" },
+};
+const MIN_SIZE = 8;
+
+const PALETTES = [
+  { S: "#a0683c", H: "#222222", T: "#2e7d6e", P: "#334155" },
+  { S: "#f1c27d", H: "#4a2f1a", T: "#c2571b", P: "#1f2937" },
+  { S: "#4a2f1a", H: "#111111", T: "#3949ab", P: "#374151" },
+  { S: "#e0ac69", H: "#8d5524", T: "#7b2d8b", P: "#1f2937" },
+  { S: "#ffdbac", H: "#d4a017", T: "#2563eb", P: "#3f3f46" },
+  { S: "#c68642", H: "#3b2417", T: "#b45309", P: "#27272a" },
+];
+
+function defaultLayout() {
+  return {
+    version: 1,
+    room: { sign: "SHOESTRING STUDIOS", wall: "#8f6a3f", trim: "#6b4a26", floorA: "#b5854d", floorB: "#a87844" },
+    objects: [
+      { id: uid(), type: "storyboard", x: 8, y: 5, w: 44, h: 22 },
+      { id: uid(), type: "rug", x: 95, y: 70, w: 130, h: 70, color: "#2e7d6e" },
+      { id: uid(), type: "desk", x: 30, y: 110, w: 55, h: 26, color: "#5b3a1e" },
+      { id: uid(), type: "desk", x: 235, y: 110, w: 55, h: 26, color: "#5b3a1e" },
+    ],
+    seats: [
+      { id: uid(), name: "PD", x: 40, y: 130, pal: { ...PALETTES[0] } },
+      { id: uid(), name: "WRITER", x: 250, y: 130, pal: { ...PALETTES[1] } },
+      { id: uid(), name: "REVIEW", x: 150, y: 160, pal: { ...PALETTES[2] } },
+    ],
+  };
+}
+
+function uid() { return Math.random().toString(36).slice(2, 9); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = c => clamp(Math.round(amt < 0 ? c * (1 + amt) : c + (255 - c) * amt), 0, 255);
+  const r = f(n >> 16), g = f((n >> 8) & 255), b = f(n & 255);
+  return "#" + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+}
+function R(g, c, x, y, w, h) { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+
+// ---------- object drawing (logical pixels) ----------
+const DRAW = {
+  rug(g, o) {
+    const c = o.color || TYPES.rug.color, d = shade(c, -0.25), l = shade(c, 0.2);
+    R(g, c, o.x, o.y, o.w, o.h);
+    R(g, d, o.x + 3, o.y + 3, o.w - 6, 1); R(g, d, o.x + 3, o.y + o.h - 4, o.w - 6, 1);
+    R(g, d, o.x + 3, o.y + 3, 1, o.h - 6); R(g, d, o.x + o.w - 4, o.y + 3, 1, o.h - 6);
+    for (let yy = o.y + 2; yy < o.y + o.h - 2; yy += 3) { R(g, l, o.x - 1, yy, 1, 1); R(g, l, o.x + o.w, yy, 1, 1); }
+  },
+  desk(g, o) {
+    const c = o.color || TYPES.desk.color;
+    R(g, c, o.x, o.y, o.w, o.h);
+    R(g, shade(c, 0.25), o.x, o.y, o.w, 5);
+    R(g, shade(c, -0.3), o.x + o.w - 15, o.y + 10, 11, 1);
+    R(g, shade(c, -0.3), o.x + o.w - 15, o.y + 16, 11, 1);
+    if (o.w >= 30) {
+      const mx = o.x + Math.floor(o.w / 2) - 7;
+      R(g, "#222", mx, o.y - 9, 14, 9); R(g, "#7fd3ff", mx + 1, o.y - 8, 12, 6);
+      R(g, "#c9f0ff", mx + 2, o.y - 7, 3, 1); R(g, "#333", mx + 6, o.y - 1, 2, 2);
+    }
+  },
+  table(g, o) {
+    const c = o.color || TYPES.table.color;
+    R(g, shade(c, -0.35), o.x + 2, o.y + o.h - 3, 2, 3); R(g, shade(c, -0.35), o.x + o.w - 4, o.y + o.h - 3, 2, 3);
+    R(g, c, o.x, o.y, o.w, o.h - 3); R(g, shade(c, 0.2), o.x, o.y, o.w, 3);
+    R(g, "#f5f0e6", o.x + 4, o.y + 5, 8, 6); R(g, "#9aa3ad", o.x + 5, o.y + 7, 6, 1);
+    if (o.w > 24) { R(g, "#f5f0e6", o.x + o.w - 13, o.y + 6, 7, 5); }
+  },
+  chair(g, o) {
+    R(g, "#334155", o.x + 1, o.y, 8, 6); R(g, "#475569", o.x, o.y + 6, 10, 4);
+    R(g, "#1f2937", o.x + 1, o.y + 10, 1, 2); R(g, "#1f2937", o.x + 8, o.y + 10, 1, 2);
+  },
+  sofa(g, o) {
+    const c = o.color || TYPES.sofa.color;
+    R(g, shade(c, -0.15), o.x, o.y, o.w, 7); R(g, c, o.x, o.y + 7, o.w, o.h - 9);
+    R(g, shade(c, -0.35), o.x, o.y + 3, 4, o.h - 5); R(g, shade(c, -0.35), o.x + o.w - 4, o.y + 3, 4, o.h - 5);
+    R(g, shade(c, 0.15), o.x + Math.floor(o.w / 2), o.y + 8, 1, o.h - 11);
+    R(g, "#222", o.x + 1, o.y + o.h - 2, 2, 2); R(g, "#222", o.x + o.w - 3, o.y + o.h - 2, 2, 2);
+  },
+  plant(g, o) {
+    R(g, "#2f7a3b", o.x + 3, o.y + 2, 4, 9); R(g, "#3f9a4b", o.x, o.y + 4, 4, 5);
+    R(g, "#3f9a4b", o.x + 6, o.y + 3, 4, 6); R(g, "#5cbf63", o.x + 4, o.y, 2, 3);
+    R(g, "#a0522d", o.x + 2, o.y + 10, 6, 6); R(g, "#7a3d1f", o.x + 2, o.y + 10, 6, 1);
+  },
+  bookshelf(g, o) {
+    R(g, "#5b3a1e", o.x, o.y, o.w, o.h); R(g, "#3e2713", o.x + 2, o.y + 2, o.w - 4, o.h - 4);
+    const cols = ["#c2571b", "#2e7d6e", "#3949ab", "#ffd166", "#9aa3ad", "#7b2d8b"];
+    for (let s = 0; s < 3; s++) {
+      const sy = o.y + 2 + s * 9;
+      for (let bx = o.x + 3, i = s; bx < o.x + o.w - 4; bx += 3, i++) R(g, cols[i % cols.length], bx, sy + 2, 2, 6);
+      R(g, "#5b3a1e", o.x + 2, sy + 8, o.w - 4, 1);
+    }
+  },
+  copier(g, o) {
+    R(g, "#cfd3d6", o.x, o.y + 4, o.w, o.h - 4); R(g, "#9aa3ad", o.x, o.y, o.w, 5);
+    R(g, "#f5f0e6", o.x + 3, o.y + 1, o.w - 6, 2); R(g, "#2e7d6e", o.x + o.w - 6, o.y + 7, 4, 2);
+    R(g, "#ffd166", o.x + o.w - 6, o.y + 10, 1, 1); R(g, "#6b7280", o.x + 3, o.y + o.h - 5, o.w - 6, 2);
+  },
+  coffee(g, o) {
+    R(g, "#2b2b2b", o.x, o.y, o.w, o.h); R(g, "#c2571b", o.x + 2, o.y + 2, o.w - 4, 3);
+    R(g, "#888", o.x + 5, o.y + 8, 2, 2); R(g, "#f5f0e6", o.x + 4, o.y + 12, 4, 4);
+  },
+  cooler(g, o) {
+    R(g, "#7fc4ff", o.x + 2, o.y, 6, 8); R(g, "#a8dcff", o.x + 3, o.y + 1, 2, 5);
+    R(g, "#e5e7eb", o.x, o.y + 8, o.w, o.h - 8); R(g, "#3949ab", o.x + 4, o.y + 11, 2, 2);
+  },
+  lamp(g, o) {
+    R(g, "#ffe9a8", o.x, o.y, 6, 5); R(g, "#444", o.x + 2, o.y + 5, 2, 13); R(g, "#333", o.x, o.y + 18, 6, 2);
+  },
+  storyboard(g, o) {
+    R(g, "#f5f0e6", o.x, o.y, o.w, o.h);
+    const cols = ["#9aa3ad", "#2e7d6e", "#9aa3ad", "#9aa3ad", "#c2571b", "#9aa3ad"];
+    const cw = Math.floor((o.w - 8) / 3), ch = Math.floor((o.h - 7) / 2);
+    cols.forEach((c, i) => R(g, c, o.x + 3 + (i % 3) * (cw + 1), o.y + 3 + Math.floor(i / 3) * (ch + 1), cw, ch));
+  },
+  whiteboard(g, o) {
+    R(g, "#9aa3ad", o.x, o.y, o.w, o.h); R(g, "#ffffff", o.x + 1, o.y + 1, o.w - 2, o.h - 2);
+    R(g, "#3949ab", o.x + 4, o.y + 5, o.w * 0.5, 1); R(g, "#c2571b", o.x + 4, o.y + 9, o.w * 0.35, 1);
+    R(g, "#2e7d6e", o.x + 4, o.y + 13, o.w * 0.45, 1); R(g, "#6b7280", o.x + 2, o.y + o.h - 1, o.w - 4, 1);
+  },
+  window(g, o) {
+    R(g, "#6b4a26", o.x, o.y, o.w, o.h); R(g, "#9fd8ff", o.x + 2, o.y + 2, o.w - 4, o.h - 4);
+    R(g, "#6b4a26", o.x + Math.floor(o.w / 2), o.y + 2, 1, o.h - 4); R(g, "#6b4a26", o.x + 2, o.y + Math.floor(o.h / 2), o.w - 4, 1);
+    R(g, "#d6f0ff", o.x + 3, o.y + 3, 3, 2);
+  },
+  poster(g, o) {
+    const c = o.color || TYPES.poster.color;
+    R(g, c, o.x, o.y, o.w, o.h); R(g, "#ffe9c4", o.x + 2, o.y + 2, o.w - 4, 6);
+    R(g, shade(c, -0.3), o.x + 2, o.y + 11, o.w - 4, 1); R(g, shade(c, -0.3), o.x + 2, o.y + 14, o.w - 6, 1);
+  },
+  clock(g, o) {
+    R(g, "#222", o.x, o.y, o.w, o.h); R(g, "#f5f0e6", o.x + 1, o.y + 1, o.w - 2, o.h - 2);
+    R(g, "#222", o.x + 5, o.y + 2, 1, 4); R(g, "#222", o.x + 5, o.y + 5, 3, 1);
+  },
+  door(g, o) {
+    R(g, "#6b4a26", o.x, o.y, o.w, o.h); R(g, "#8f6a3f", o.x + 2, o.y + 2, o.w - 4, o.h - 2);
+    R(g, "#ffd166", o.x + o.w - 5, o.y + Math.floor(o.h / 2), 2, 2);
+  },
+};
+
+function drawPerson(g, x, y, pal, frameA) {
+  const rows = BASE.concat(frameA ? LEGS_A : LEGS_B);
+  rows.forEach((row, yy) => {
+    for (let xx = 0; xx < row.length; xx++) {
+      const ch = row[xx];
+      if (ch === ".") continue;
+      g.fillStyle = ch === "E" ? "#1a1a1a" : pal[ch];
+      g.fillRect(Math.round(x) + xx, Math.round(y) + yy, 1, 1);
+    }
+  });
+}
+
+// ---------- state ----------
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+ctx.imageSmoothingEnabled = false;
+let L = loadLayout() || defaultLayout();
+let prefs = Object.assign({ zoom: window.innerWidth > 1300 ? 3 : 2, grid: 4, names: true }, loadJSON(PREFS) || {});
+let sel = null;            // { kind: "obj" | "seat", id }
+let tool = null;           // { kind: "obj", type } | { kind: "seat" }
+let drag = null, cursor = null, play = false, tick = 0;
+const undo = [], redo = [];
+let walkers = new Map();
+
+function loadJSON(key) { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch { return null; } }
+function loadLayout() { const d = loadJSON(STORE); return validLayout(d) ? d : null; }
+function save() { try { localStorage.setItem(STORE, JSON.stringify(L)); } catch {} }
+function savePrefs() { try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch {} }
+
+function validLayout(d) {
+  return d && typeof d === "object" && d.room && Array.isArray(d.objects) && Array.isArray(d.seats)
+    && d.objects.every(o => TYPES[o.type] && [o.x, o.y, o.w, o.h].every(Number.isFinite))
+    && d.seats.every(s => Number.isFinite(s.x) && Number.isFinite(s.y) && s.pal);
+}
+
+function pushHistory() { undo.push(JSON.stringify(L)); if (undo.length > 120) undo.shift(); redo.length = 0; }
+function commit(fn) { pushHistory(); fn(); save(); renderProps(); }
+function doUndo() { if (!undo.length) return; redo.push(JSON.stringify(L)); L = JSON.parse(undo.pop()); afterRestore(); }
+function doRedo() { if (!redo.length) return; undo.push(JSON.stringify(L)); L = JSON.parse(redo.pop()); afterRestore(); }
+function afterRestore() { if (sel && !getSel()) sel = null; save(); renderProps(); }
+
+function getSel() {
+  if (!sel) return null;
+  const list = sel.kind === "obj" ? L.objects : L.seats;
+  return list.find(i => i.id === sel.id) || null;
+}
+function snap(v) { const g = prefs.grid; return Math.round(v / g) * g; }
+
+function clampObj(o) {
+  const t = TYPES[o.type];
+  if (t.zone === "wall") o.h = Math.min(o.h, WALL);
+  o.w = clamp(o.w, MIN_SIZE, W); o.h = clamp(o.h, MIN_SIZE, H - WALL);
+  const minY = t.zone === "wall" ? 0 : WALL, maxY = t.zone === "wall" ? WALL - o.h : H - o.h;
+  o.x = clamp(o.x, 0, W - o.w); o.y = clamp(o.y, minY, maxY);
+}
+function clampSeat(s) { s.x = clamp(s.x, 0, W - SPRITE_W); s.y = clamp(s.y, WALL, H - SPRITE_H); }
+
+// ---------- rendering ----------
+function drawRoom(g) {
+  const r = L.room;
+  for (let y = WALL; y < H; y += 8)
+    for (let x = 0; x < W; x += 8) R(g, ((x + y) / 8) % 2 ? r.floorA : r.floorB, x, y, 8, 8);
+  R(g, r.wall, 0, 0, W, WALL); R(g, r.trim, 0, WALL, W, 3);
+  if (r.sign) {
+    g.fillStyle = "#ffe9c4"; g.font = "bold 11px monospace"; g.textAlign = "center"; g.textBaseline = "alphabetic";
+    g.fillText(r.sign, W / 2, 20);
+  }
+}
+
+function seatPos(s) { if (play) { const w = walkers.get(s.id); if (w) return w; } return s; }
+
+function drawScene(g) {
+  g.clearRect(0, 0, W, H);
+  drawRoom(g);
+  L.objects.filter(o => TYPES[o.type].zone === "wall").forEach(o => DRAW[o.type](g, o));
+  L.objects.filter(o => TYPES[o.type].layer === 0).forEach(o => DRAW[o.type](g, o));
+  const depth = [];
+  L.objects.filter(o => TYPES[o.type].zone === "floor" && TYPES[o.type].layer === 1)
+    .forEach(o => depth.push({ bottom: o.y + o.h, draw: () => DRAW[o.type](g, o) }));
+  L.seats.forEach(s => {
+    const p = seatPos(s);
+    depth.push({ bottom: p.y + SPRITE_H, draw: () => {
+      const moving = play && p.moving;
+      const bob = play && !moving ? Math.round(Math.sin((tick + s.x) / 10)) : 0;
+      drawPerson(g, p.x, p.y + bob, s.pal, moving && Math.floor(tick / 8) % 2 === 0);
+      if (prefs.names && s.name) {
+        g.font = "bold 6px monospace"; g.textAlign = "center"; g.textBaseline = "alphabetic";
+        const tw = Math.ceil(g.measureText(s.name).width) + 4, cx = Math.round(p.x + SPRITE_W / 2);
+        R(g, "rgba(0,0,0,0.6)", cx - tw / 2, p.y - 8, tw, 7);
+        g.fillStyle = "#ffe9c4"; g.fillText(s.name, cx, p.y - 2);
+      }
+    } });
+  });
+  depth.sort((a, b) => a.bottom - b.bottom).forEach(d => d.draw());
+}
+
+function dashedRect(g, x, y, w, h, c) {
+  g.fillStyle = c;
+  for (let i = 0; i < w; i += 2) { g.fillRect(x + i, y - 1, 1, 1); g.fillRect(x + i, y + h, 1, 1); }
+  for (let i = 0; i < h; i += 2) { g.fillRect(x - 1, y + i, 1, 1); g.fillRect(x + w, y + i, 1, 1); }
+}
+
+function itemBox(kind, it) {
+  if (kind === "seat") { const p = seatPos(it); return { x: Math.round(p.x), y: Math.round(p.y), w: SPRITE_W, h: SPRITE_H }; }
+  return { x: it.x, y: it.y, w: it.w, h: it.h };
+}
+
+function frame() {
+  tick++;
+  if (play) stepWalkers();
+  drawScene(ctx);
+  if (!play) {
+    if (tool && cursor) {
+      ctx.globalAlpha = 0.55;
+      if (tool.kind === "obj") {
+        const g = ghostObj(cursor); clampObj(g); DRAW[g.type](ctx, g);
+      } else {
+        const s = ghostSeat(cursor); drawPerson(ctx, s.x, s.y, PALETTES[L.seats.length % PALETTES.length], false);
+      }
+      ctx.globalAlpha = 1;
+    }
+    const it = getSel();
+    if (it) {
+      const b = itemBox(sel.kind, it);
+      dashedRect(ctx, b.x, b.y, b.w, b.h, "#ffd166");
+      if (sel.kind === "obj" && TYPES[it.type].resize) R(ctx, "#ffd166", b.x + b.w - 2, b.y + b.h - 2, 4, 4);
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+// ---------- play preview ----------
+function newTarget(w) { w.tx = 4 + Math.random() * (W - SPRITE_W - 8); w.ty = WALL + 4 + Math.random() * (H - WALL - SPRITE_H - 8); }
+function stepWalkers() {
+  walkers.forEach(w => {
+    const dx = w.tx - w.x, dy = w.ty - w.y, d = Math.hypot(dx, dy);
+    if (w.wait > 0) { w.wait--; w.moving = false; return; }
+    if (d > 1) { w.x += dx / d * 0.6; w.y += dy / d * 0.6; w.moving = true; }
+    else { w.moving = false; w.wait = 60 + Math.random() * 180; if (Math.random() < 0.5) { w.tx = w.hx; w.ty = w.hy; } else newTarget(w); }
+  });
+}
+function togglePlay() {
+  play = !play;
+  walkers = new Map();
+  if (play) L.seats.forEach(s => { const w = { x: s.x, y: s.y, hx: s.x, hy: s.y, wait: Math.random() * 60, moving: false }; newTarget(w); walkers.set(s.id, w); });
+  document.getElementById("btnPlay").classList.toggle("on", play);
+  document.getElementById("btnPlay").textContent = play ? "■ Stop" : "▶ Play";
+  setStatus();
+}
+
+// ---------- interaction ----------
+function toLogical(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+}
+function ghostObj(p) {
+  const t = TYPES[tool.type];
+  const o = { id: uid(), type: tool.type, x: snap(p.x - t.w / 2), y: snap(p.y - t.h / 2), w: t.w, h: t.h };
+  if (t.color) o.color = t.color;
+  return o;
+}
+function ghostSeat(p) { const s = { x: snap(p.x - SPRITE_W / 2), y: snap(p.y - SPRITE_H / 2) }; clampSeat(s); return s; }
+
+function hitTest(p) {
+  const inside = (b) => p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h;
+  for (let i = L.seats.length - 1; i >= 0; i--) if (inside(itemBox("seat", L.seats[i]))) return { kind: "seat", id: L.seats[i].id };
+  const order = L.objects.slice().sort((a, b) => drawRank(a) - drawRank(b));
+  for (let i = order.length - 1; i >= 0; i--) if (inside(order[i])) return { kind: "obj", id: order[i].id };
+  return null;
+}
+function drawRank(o) { const t = TYPES[o.type]; return t.zone === "wall" ? -2000 + o.y : t.layer === 0 ? -1000 + o.y : o.y + o.h; }
+
+function place(p, keepTool) {
+  if (tool.kind === "obj") {
+    const o = ghostObj(p);
+    commit(() => { clampObj(o); L.objects.push(o); sel = { kind: "obj", id: o.id }; });
+  } else {
+    const g = ghostSeat(p), name = (document.getElementById("seatName").value || "NEW HIRE").trim().slice(0, 14).toUpperCase();
+    const s = { id: uid(), name, x: g.x, y: g.y, pal: { ...PALETTES[L.seats.length % PALETTES.length] } };
+    commit(() => { L.seats.push(s); sel = { kind: "seat", id: s.id }; });
+  }
+  if (!keepTool) setTool(null);
+}
+
+cv.addEventListener("pointerdown", e => {
+  if (play) return;
+  const p = toLogical(e);
+  if (tool) { place(p, e.shiftKey); return; }
+  const it = getSel();
+  if (it && sel.kind === "obj" && TYPES[it.type].resize && Math.abs(p.x - (it.x + it.w)) <= 3 && Math.abs(p.y - (it.y + it.h)) <= 3) {
+    drag = { mode: "resize", start: p, ow: it.w, oh: it.h, pushed: false };
+  } else {
+    const hit = hitTest(p);
+    sel = hit;
+    if (hit) { const t = getSel(); drag = { mode: "move", start: p, ox: t.x, oy: t.y, pushed: false }; }
+    renderProps();
+  }
+  if (drag) cv.setPointerCapture(e.pointerId);
+});
+
+cv.addEventListener("pointermove", e => {
+  cursor = toLogical(e);
+  if (drag) {
+    const it = getSel(); if (!it) { drag = null; return; }
+    const dx = cursor.x - drag.start.x, dy = cursor.y - drag.start.y;
+    const next = drag.mode === "move"
+      ? { x: snap(drag.ox + dx), y: snap(drag.oy + dy) }
+      : { w: Math.max(MIN_SIZE, snap(drag.ow + dx)), h: Math.max(MIN_SIZE, snap(drag.oh + dy)) };
+    const changed = Object.keys(next).some(k => next[k] !== it[k]);
+    if (changed) {
+      if (!drag.pushed) { pushHistory(); drag.pushed = true; }
+      Object.assign(it, next);
+      sel.kind === "obj" ? clampObj(it) : clampSeat(it);
+    }
+  }
+  updateCursorStyle();
+  setStatus();
+});
+
+cv.addEventListener("pointerup", () => { if (drag && drag.pushed) save(); if (drag) renderProps(); drag = null; });
+cv.addEventListener("pointerleave", () => { if (!drag) cursor = null; setStatus(); });
+
+function updateCursorStyle() {
+  if (tool || !cursor || play) { cv.style.cursor = play ? "default" : "crosshair"; return; }
+  const it = getSel();
+  if (it && sel.kind === "obj" && TYPES[it.type].resize && Math.abs(cursor.x - (it.x + it.w)) <= 3 && Math.abs(cursor.y - (it.y + it.h)) <= 3) { cv.style.cursor = "nwse-resize"; return; }
+  cv.style.cursor = hitTest(cursor) ? "move" : "default";
+}
+
+document.addEventListener("keydown", e => {
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "select" || tag === "textarea") return;
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); doUndo(); return; }
+  if (ctrl && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) { e.preventDefault(); doRedo(); return; }
+  if (e.key === "Escape") { setTool(null); sel = null; renderProps(); return; }
+  if (play) return;
+  const it = getSel(); if (!it) return;
+  if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removeSel(); return; }
+  if (ctrl && e.key.toLowerCase() === "d") { e.preventDefault(); duplicateSel(); return; }
+  const step = e.shiftKey ? 1 : prefs.grid;
+  const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+  if (moves[e.key]) {
+    e.preventDefault();
+    commit(() => { it.x += moves[e.key][0]; it.y += moves[e.key][1]; sel.kind === "obj" ? clampObj(it) : clampSeat(it); });
+  }
+});
+
+function removeSel() {
+  const list = sel.kind === "obj" ? "objects" : "seats";
+  commit(() => { L[list] = L[list].filter(i => i.id !== sel.id); sel = null; });
+}
+function duplicateSel() {
+  const it = getSel(); if (!it) return;
+  const copy = JSON.parse(JSON.stringify(it)); copy.id = uid(); copy.x += 8; copy.y += 8;
+  commit(() => {
+    if (sel.kind === "obj") { clampObj(copy); L.objects.push(copy); sel = { kind: "obj", id: copy.id }; }
+    else { clampSeat(copy); L.seats.push(copy); sel = { kind: "seat", id: copy.id }; }
+  });
+}
+
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll("[data-type]").forEach(b => b.classList.toggle("on", !!t && t.kind === "obj" && b.dataset.type === t.type));
+  document.getElementById("btnSeat").classList.toggle("on", !!t && t.kind === "seat");
+  setStatus();
+}
+
+function setStatus() {
+  const el = document.getElementById("status");
+  const pos = cursor ? `x ${Math.round(cursor.x)}, y ${Math.round(cursor.y)}` : "";
+  let msg;
+  if (play) msg = "Preview: the crew wanders around. Press Stop to edit.";
+  else if (tool) msg = `Click the room to place ${tool.kind === "obj" ? TYPES[tool.type].label : "a crew member"}. Hold Shift to place several. Esc to cancel.`;
+  else msg = `${L.objects.length} objects · ${L.seats.length} crew · grid ${prefs.grid}px`;
+  el.textContent = pos ? `${msg}   [${pos}]` : msg;
+}
+
+// ---------- properties panel ----------
+const propsEl = document.getElementById("props");
+function field(label, inputHtml) { return `<div class="row"><label>${label}</label>${inputHtml}</div>`; }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function renderProps() {
+  setStatus();
+  const it = getSel();
+  if (!it) {
+    const r = L.room;
+    propsEl.innerHTML = `
+      <h3>Room</h3>
+      ${field("Sign", `<input type="text" data-room="sign" value="${esc(r.sign)}" maxlength="28">`)}
+      ${field("Wall", `<input type="color" data-room="wall" value="${r.wall}">`)}
+      ${field("Trim", `<input type="color" data-room="trim" value="${r.trim}">`)}
+      ${field("Floor A", `<input type="color" data-room="floorA" value="${r.floorA}">`)}
+      ${field("Floor B", `<input type="color" data-room="floorB" value="${r.floorB}">`)}
+      <h3>Editor</h3>
+      ${field("Zoom", `<select data-pref="zoom">${[1, 2, 3, 4].map(z => `<option value="${z}" ${prefs.zoom == z ? "selected" : ""}>${z}x</option>`).join("")}</select>`)}
+      ${field("Grid", `<select data-pref="grid">${[1, 2, 4, 8].map(g => `<option value="${g}" ${prefs.grid == g ? "selected" : ""}>${g}px</option>`).join("")}</select>`)}
+      ${field("Names", `<input type="checkbox" data-pref="names" ${prefs.names ? "checked" : ""}>`)}
+      <h3>How to use</h3>
+      <div class="help">
+        Pick an item on the left, then click the room.<br>
+        Drag to move. Drag the yellow corner to resize.<br>
+        <kbd>Arrows</kbd> nudge (<kbd>Shift</kbd> = 1px) · <kbd>Del</kbd> delete<br>
+        <kbd>Ctrl+D</kbd> duplicate · <kbd>Ctrl+Z</kbd>/<kbd>Ctrl+Y</kbd> undo/redo<br>
+        Wall items stay on the wall; floor items stay on the floor.<br>
+        Your layout is saved in this browser. Use Export JSON to keep a file.
+      </div>`;
+  } else if (sel.kind === "obj") {
+    const t = TYPES[it.type];
+    propsEl.innerHTML = `
+      <h3>${esc(t.label)} <span class="tag">${t.zone}</span></h3>
+      ${field("X", `<input type="number" data-k="x" value="${it.x}">`)}
+      ${field("Y", `<input type="number" data-k="y" value="${it.y}">`)}
+      ${t.resize ? field("Width", `<input type="number" data-k="w" value="${it.w}" min="${MIN_SIZE}">`) + field("Height", `<input type="number" data-k="h" value="${it.h}" min="${MIN_SIZE}">`) : ""}
+      ${t.color ? field("Color", `<input type="color" data-k="color" value="${it.color || t.color}">`) : ""}
+      <div class="btns"><button data-act="dup">Duplicate</button><button data-act="del" class="danger">Delete</button></div>`;
+  } else {
+    propsEl.innerHTML = `
+      <h3>Crew member</h3>
+      ${field("Name", `<input type="text" data-k="name" value="${esc(it.name)}" maxlength="14">`)}
+      ${field("X", `<input type="number" data-k="x" value="${Math.round(it.x)}">`)}
+      ${field("Y", `<input type="number" data-k="y" value="${Math.round(it.y)}">`)}
+      ${field("Skin", `<input type="color" data-pal="S" value="${it.pal.S}">`)}
+      ${field("Hair", `<input type="color" data-pal="H" value="${it.pal.H}">`)}
+      ${field("Shirt", `<input type="color" data-pal="T" value="${it.pal.T}">`)}
+      ${field("Pants", `<input type="color" data-pal="P" value="${it.pal.P}">`)}
+      <div class="help">This is where the crew member sits. In the live office they walk out from here and come back.</div>
+      <div class="btns"><button data-act="dup">Duplicate</button><button data-act="del" class="danger">Delete</button></div>`;
+  }
+}
+
+propsEl.addEventListener("change", e => {
+  const el = e.target, it = getSel();
+  if (el.dataset.room) { commit(() => { L.room[el.dataset.room] = el.value; }); return; }
+  if (el.dataset.pref) {
+    const k = el.dataset.pref;
+    prefs[k] = k === "names" ? el.checked : Number(el.value);
+    savePrefs(); applyZoom(); setStatus(); return;
+  }
+  if (!it) return;
+  if (el.dataset.pal) { commit(() => { it.pal[el.dataset.pal] = el.value; }); return; }
+  const k = el.dataset.k; if (!k) return;
+  commit(() => {
+    if (k === "name") it.name = el.value.trim().slice(0, 14).toUpperCase();
+    else if (k === "color") it.color = el.value;
+    else { const v = Math.round(Number(el.value)); if (Number.isFinite(v)) it[k] = v; }
+    sel.kind === "obj" ? clampObj(it) : clampSeat(it);
+  });
+});
+propsEl.addEventListener("click", e => {
+  const act = e.target.dataset && e.target.dataset.act;
+  if (act === "del") removeSel();
+  if (act === "dup") duplicateSel();
+});
+
+// ---------- palette ----------
+function buildPalette() {
+  const floor = document.getElementById("palFloor"), wall = document.getElementById("palWall");
+  Object.entries(TYPES).forEach(([type, t]) => {
+    const b = document.createElement("button");
+    b.dataset.type = type; b.title = t.label;
+    const c = document.createElement("canvas"); c.width = 72; c.height = 48;
+    const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+    const top = type === "desk" ? 10 : 0;
+    const s = Math.max(1, Math.floor(Math.min(64 / t.w, (40 - top) / t.h)));
+    if (t.zone === "wall") { g.fillStyle = "#8f6a3f"; g.fillRect(0, 0, 72, 48); }
+    g.setTransform(s, 0, 0, s, Math.round((72 - t.w * s) / 2), Math.round((48 - t.h * s + top * s) / 2));
+    DRAW[type](g, { type, x: 0, y: 0, w: t.w, h: t.h, color: t.color });
+    b.appendChild(c);
+    const span = document.createElement("span"); span.textContent = t.label; b.appendChild(span);
+    b.addEventListener("click", () => setTool(tool && tool.kind === "obj" && tool.type === type ? null : { kind: "obj", type }));
+    (t.zone === "wall" ? wall : floor).appendChild(b);
+  });
+}
+document.getElementById("btnSeat").addEventListener("click", () => setTool(tool && tool.kind === "seat" ? null : { kind: "seat" }));
+
+// ---------- file actions ----------
+function layoutJSON() { return JSON.stringify(L, null, 2); }
+document.getElementById("btnExport").addEventListener("click", () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([layoutJSON()], { type: "application/json" }));
+  a.download = "office_layout.json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+document.getElementById("btnCopy").addEventListener("click", async () => {
+  const btn = document.getElementById("btnCopy");
+  try { await navigator.clipboard.writeText(layoutJSON()); btn.textContent = "Copied!"; }
+  catch { btn.textContent = "Copy failed"; }
+  setTimeout(() => (btn.textContent = "Copy JSON"), 1200);
+});
+document.getElementById("btnImport").addEventListener("click", () => document.getElementById("file").click());
+document.getElementById("file").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const d = JSON.parse(rd.result);
+      if (!validLayout(d)) throw new Error("not a layout");
+      d.objects.forEach(clampObj); d.seats.forEach(clampSeat);
+      commit(() => { L = d; sel = null; });
+    } catch { alert("This file is not a valid office layout."); }
+    e.target.value = "";
+  };
+  rd.readAsText(f);
+});
+document.getElementById("btnReset").addEventListener("click", () => {
+  if (!confirm("Reset to the default office? (You can undo this.)")) return;
+  commit(() => { L = defaultLayout(); sel = null; });
+});
+document.getElementById("btnUndo").addEventListener("click", doUndo);
+document.getElementById("btnRedo").addEventListener("click", doRedo);
+document.getElementById("btnPlay").addEventListener("click", togglePlay);
+
+function applyZoom() { cv.style.width = W * prefs.zoom + "px"; cv.style.height = H * prefs.zoom + "px"; }
+
+buildPalette();
+applyZoom();
+renderProps();
+frame();
+</script>
+</body>
+</html>

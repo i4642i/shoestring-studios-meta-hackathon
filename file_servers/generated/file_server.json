@@ -1,0 +1,19 @@
+{
+  "name": "generated",
+  "description": "GEN IMAGE: pictures the image generator (Gene) made per cut with muse-image-1.0",
+  "map_llm": "qwen3.8-flash-next",
+  "shares": [
+    {
+      "from": "gene",
+      "to": [
+        "designer"
+      ]
+    },
+    {
+      "from": "designer",
+      "to": [
+        "editor"
+      ]
+    }
+  ]
+}

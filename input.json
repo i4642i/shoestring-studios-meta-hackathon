@@ -1,0 +1,10 @@
+{
+  "order": "Episode 1 of a series that explains Chapter 1 of Advances in Financial Machine Learning to working investors who are new to financial machine learning. Explain the central claim and a few key reasons behind it, simply, with real cases.",
+  "length_min": 10,
+  "depth": "key_points",
+  "video_title": "Episode 1. Why Financial Machine Learning Needs Its Own Playbook",
+  "subtitle": "Advances in Financial Machine Learning, Chapter 1",
+  "closing": "Democratizing Financial Knowledge",
+  "pdf": "inputs/source_ch01/ch01/source.pdf",
+  "book_title": "Advances in Financial Machine Learning"
+}

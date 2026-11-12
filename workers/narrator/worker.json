@@ -1,0 +1,95 @@
+{
+  "id": "narrator",
+  "name": "Wren",
+  "title": "Narrator",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [
+    "voice_lines"
+  ],
+  "tool_notes": {
+    "voice_lines": "After the whole script is polished, voice many cuts in one call (up to 80 cuts per call; call it in parts if there are more). Write the returned seconds and audio into each cut as they are. After a change, voice only the changed cuts again. The totals it returns (all_voiced_so_far) cover every cut voiced so far and are for information only; there is no target to meet.",
+    "voice_upload": "After every cut is voiced from its final line, upload each cut's voice file, up to 10 per call: file = the audio path voice_lines returned, title = the cut_id (c01, c02, ...), description = \"voice of <cut_id>: <first words of the line>\", source = \"Kokoro voice (draft or final)\". Upload a cut again only if you voiced it again. Do this before save_output."
+  },
+  "inputs": [
+    {
+      "name": "storyboard"
+    },
+    {
+      "name": "brief"
+    },
+    {
+      "name": "concepts"
+    },
+    {
+      "name": "cases"
+    },
+    {
+      "name": "request"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "narration",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "cuts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cut_id": {
+                  "type": "string"
+                },
+                "part_id": {
+                  "type": "string",
+                  "description": "the part id of the cut's scene, copied from the storyboard (p1, p2, ...)"
+                },
+                "scene_n": {
+                  "type": "integer",
+                  "description": "the n of the cut's scene, copied from the storyboard"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "seconds": {
+                  "type": "number",
+                  "description": "the seconds voice_lines returned for this cut, as is"
+                },
+                "audio": {
+                  "type": "string",
+                  "description": "the audio file path voice_lines returned for this cut, as is"
+                }
+              },
+              "required": [
+                "cut_id",
+                "part_id",
+                "scene_n",
+                "text",
+                "seconds",
+                "audio"
+              ]
+            }
+          },
+          "voice": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "final"
+            ]
+          }
+        },
+        "required": [
+          "voice",
+          "cuts"
+        ]
+      }
+    }
+  ],
+  "max_calls": 50,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

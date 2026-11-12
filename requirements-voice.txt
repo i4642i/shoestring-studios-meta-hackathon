@@ -1,0 +1,6 @@
+# The narrator's voice (Kokoro, local and free) - installed into .venv by start_server.bat.
+# torch from PyPI is the CPU build on Windows; the first run downloads the Kokoro-82M model (~330 MB).
+kokoro==0.9.4
+misaki[en]==0.9.4
+soundfile
+torch

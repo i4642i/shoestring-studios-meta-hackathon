@@ -1,0 +1,90 @@
+# Secrets — never commit
+.env
+
+# Local settings (embedding profile choice, LAN URLs; no tokens inside)
+data/settings.json
+
+# Generated artifacts
+output/
+orders/
+runs/
+data/flows/*
+!data/flows/default.json
+data/sources/
+graph_index/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.aac
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+# Legacy LightRAG venv (pre-merge). Delete this folder after the first
+# start_server.bat run with the merged requirements.txt succeeds.
+.venv-lightrag/
+
+# LightRAG experiment: local-only artifacts (see experiments/lightrag/)
+experiments/lightrag/storage/
+experiments/lightrag/models/
+
+# Company PC storage (Source/Theory/Article entries + indexes hold full
+# texts; never commit)
+storage/_pc/
+
+# JavaScript
+node_modules/
+
+# Retired trials (local only, see attic/README_EN.md)
+attic/
+
+# Tool / VCS metadata (not deliverables)
+.agents/
+.muse/
+.eden/
+.hg/
+.sl/
+
+# Pasted reference screenshots at root (chat attachments, not deliverables)
+/*.png
+/*.jpg
+/*.jpeg
+
+# Personal screenshot stash (reference only, not deliverables)
+shk/
+
+# Command-line byproducts (pip caches, temp dirs)
+/pip-*/
+/tmp*/
+scripts/_tmpclip/t/
+/edge-cdp-*/
+*.pem
+*.log
+
+# Test probes and caches (thrown-away experiment sandboxes)
+/widenprobe_*/
+/wrenprobe_*/
+/data-gym-cache/
+/*_probe/
+/probe_*/
+
+# Engine caches (layout measurements, generated pictures by prompt hash) and the Remotion bundle
+.cache/
+remotion/build/
+
+# Rebuilt on any PC: LightRAG indexes, per-run notes, PDF parse work files
+workers/*/knowledge_index/
+workers/*/knowledge/run-*.md
+.*-work/
+.source-parsed/
+
+# Test inputs (manuscripts, parsed sources, per-run orders): local only
+inputs/

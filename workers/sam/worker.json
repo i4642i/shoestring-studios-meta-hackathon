@@ -1,0 +1,205 @@
+{
+  "id": "sam",
+  "name": "Sam",
+  "title": "Sales representative / order consultant",
+  "team": "Sales",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [
+    "update_form",
+    "finalize_and_send"
+  ],
+  "tool_notes": {
+    "update_form": "ORDER chat only. Whenever the client's message gives one of the four answers (audience, length, depth, theme), call it in this turn BEFORE you reply, with the order id from the question and only the fields this message revealed, in clean professional third-person wording (never me, my, I or you). If it refuses the length, tell the client the limit (30 seconds to 10 minutes) and ask which length within it they want. Never say you noted something it did not save.",
+    "finalize_and_send": "ORDER chat only. Call it once, in the same turn, when the form is full, the PDF is attached and the client clearly agrees (yes, let's start, looks good): saying it is not enough, and do not ask for one more confirmation. If it returns what is missing, ask the client for that. After it succeeds your job is done: say a short goodbye.",
+    "save_output": "Assigned task only. Save both terminals, request and pdf, as plain JSON values (objects), not JSON text in quotes. If it is refused, change exactly what the refusal names and save again; an \"order problem\" refusal is not yours to fix."
+  },
+  "inputs": [
+    {
+      "name": "order",
+      "description": "the customer's words, as written (who it is for, length, depth, angle)",
+      "required": false
+    },
+    {
+      "name": "audience",
+      "description": "who watches (e.g. high school students)",
+      "required": false
+    },
+    {
+      "name": "length_min",
+      "description": "video length in minutes (0.5-10), given by the customer",
+      "required": true
+    },
+    {
+      "name": "depth",
+      "description": "overview | key_points | explained | in_depth",
+      "required": false
+    },
+    {
+      "name": "theme",
+      "description": "the angle or tone of the video",
+      "required": false
+    },
+    {
+      "name": "voice",
+      "description": "draft (free voice) | final (paid natural voice)",
+      "required": false
+    },
+    {
+      "name": "video_title",
+      "description": "title on the first slide",
+      "required": true
+    },
+    {
+      "name": "subtitle",
+      "description": "subtitle on the first slide",
+      "required": false
+    },
+    {
+      "name": "closing",
+      "description": "closing message (slogan) on the last slide",
+      "required": true
+    },
+    {
+      "name": "channel",
+      "description": "channel or company name on the first and last slides",
+      "required": false
+    },
+    {
+      "name": "logo",
+      "description": "logo image file (full path) for the first and last slides",
+      "required": false
+    },
+    {
+      "name": "pdf",
+      "description": "the customer's source PDF (full path, or relative to the project folder)",
+      "required": true
+    },
+    {
+      "name": "book_title",
+      "description": "the title of the book or paper in the PDF, as the customer or the site names it (the parser uses it; empty: the PDF's own title or file name)",
+      "required": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "request",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "the customer's own words (the PD reads what the fields leave open)"
+          },
+          "audience": {
+            "type": "string"
+          },
+          "length_s": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 600
+          },
+          "depth": {
+            "type": "string",
+            "enum": [
+              "",
+              "overview",
+              "key_points",
+              "explained",
+              "in_depth"
+            ]
+          },
+          "theme": {
+            "type": "string"
+          },
+          "voice": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "final"
+            ]
+          },
+          "title_card": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "channel": {
+                "type": "string"
+              },
+              "logo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "subtitle",
+              "channel",
+              "logo"
+            ],
+            "additionalProperties": false
+          },
+          "end_card": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "channel": {
+                "type": "string"
+              },
+              "logo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "channel",
+              "logo"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "text",
+          "audience",
+          "length_s",
+          "depth",
+          "theme",
+          "voice",
+          "title_card",
+          "end_card"
+        ]
+      }
+    },
+    {
+      "name": "pdf",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "the run input pdf, exactly"
+          },
+          "title": {
+            "type": "string",
+            "description": "the run input book_title (the book's title for the parser; empty when empty)"
+          }
+        },
+        "required": [
+          "path",
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "max_calls": 12,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

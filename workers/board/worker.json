@@ -1,0 +1,169 @@
+{
+  "id": "board",
+  "name": "Penn",
+  "title": "Storyboard writer",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [],
+  "inputs": [
+    {
+      "name": "brief"
+    },
+    {
+      "name": "storyboard"
+    },
+    {
+      "name": "narration"
+    },
+    {
+      "name": "request"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "visuals",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "theme": {
+            "type": "string",
+            "enum": [
+              "shoestring"
+            ]
+          },
+          "cuts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cut_id": {
+                  "type": "string"
+                },
+                "show": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string",
+                  "description": "one short sentence. Write only the conclusion, no template or field names"
+                },
+                "photo_subject": {
+                  "type": "string"
+                },
+                "draw": {
+                  "type": "string"
+                },
+                "form": {
+                  "type": "string",
+                  "enum": [
+                    "photo",
+                    "figure",
+                    "text",
+                    "numbers",
+                    "bar",
+                    "line",
+                    "curve",
+                    "scatter",
+                    "formula",
+                    "steps",
+                    "route"
+                  ]
+                }
+              },
+              "required": [
+                "cut_id",
+                "show",
+                "why",
+                "form",
+                "photo_subject",
+                "draw"
+              ]
+            }
+          },
+          "source_title": {
+            "type": "string"
+          },
+          "materials": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string",
+                  "description": "fs://article/<number> or fs://theory/<number>"
+                },
+                "why": {
+                  "type": "string",
+                  "description": "one short sentence. Write only the conclusion, no template or field names. How it helps this viewer understand, and in which scene or cut it is used"
+                },
+                "gap": {
+                  "type": "string",
+                  "description": "one short sentence. Write only the conclusion, no template or field names. What this article fills that the source left out"
+                }
+              },
+              "required": [
+                "address",
+                "gap",
+                "why"
+              ]
+            }
+          },
+          "title_card": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "channel": {
+                "type": "string"
+              },
+              "logo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "subtitle",
+              "channel",
+              "logo"
+            ]
+          },
+          "end_card": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "channel": {
+                "type": "string"
+              },
+              "logo": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "channel",
+              "logo"
+            ]
+          }
+        },
+        "required": [
+          "theme",
+          "source_title",
+          "cuts",
+          "materials",
+          "title_card",
+          "end_card"
+        ]
+      }
+    }
+  ],
+  "max_calls": 24,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

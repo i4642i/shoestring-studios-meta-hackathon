@@ -1,0 +1,18 @@
+{
+  "name": "agent-town-remotion",
+  "private": true,
+  "description": "영상 제작팀 렌더러(2026-10-16) — 페이지 타임라인 JSON 을 Remotion 화면 틀로 렌더",
+  "scripts": {
+    "render": "remotion render"
+  },
+  "dependencies": {
+    "@react-three/fiber": "8.17.10",
+    "@remotion/cli": "4.0.535",
+    "@remotion/three": "4.0.535",
+    "katex": "0.16.11",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.535",
+    "three": "0.169.0"
+  }
+}

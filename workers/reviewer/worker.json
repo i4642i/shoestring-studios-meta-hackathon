@@ -1,0 +1,137 @@
+{
+  "id": "reviewer",
+  "name": "Iris",
+  "title": "Screen reviewer",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [
+    "inspect_screens"
+  ],
+  "tool_notes": {
+    "inspect_screens": "Call it once, without arguments. It returns the screen pictures, measured_problems per cut (the program's measured problems with their what id, where, now and change_to), designer_may_change per cut (layouts that hold the cut's material count, unused candidates of the cut, her text slots) and, from the second check on, last_review. List every measured problem in its cut with the same what id and copy its now; you add only B4 (by eye) and P2 notes.",
+    "save_output": "Save once, after every content cut has an entry. If it is refused, change only the entries the message names."
+  },
+  "inputs": [
+    {
+      "name": "timeline"
+    },
+    {
+      "name": "design_spec"
+    },
+    {
+      "name": "narration"
+    },
+    {
+      "name": "slide_plan"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "checklist",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cuts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cut": {
+                  "type": "string",
+                  "description": "a content cut id (not the title or end cut); every content cut once"
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "P1",
+                    "P2",
+                    "problems"
+                  ],
+                  "description": "P1 good; P2 a little off but fine to watch (write note); problems: list them"
+                },
+                "note": {
+                  "type": "string",
+                  "description": "only for P2: what is a little off, one sentence; empty otherwise"
+                },
+                "problems": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "what": {
+                        "type": "string",
+                        "enum": [
+                          "B1",
+                          "B2",
+                          "B3",
+                          "B4",
+                          "B5",
+                          "D1",
+                          "D2",
+                          "D3",
+                          "D4",
+                          "D5",
+                          "D6"
+                        ],
+                        "description": "the checklist id: B1-B5 minor (the Slide Builder fixes it by placement), D1-D6 severe (the Screen Designer changes the layout, a material or her text)"
+                      },
+                      "where": {
+                        "type": "string",
+                        "description": "the slot id or element (copy where from a measured problem); for new text, the designer's text slot id"
+                      },
+                      "now": {
+                        "type": "string",
+                        "description": "what the screen shows now: copy the measured value; for B4 describe it in words, no numbers"
+                      },
+                      "change_to": {
+                        "type": "string",
+                        "description": "concrete, different from now. B: one placement change (size, weight tier, line breaks, alignment or position in the slot, spacing, scaling or cropping, appearance timing). D: exactly a bare layout id or unused candidate id from designer_may_change, 'drop <candidate id>', 'another layout', or (D2 and D5 only) new text for her text slot named in where; or a copy of the measured change_to"
+                      },
+                      "why": {
+                        "type": "string",
+                        "description": "one sentence: what you see on the screen"
+                      }
+                    },
+                    "required": [
+                      "what",
+                      "where",
+                      "now",
+                      "change_to",
+                      "why"
+                    ]
+                  },
+                  "description": "empty for P1 and P2"
+                }
+              },
+              "required": [
+                "cut",
+                "verdict",
+                "note",
+                "problems"
+              ]
+            }
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "things neither worker can change (narration, directions, a material's own quality, missing candidates, the layout library); kept in the run record, never sent back"
+          }
+        },
+        "required": [
+          "cuts",
+          "notes"
+        ]
+      }
+    }
+  ],
+  "max_calls": 8,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

@@ -1,0 +1,606 @@
+{
+  "frame": {
+    "w": 1280,
+    "h": 720,
+    "safe": {
+      "x": 64,
+      "y": 100,
+      "w": 1152,
+      "h": 560
+    },
+    "kicker": {
+      "x": 64,
+      "y": 44,
+      "w": 1152,
+      "h": 40
+    },
+    "source": {
+      "x": 64,
+      "y": 672,
+      "w": 1152,
+      "h": 24
+    }
+  },
+  "layouts": [
+    {
+      "id": "L01",
+      "name": "Full-screen picture",
+      "use": "One picture says everything the line says: a wide chart, a timeline, a wide photo",
+      "slots": [
+        {
+          "id": "main",
+          "x": 64,
+          "y": 100,
+          "w": 1152,
+          "h": 560,
+          "kind": "visual",
+          "role": "main",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure"
+          ],
+          "order": "together"
+        }
+      ]
+    },
+    {
+      "id": "L02",
+      "name": "Big text in the middle",
+      "use": "One key sentence, large; when text alone is enough, no material",
+      "slots": [
+        {
+          "id": "main",
+          "x": 160,
+          "y": 170,
+          "w": 960,
+          "h": 380,
+          "kind": "text",
+          "role": "main",
+          "accepts": [
+            "keyword",
+            "lines"
+          ],
+          "order": "together"
+        }
+      ]
+    },
+    {
+      "id": "L03",
+      "name": "Big number + explanation",
+      "use": "When one number is the point (a return, a ratio, a year)",
+      "slots": [
+        {
+          "id": "main",
+          "x": 160,
+          "y": 130,
+          "w": 960,
+          "h": 300,
+          "kind": "number",
+          "role": "main",
+          "accepts": [
+            "numbers"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "text",
+          "x": 160,
+          "y": 450,
+          "w": 960,
+          "h": 150,
+          "kind": "text",
+          "role": "support",
+          "accepts": [
+            "lines"
+          ],
+          "order": "together"
+        }
+      ]
+    },
+    {
+      "id": "L04",
+      "name": "Picture on top + text below",
+      "use": "A wide picture (ratio 2:1 or wider) with one or two lines of explanation",
+      "slots": [
+        {
+          "id": "main",
+          "x": 64,
+          "y": 100,
+          "w": 1152,
+          "h": 380,
+          "kind": "visual",
+          "role": "main",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "text",
+          "x": 64,
+          "y": 500,
+          "w": 1152,
+          "h": 160,
+          "kind": "text",
+          "role": "support",
+          "accepts": [
+            "keyword",
+            "lines",
+            "quote"
+          ],
+          "order": "together"
+        }
+      ]
+    },
+    {
+      "id": "L05",
+      "name": "Picture left + text right",
+      "use": "A portrait photo or square picture (ratio 1.4:1 or less) with an explanation",
+      "slots": [
+        {
+          "id": "main",
+          "x": 64,
+          "y": 100,
+          "w": 600,
+          "h": 560,
+          "kind": "visual",
+          "role": "main",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "text",
+          "x": 704,
+          "y": 100,
+          "w": 512,
+          "h": 560,
+          "kind": "text",
+          "role": "support",
+          "accepts": [
+            "keyword",
+            "lines",
+            "quote"
+          ],
+          "order": "together"
+        }
+      ]
+    },
+    {
+      "id": "L06",
+      "name": "Side-by-side comparison",
+      "use": "Comparing two things (before and after, A and B)",
+      "slots": [
+        {
+          "id": "left",
+          "x": 64,
+          "y": 100,
+          "w": 560,
+          "h": 470,
+          "kind": "visual",
+          "role": "main",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "right",
+          "x": 656,
+          "y": 100,
+          "w": 560,
+          "h": 470,
+          "kind": "visual",
+          "role": "main",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "left_label",
+          "x": 64,
+          "y": 590,
+          "w": 560,
+          "h": 70,
+          "kind": "text",
+          "role": "support",
+          "accepts": [
+            "lines"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "right_label",
+          "x": 656,
+          "y": 590,
+          "w": 560,
+          "h": 70,
+          "kind": "text",
+          "role": "support",
+          "accepts": [
+            "lines"
+          ],
+          "order": "together"
+        }
+      ]
+    },
+    {
+      "id": "L07",
+      "name": "Big main element on top + two supports below",
+      "use": "A wide main picture with two small pieces of evidence (photo, number)",
+      "slots": [
+        {
+          "id": "main",
+          "x": 64,
+          "y": 100,
+          "w": 1152,
+          "h": 330,
+          "kind": "visual",
+          "role": "main",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "sub1",
+          "x": 64,
+          "y": 450,
+          "w": 560,
+          "h": 210,
+          "kind": "visual",
+          "role": "support",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure",
+            "numbers",
+            "keyword"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "sub2",
+          "x": 656,
+          "y": 450,
+          "w": 560,
+          "h": 210,
+          "kind": "visual",
+          "role": "support",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure",
+            "numbers",
+            "keyword"
+          ],
+          "order": "together"
+        }
+      ]
+    },
+    {
+      "id": "L08",
+      "name": "Big main element left + two supports right",
+      "use": "A near-square main picture with two small pieces of evidence",
+      "slots": [
+        {
+          "id": "main",
+          "x": 64,
+          "y": 100,
+          "w": 740,
+          "h": 560,
+          "kind": "visual",
+          "role": "main",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "sub1",
+          "x": 836,
+          "y": 100,
+          "w": 380,
+          "h": 270,
+          "kind": "visual",
+          "role": "support",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure",
+            "numbers",
+            "keyword"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "sub2",
+          "x": 836,
+          "y": 390,
+          "w": 380,
+          "h": 270,
+          "kind": "visual",
+          "role": "support",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure",
+            "numbers",
+            "keyword"
+          ],
+          "order": "together"
+        }
+      ]
+    },
+    {
+      "id": "L09",
+      "name": "Three slots side by side",
+      "use": "Three items of equal weight (steps, reasons, cases)",
+      "slots": [
+        {
+          "id": "a",
+          "x": 64,
+          "y": 140,
+          "w": 368,
+          "h": 480,
+          "kind": "card",
+          "role": "main",
+          "accepts": [
+            "keyword",
+            "numbers",
+            "photo",
+            "case_card"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "b",
+          "x": 456,
+          "y": 140,
+          "w": 368,
+          "h": 480,
+          "kind": "card",
+          "role": "main",
+          "accepts": [
+            "keyword",
+            "numbers",
+            "photo",
+            "case_card"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "c",
+          "x": 848,
+          "y": 140,
+          "w": 368,
+          "h": 480,
+          "kind": "card",
+          "role": "main",
+          "accepts": [
+            "keyword",
+            "numbers",
+            "photo",
+            "case_card"
+          ],
+          "order": "together"
+        }
+      ]
+    },
+    {
+      "id": "L10",
+      "name": "One slot, one after another",
+      "use": "Showing 2-4 materials one by one, in step with the line",
+      "slots": [
+        {
+          "id": "main",
+          "x": 64,
+          "y": 100,
+          "w": 1152,
+          "h": 560,
+          "kind": "visual",
+          "role": "main",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure",
+            "numbers",
+            "keyword"
+          ],
+          "order": "sequence"
+        }
+      ]
+    },
+    {
+      "id": "L11",
+      "name": "Main element fixed + supports one after another",
+      "use": "The main picture stays while evidence is added one by one",
+      "slots": [
+        {
+          "id": "main",
+          "x": 64,
+          "y": 100,
+          "w": 740,
+          "h": 560,
+          "kind": "visual",
+          "role": "main",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "side",
+          "x": 836,
+          "y": 100,
+          "w": 380,
+          "h": 560,
+          "kind": "visual",
+          "role": "support",
+          "accepts": [
+            "photo",
+            "chart",
+            "diagram",
+            "timeline",
+            "case_card",
+            "formula",
+            "figure",
+            "numbers",
+            "keyword"
+          ],
+          "order": "sequence"
+        }
+      ]
+    },
+    {
+      "id": "L12",
+      "name": "Quote + source",
+      "use": "Showing one or two sentences of the original text as they are",
+      "slots": [
+        {
+          "id": "main",
+          "x": 160,
+          "y": 160,
+          "w": 960,
+          "h": 320,
+          "kind": "text",
+          "role": "main",
+          "accepts": [
+            "quote",
+            "definition"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "cite",
+          "x": 160,
+          "y": 500,
+          "w": 960,
+          "h": 80,
+          "kind": "text",
+          "role": "support",
+          "accepts": [
+            "lines"
+          ],
+          "order": "together"
+        }
+      ]
+    },
+    {
+      "id": "L13",
+      "name": "Section cover",
+      "use": "The cover the program shows automatically during the first 3 s of a part's first cut (the screen designer does not choose it): a big part number (01, 02...), the part title and one line of explanation. Background: soft diagonal shapes (light cyan on the left, light purple and light pink triangles at the top right)",
+      "cover": true,
+      "slots": [
+        {
+          "id": "title",
+          "x": 80,
+          "y": 200,
+          "w": 600,
+          "h": 190,
+          "kind": "text",
+          "role": "main",
+          "accepts": [
+            "lines"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "subtitle",
+          "x": 80,
+          "y": 414,
+          "w": 600,
+          "h": 100,
+          "kind": "text",
+          "role": "support",
+          "accepts": [
+            "lines"
+          ],
+          "order": "together"
+        },
+        {
+          "id": "number",
+          "x": 700,
+          "y": 140,
+          "w": 460,
+          "h": 340,
+          "kind": "number",
+          "role": "support",
+          "accepts": [
+            "lines"
+          ],
+          "order": "together"
+        }
+      ]
+    }
+  ]
+}

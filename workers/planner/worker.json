@@ -1,0 +1,117 @@
+{
+  "id": "planner",
+  "name": "Ash",
+  "title": "Story planner",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [],
+  "tool_notes": {
+    "article_get": "Use it to check the full text of a case article. Put the address fs://article/<number> in as is. Do not use it for source document or explanation article addresses.",
+    "theory_get": "Use it to check the full text of an explanation article. Put the address fs://theory/<number> in as is.",
+    "save_output": "Call it once the whole storyboard is built. Put storyboard in as a JSON value (an object), not as JSON text in quotes."
+  },
+  "inputs": [
+    {
+      "name": "brief"
+    },
+    {
+      "name": "concepts"
+    },
+    {
+      "name": "cases"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "storyboard",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "scenes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "n": {
+                  "type": "integer"
+                },
+                "part_id": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "greeting",
+                    "hook",
+                    "explain",
+                    "case",
+                    "recap",
+                    "farewell"
+                  ]
+                },
+                "viewer_learns": {
+                  "type": "string"
+                },
+                "screen_idea": {
+                  "type": "string"
+                },
+                "points": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "link": {
+                  "type": "string",
+                  "description": "only for case scenes: in one sentence, which claim of the scene before this case shows"
+                }
+              },
+              "required": [
+                "n",
+                "part_id",
+                "role",
+                "viewer_learns",
+                "points",
+                "screen_idea"
+              ]
+            }
+          },
+          "materials": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "address": {
+                  "type": "string",
+                  "description": "fs://article/<number> or fs://theory/<number>"
+                },
+                "why": {
+                  "type": "string",
+                  "description": "one short sentence; write only the conclusion, no frames or field names; how it helps this viewer understand, and in which scene or cut it is used"
+                },
+                "gap": {
+                  "type": "string",
+                  "description": "one short sentence; write only the conclusion, no frames or field names; what this article fills that the source lacks"
+                }
+              },
+              "required": [
+                "address",
+                "gap",
+                "why"
+              ]
+            }
+          }
+        },
+        "required": [
+          "scenes",
+          "materials"
+        ]
+      }
+    }
+  ],
+  "max_calls": 40,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

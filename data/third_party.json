@@ -1,0 +1,518 @@
+{
+ "intro": "Built on free software (open source except the Remotion slide renderer, which is proprietary source-available under its Free License). Licenses below were read from the installed packages (two voice packages, phonemizer-fork and eSpeak NG, are GPL and are installed by pip, never bundled in this repository); run scripts/list_licenses.py to re-check.",
+ "items": [
+  {
+   "blurb": "The backend is stdlib-only: HTTP serving and the JSON API run with no framework.",
+   "credit": "",
+   "license": "PSF License",
+   "links": [],
+   "name": "Python 3.11 Standard Library",
+   "group": "Backend"
+  },
+  {
+   "blurb": "PDF text/image extraction for handbook uploads (Crew training) and order intake (consultation PDFs). Imported directly by our code.",
+   "credit": "",
+   "license": "MIT",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/pdfplumber/"
+    }
+   ],
+   "name": "pdfplumber",
+   "version": "0.11.10",
+   "group": "Backend"
+  },
+  {
+   "blurb": "Knowledge-graph index (CPU-only): queried today by the Studio project-memory chat. PC entries get an index too, but no tool searches it yet — PC tools read the stored text.",
+   "credit": "",
+   "license": "MIT",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/lightrag-hku/"
+    }
+   ],
+   "name": "LightRAG (lightrag-hku)",
+   "version": "1.5.7",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "Local embedding model runner (local profile). Imported directly by our code.",
+   "credit": "",
+   "license": "Apache-2.0",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/sentence-transformers/"
+    }
+   ],
+   "name": "sentence-transformers",
+   "version": "6.2.0",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "Embedding math in the LightRAG adapter. Imported directly by our code.",
+   "credit": "",
+   "license": "BSD-3-Clause",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/numpy/"
+    }
+   ],
+   "name": "numpy",
+   "version": "2.4.6",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "Figure thumbnails on the PC pages. Imported directly by our code (installed version shown; unpinned in requirements.txt).",
+   "credit": "",
+   "license": "MIT-CMU",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/pillow/"
+    }
+   ],
+   "name": "Pillow",
+   "version": "13.0.0",
+   "group": "Backend"
+  },
+  {
+   "blurb": "CPU tensors behind sentence-transformers.",
+   "credit": "",
+   "license": "BSD-3-Clause",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/torch/"
+    }
+   ],
+   "name": "torch (CPU)",
+   "version": "2.14.1+cpu",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "Model loading behind sentence-transformers.",
+   "credit": "",
+   "license": "Apache-2.0",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/transformers/"
+    }
+   ],
+   "name": "transformers",
+   "version": "5.21.0",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "PDF parsing behind pdfplumber (installed version shown; unpinned in requirements.txt).",
+   "credit": "",
+   "license": "MIT",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/pdfminer-six/"
+    }
+   ],
+   "name": "pdfminer.six",
+   "version": "20260107",
+   "group": "Backend"
+  },
+  {
+   "blurb": "Graph store behind LightRAG.",
+   "credit": "",
+   "license": "BSD-3-Clause",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/networkx/"
+    }
+   ],
+   "name": "networkx",
+   "version": "3.6.1",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "Vector store behind LightRAG.",
+   "credit": "",
+   "license": "MIT",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/nano-vectordb/"
+    }
+   ],
+   "name": "nano-vectordb",
+   "version": "0.0.4.3",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "Token counting behind LightRAG.",
+   "credit": "",
+   "license": "MIT",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/tiktoken/"
+    }
+   ],
+   "name": "tiktoken",
+   "version": "0.14.0",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "Behind sentence-transformers.",
+   "credit": "",
+   "license": "BSD-3-Clause",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/scikit-learn/"
+    }
+   ],
+   "name": "scikit-learn",
+   "version": "1.9.1",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "Model download behind sentence-transformers/transformers.",
+   "credit": "",
+   "license": "Apache-2.0",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/huggingface-hub/"
+    }
+   ],
+   "name": "huggingface_hub",
+   "version": "2.3.0",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "Pinned in requirements.txt but not imported: our code loads .env with its own stdlib loader.",
+   "credit": "",
+   "license": "BSD-3-Clause",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/python-dotenv/"
+    }
+   ],
+   "name": "python-dotenv",
+   "version": "1.2.4",
+   "group": "Backend"
+  },
+  {
+   "blurb": "Multilingual embedding model for the LightRAG index (1024-dim vectors): on this PC through sentence-transformers (local profile, CPU) or served by our Jetson LAN server (jetson profile). License read from its Hugging Face model card.",
+   "credit": "",
+   "license": "MIT",
+   "links": [
+    {
+     "label": "Hugging Face",
+     "url": "https://huggingface.co/BAAI/bge-m3"
+    }
+   ],
+   "name": "BAAI/bge-m3",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "Optional lightweight embedding model (384-dim, CPU) for small machines: the \"Local light\" profile on the Settings tab; also served by scripts/embed_server.py. License read from its Hugging Face model card.",
+   "credit": "",
+   "license": "Apache-2.0",
+   "links": [
+    {
+     "label": "Hugging Face",
+     "url": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2"
+    }
+   ],
+   "name": "all-MiniLM-L6-v2",
+   "group": "AI & RAG"
+  },
+  {
+   "blurb": "3D engine behind the Studio office and the Crew character viewer. Vendored with its license in vendor/three/.",
+   "credit": "© three.js authors.",
+   "license": "MIT",
+   "links": [
+    {
+     "label": "threejs.org",
+     "url": "https://threejs.org"
+    }
+   ],
+   "name": "Three.js",
+   "version": "0.186.1",
+   "group": "3D & assets"
+  },
+  {
+   "blurb": "Crew avatars and office furniture. Public-domain dedication, no attribution required (credited here anyway).",
+   "credit": "© Kenney (kenney.nl).",
+   "license": "CC0",
+   "links": [
+    {
+     "label": "Mini Characters",
+     "url": "https://kenney.nl/assets/mini-characters"
+    },
+    {
+     "label": "Furniture Kit",
+     "url": "https://kenney.nl/assets/furniture-kit"
+    }
+   ],
+   "name": "Kenney Mini Characters 1.0 + Furniture Kit 2.0",
+   "group": "3D & assets"
+  },
+  {
+   "blurb": "Cut-slide still renderer (video/remotion/, installed via npm, never bundled). Proprietary source-available software under the Remotion Free License (free for up to 3 people) — NOT open source.",
+   "credit": "",
+   "license": "Remotion Free License (proprietary)",
+   "links": [
+    {
+     "label": "remotion.dev",
+     "url": "https://www.remotion.dev/"
+    }
+   ],
+   "name": "Remotion",
+   "version": "4.0.539",
+   "group": "Video"
+  },
+  {
+   "blurb": "Formula rendering inside the Remotion cut-slide composition.",
+   "credit": "",
+   "license": "MIT",
+   "links": [
+    {
+     "label": "npm",
+     "url": "https://www.npmjs.com/package/katex"
+    }
+   ],
+   "name": "KaTeX",
+   "version": "0.19.1",
+   "group": "Video"
+  },
+  {
+   "blurb": "UI library behind the Remotion cut-slide composition.",
+   "credit": "",
+   "license": "MIT",
+   "links": [
+    {
+     "label": "npm",
+     "url": "https://www.npmjs.com/package/react"
+    }
+   ],
+   "name": "React",
+   "version": "19.2.3",
+   "group": "Video"
+  },
+  {
+   "name": "Inter (via @remotion/google-fonts)",
+   "version": "@remotion/google-fonts 4.0.539",
+   "license": "SIL Open Font License 1.1 (font); package under the Remotion license",
+   "group": "Video",
+   "credit": "Inter by Rasmus Andersson.",
+   "blurb": "Slide typeface (Inter Regular / SemiBold), loaded at render time by the Remotion composition. Installed via npm, never bundled.",
+   "links": [
+    {
+     "label": "Google Fonts",
+     "url": "https://fonts.google.com/specimen/Inter"
+    },
+    {
+     "label": "OFL",
+     "url": "https://openfontlicense.org/"
+    }
+   ]
+  },
+  {
+   "name": "Kokoro",
+   "version": "0.9.4",
+   "license": "Apache-2.0",
+   "group": "Video",
+   "credit": "",
+   "blurb": "Wren's local text-to-speech voice (installed by start_server.bat from requirements-video.txt). Imported directly by our code.",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/kokoro/"
+    }
+   ]
+  },
+  {
+   "name": "Kokoro-82M (voice model)",
+   "version": "",
+   "license": "Apache-2.0",
+   "group": "Video",
+   "credit": "",
+   "blurb": "Voice model weights Kokoro downloads on first use (a few hundred MB). License read from its Hugging Face model card.",
+   "links": [
+    {
+     "label": "Hugging Face",
+     "url": "https://huggingface.co/hexgrad/Kokoro-82M"
+    }
+   ]
+  },
+  {
+   "name": "misaki",
+   "version": "0.9.4",
+   "license": "Apache-2.0",
+   "group": "Video",
+   "credit": "",
+   "blurb": "Text-to-phoneme step behind Kokoro.",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/misaki/"
+    }
+   ]
+  },
+  {
+   "name": "spaCy + en_core_web_sm",
+   "version": "3.8.18 / 3.8.0",
+   "license": "MIT",
+   "group": "Video",
+   "credit": "",
+   "blurb": "English sentence analysis behind misaki (the model is installed from its GitHub release).",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/spacy/"
+    },
+    {
+     "label": "Model",
+     "url": "https://github.com/explosion/spacy-models/releases/tag/en_core_web_sm-3.8.0"
+    }
+   ]
+  },
+  {
+   "name": "phonemizer-fork",
+   "version": "3.3.2",
+   "license": "GPL-3.0-or-later",
+   "group": "Video",
+   "credit": "",
+   "blurb": "Phonemizer behind misaki's fallback for unusual words. Installed by pip, not bundled in this repository.",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/phonemizer-fork/"
+    }
+   ]
+  },
+  {
+   "name": "espeakng-loader (with eSpeak NG)",
+   "version": "0.2.4",
+   "license": "eSpeak NG: GPL-3.0-or-later (loader: not stated in package metadata)",
+   "group": "Video",
+   "credit": "",
+   "blurb": "Ships the eSpeak NG library that misaki uses for words it cannot spell; no system install needed. Installed by pip, not bundled in this repository.",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/espeakng-loader/"
+    },
+    {
+     "label": "eSpeak NG",
+     "url": "https://github.com/espeak-ng/espeak-ng"
+    }
+   ]
+  },
+  {
+   "name": "soundfile",
+   "version": "0.14.0",
+   "license": "BSD-3-Clause",
+   "group": "Video",
+   "credit": "",
+   "blurb": "Writes Kokoro's audio to WAV.",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/soundfile/"
+    }
+   ]
+  },
+  {
+   "name": "imageio-ffmpeg (with FFmpeg)",
+   "version": "0.7.0",
+   "license": "BSD-2-Clause (FFmpeg binary: LGPL/GPL depending on its build)",
+   "group": "Video",
+   "credit": "",
+   "blurb": "Provides the ffmpeg binary that assembles slides and voice into the MP4 when no system ffmpeg is installed.",
+   "links": [
+    {
+     "label": "PyPI",
+     "url": "https://pypi.org/project/imageio-ffmpeg/"
+    },
+    {
+     "label": "FFmpeg",
+     "url": "https://ffmpeg.org/legal.html"
+    }
+   ]
+  },
+  {
+   "name": "Meta Model API — Muse Spark 1.3, Muse Image 1.0",
+   "version": "",
+   "license": "Service (Meta terms)",
+   "group": "Services",
+   "credit": "",
+   "blurb": "Every crew agent's model calls (muse-spark-1.3, also the knowledge-build worker) and Gene's generated images (muse-image-1.0). Needs MODEL_API_KEY.",
+   "links": [
+    {
+     "label": "dev.meta.ai",
+     "url": "https://dev.meta.ai/"
+    }
+   ]
+  },
+  {
+   "name": "Tavily",
+   "version": "",
+   "license": "Service (Tavily terms)",
+   "group": "Services",
+   "credit": "",
+   "blurb": "Basic web search + extract for Cleo's and Rex's picks (optional; needs TAVILY_API_KEY).",
+   "links": [
+    {
+     "label": "tavily.com",
+     "url": "https://tavily.com/"
+    }
+   ]
+  },
+  {
+   "name": "Wikimedia Commons, Openverse",
+   "version": "",
+   "license": "Per picture (CC0, CC BY, CC BY-SA, public domain)",
+   "group": "Services",
+   "credit": "",
+   "blurb": "Pia's photo search. Each picture's license and source page link are stored with it in the Image PC (the author is credited on that source page); non-commercial (NC) licenses are refused.",
+   "links": [
+    {
+     "label": "Commons",
+     "url": "https://commons.wikimedia.org/"
+    },
+    {
+     "label": "Openverse",
+     "url": "https://openverse.org/"
+    }
+   ]
+  },
+  {
+   "name": "Baseten",
+   "version": "",
+   "license": "Service (Baseten terms)",
+   "group": "Services",
+   "credit": "",
+   "blurb": "Optional hosting for meta-models/muse-spark-open-1026 when an employee is switched to it (needs BASETEN_API_KEY); not used by default.",
+   "links": [
+    {
+     "label": "baseten.co",
+     "url": "https://www.baseten.co/"
+    }
+   ]
+  },
+  {
+   "blurb": "Headless Edge drives the automated browser checks. Never bundled, never required to run the app.",
+   "credit": "",
+   "license": "",
+   "links": [],
+   "name": "Verification only (not shipped)",
+   "group": "Note"
+  }
+ ]
+}

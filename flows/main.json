@@ -1,0 +1,432 @@
+{
+  "blocks": [
+    {
+      "id": "sam",
+      "type": "worker",
+      "worker": "sam"
+    },
+    {
+      "id": "parser",
+      "type": "function",
+      "function": "parser"
+    },
+    {
+      "id": "pd",
+      "type": "worker",
+      "worker": "pd"
+    },
+    {
+      "id": "explainer",
+      "type": "worker",
+      "worker": "explainer"
+    },
+    {
+      "id": "cases",
+      "type": "worker",
+      "worker": "cases"
+    },
+    {
+      "id": "planner",
+      "type": "worker",
+      "worker": "planner"
+    },
+    {
+      "id": "narrator",
+      "type": "worker",
+      "worker": "narrator"
+    },
+    {
+      "id": "board",
+      "type": "worker",
+      "worker": "board"
+    },
+    {
+      "id": "split",
+      "type": "split",
+      "function": "split_parts",
+      "parallel": 3,
+      "max_copies": 24
+    },
+    {
+      "id": "photo",
+      "type": "worker",
+      "worker": "photo"
+    },
+    {
+      "id": "gene",
+      "type": "worker",
+      "worker": "gene"
+    },
+    {
+      "id": "anim",
+      "type": "worker",
+      "worker": "anim"
+    },
+    {
+      "id": "designer",
+      "type": "worker",
+      "worker": "designer"
+    },
+    {
+      "id": "editor",
+      "type": "worker",
+      "worker": "editor"
+    },
+    {
+      "id": "reviewer",
+      "type": "worker",
+      "worker": "reviewer"
+    },
+    {
+      "id": "check_layout",
+      "type": "switch",
+      "function": "check_layout"
+    },
+    {
+      "id": "render",
+      "type": "function",
+      "function": "render_part"
+    },
+    {
+      "id": "gather",
+      "type": "gather"
+    },
+    {
+      "id": "assemble",
+      "type": "function",
+      "function": "assemble_video"
+    }
+  ],
+  "lines": [
+    {
+      "from": "sam.request",
+      "to": "pd"
+    },
+    {
+      "from": "sam.pdf",
+      "to": "parser"
+    },
+    {
+      "from": "parser.source",
+      "to": "pd"
+    },
+    {
+      "from": "pd.brief",
+      "to": "explainer"
+    },
+    {
+      "from": "pd.brief",
+      "to": "cases"
+    },
+    {
+      "from": "explainer.concepts",
+      "to": "planner"
+    },
+    {
+      "from": "cases.cases",
+      "to": "planner"
+    },
+    {
+      "from": "split.narration",
+      "to": "photo"
+    },
+    {
+      "from": "split.visuals",
+      "to": "photo"
+    },
+    {
+      "from": "split.storyboard",
+      "to": "photo"
+    },
+    {
+      "from": "split.brief",
+      "to": "photo"
+    },
+    {
+      "from": "split.narration",
+      "to": "anim"
+    },
+    {
+      "from": "split.visuals",
+      "to": "anim"
+    },
+    {
+      "from": "split.storyboard",
+      "to": "anim"
+    },
+    {
+      "from": "split.brief",
+      "to": "anim"
+    },
+    {
+      "from": "photo.photo_candidates",
+      "to": "designer"
+    },
+    {
+      "from": "anim.chart_candidates",
+      "to": "designer"
+    },
+    {
+      "from": "editor.timeline",
+      "to": "render"
+    },
+    {
+      "from": "render.rendered",
+      "to": "gather"
+    },
+    {
+      "from": "gather.gathered",
+      "to": "assemble"
+    },
+    {
+      "from": "pd.brief",
+      "to": "planner"
+    },
+    {
+      "from": "planner.storyboard",
+      "to": "narrator"
+    },
+    {
+      "from": "pd.brief",
+      "to": "narrator"
+    },
+    {
+      "from": "pd.brief",
+      "to": "board"
+    },
+    {
+      "from": "narrator.narration",
+      "to": "board"
+    },
+    {
+      "from": "planner.storyboard",
+      "to": "board"
+    },
+    {
+      "from": "board.visuals",
+      "to": "split"
+    },
+    {
+      "from": "split.narration",
+      "to": "designer"
+    },
+    {
+      "from": "split.visuals",
+      "to": "designer"
+    },
+    {
+      "from": "split.storyboard",
+      "to": "designer"
+    },
+    {
+      "from": "split.brief",
+      "to": "designer"
+    },
+    {
+      "from": "split.narration",
+      "to": "editor"
+    },
+    {
+      "from": "split.visuals",
+      "to": "editor"
+    },
+    {
+      "from": "split.timing",
+      "to": "editor"
+    },
+    {
+      "from": "sam.request",
+      "to": "narrator"
+    },
+    {
+      "from": "narrator.narration",
+      "to": "split"
+    },
+    {
+      "from": "split.narration",
+      "to": "render"
+    },
+    {
+      "from": "split.visuals",
+      "to": "render"
+    },
+    {
+      "from": "split.timing",
+      "to": "render"
+    },
+    {
+      "from": "explainer.concepts",
+      "to": "narrator"
+    },
+    {
+      "from": "cases.cases",
+      "to": "narrator"
+    },
+    {
+      "from": "pd.brief",
+      "to": "split"
+    },
+    {
+      "from": "planner.storyboard",
+      "to": "split"
+    },
+    {
+      "from": "designer.slide_plan",
+      "to": "editor"
+    },
+    {
+      "from": "sam.request",
+      "to": "board"
+    },
+    {
+      "from": "editor.timeline",
+      "to": "reviewer"
+    },
+    {
+      "from": "split.narration",
+      "to": "reviewer"
+    },
+    {
+      "from": "editor.design_spec",
+      "to": "reviewer"
+    },
+    {
+      "from": "reviewer.checklist",
+      "to": "check_layout"
+    },
+    {
+      "from": "editor.timeline",
+      "to": "check_layout"
+    },
+    {
+      "from": "editor.design_spec",
+      "to": "check_layout"
+    },
+    {
+      "from": "designer.slide_plan",
+      "to": "check_layout"
+    },
+    {
+      "from": "split.timing",
+      "to": "check_layout"
+    },
+    {
+      "from": "split.visuals",
+      "to": "check_layout"
+    },
+    {
+      "from": "designer.slide_plan",
+      "to": "reviewer"
+    },
+    {
+      "from": "split.narration",
+      "to": "gene"
+    },
+    {
+      "from": "split.visuals",
+      "to": "gene"
+    },
+    {
+      "from": "split.storyboard",
+      "to": "gene"
+    },
+    {
+      "from": "split.brief",
+      "to": "gene"
+    },
+    {
+      "from": "gene.gen_candidates",
+      "to": "designer"
+    },
+    {
+      "from": "check_layout.pass",
+      "to": "render"
+    },
+    {
+      "from": "check_layout.redesign",
+      "to": "designer"
+    },
+    {
+      "from": "check_layout.rebuild",
+      "to": "editor"
+    }
+  ],
+  "layout": {
+    "sam": [
+      4,
+      230
+    ],
+    "parser": [
+      120,
+      470
+    ],
+    "pd": [
+      346,
+      197
+    ],
+    "explainer": [
+      544,
+      35
+    ],
+    "cases": [
+      515,
+      618
+    ],
+    "planner": [
+      803,
+      408
+    ],
+    "narrator": [
+      1168,
+      577
+    ],
+    "board": [
+      1187,
+      294
+    ],
+    "split": [
+      1582,
+      439
+    ],
+    "photo": [
+      1985,
+      138
+    ],
+    "anim": [
+      1985,
+      569
+    ],
+    "designer": [
+      2291,
+      543
+    ],
+    "editor": [
+      2688,
+      541
+    ],
+    "render": [
+      2859,
+      456
+    ],
+    "gather": [
+      2998,
+      408
+    ],
+    "assemble": [
+      3320,
+      300
+    ],
+    "reviewer": [
+      2859,
+      716
+    ],
+    "check_layout": [
+      2859,
+      886
+    ],
+    "gene": [
+      1985,
+      308
+    ]
+  }
+}

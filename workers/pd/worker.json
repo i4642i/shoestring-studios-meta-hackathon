@@ -1,0 +1,138 @@
+{
+  "id": "pd",
+  "name": "Marty",
+  "title": "Producer (PD)",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [],
+  "tool_notes": {
+    "save_output": "Call it once the whole plan is set. Put brief in as a JSON value (an object), not as JSON text in quotes.",
+    "source_get": "The source text is already in the input (source.documents), so you usually do not use it. Only to check a passage again exactly, open that part by its address (fs://source/<number>#<part>).",
+    "source_query": "Only when the address for source_refs is hard to find in the map, ask one short, specific question. Write the address you get back in source_refs."
+  },
+  "inputs": [
+    {
+      "name": "request"
+    },
+    {
+      "name": "source"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "brief",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "core_question": {
+            "type": "string"
+          },
+          "takeaway": {
+            "type": "string"
+          },
+          "tone": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "heading": {
+                  "type": "string"
+                },
+                "covers": {
+                  "type": "string"
+                },
+                "source_refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "evidence addresses (fs://source/<number>#<part>); an empty list for the greeting and farewell parts"
+                },
+                "role": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "greeting",
+                    "intro",
+                    "outro",
+                    "farewell",
+                    null
+                  ]
+                },
+                "question": {
+                  "type": "string",
+                  "description": "the viewer's question this part answers; an empty string for the greeting and farewell parts"
+                },
+                "message": {
+                  "type": "string",
+                  "description": "the one sentence the viewer takes from this part; an empty string for the greeting and farewell parts"
+                }
+              },
+              "required": [
+                "id",
+                "heading",
+                "covers",
+                "question",
+                "message"
+              ]
+            }
+          },
+          "audience": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "string",
+            "enum": [
+              "overview",
+              "key_points",
+              "explained",
+              "in_depth"
+            ]
+          },
+          "left_out": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "what": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string",
+                  "description": "one short sentence; write only the conclusion, no frames or field names"
+                }
+              },
+              "required": [
+                "what",
+                "why"
+              ]
+            },
+            "description": "what this video left out of the source, and why"
+          }
+        },
+        "required": [
+          "audience",
+          "depth",
+          "core_question",
+          "takeaway",
+          "tone",
+          "parts",
+          "left_out"
+        ]
+      }
+    }
+  ],
+  "max_calls": 40,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

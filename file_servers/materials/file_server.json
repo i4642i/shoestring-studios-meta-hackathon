@@ -1,0 +1,19 @@
+{
+  "name": "materials",
+  "description": "internal (not a server PC): the animation values (json) Max made per cut: charts, formulas, steps, contents",
+  "map_llm": "qwen3.8-flash-next",
+  "shares": [
+    {
+      "from": "anim",
+      "to": [
+        "designer"
+      ]
+    },
+    {
+      "from": "designer",
+      "to": [
+        "editor"
+      ]
+    }
+  ]
+}

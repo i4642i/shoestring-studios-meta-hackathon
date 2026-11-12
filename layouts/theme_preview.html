@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Color theme sample</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cyan: #6FC3D6; --cyan-deep: #2E8AA3; --purple: #A47BA0; --magenta: #DE7C93; --cyan-pale: #DDF1F6; --lav: #EADDEB; --rose: #F6DCE3;
+    --ink: #1F2937; --muted: #6B7280; --paper: #FFFFFF; --page: #EEF1F4; --line: #D1D5DB;
+  }
+  body { margin: 0; background: var(--page); color: var(--ink); font-family: "Noto Sans KR", sans-serif; }
+  header { padding: 20px 24px 0; }
+  h1 { margin: 0; font-size: 20px; }
+  header p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 18px; padding: 16px 24px 32px; }
+  figure { margin: 0; }
+  figcaption { font-size: 13px; margin-top: 6px; color: #374151; }
+  /* 1280x720 drawn at 0.4375 -> 560x315 */
+  .s { position: relative; width: 560px; height: 315px; background: var(--paper); overflow: hidden; border: 1px solid var(--line); }
+  .kicker { position: absolute; left: 28px; top: 19px; font-size: 11px; font-weight: 800; color: var(--ink);
+            border-left: 4px solid var(--cyan); padding-left: 6px; }
+  .src { position: absolute; left: 28px; bottom: 9px; font-size: 8.5px; color: var(--muted); }
+  /* cover */
+  .cover svg { position: absolute; inset: 0; }
+  .cover .title { position: absolute; left: 30px; top: 92px; color: var(--ink); font-weight: 900; font-size: 30px; line-height: 1.15; }
+  .cover .sub { position: absolute; left: 30px; top: 172px; color: #374151; font-weight: 700; font-size: 14px; }
+  .cover .num { position: absolute; left: 300px; top: 70px; color: var(--cyan-deep); font-weight: 900; font-size: 130px;
+                letter-spacing: -6px; line-height: 1; font-family: "Noto Sans KR", sans-serif; }
+  /* content */
+  .big { position: absolute; left: 70px; top: 70px; width: 420px; text-align: center; }
+  .big .n { font-size: 96px; font-weight: 900; color: var(--cyan-deep); line-height: 1; }
+  .big .l { margin-top: 14px; font-size: 17px; font-weight: 700; }
+  .big .hl { background: var(--rose); color: #9B3550; padding: 0 6px; border-radius: 3px; }
+  .route { position: absolute; left: 28px; top: 50px; width: 504px; height: 160px; }
+  .cap { position: absolute; left: 28px; top: 222px; width: 504px; font-size: 18px; font-weight: 800; text-align: center; }
+  .cap em { font-style: normal; color: var(--cyan-deep); }
+  .cards { position: absolute; left: 28px; top: 58px; width: 504px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .card { height: 210px; border-radius: 8px; padding: 14px 10px; box-sizing: border-box; background: #F4FAFC; border-top: 6px solid var(--cyan); }
+  .card:nth-child(2) { border-top-color: var(--purple); background: #FAF5FA; }
+  .card:nth-child(3) { border-top-color: var(--magenta); background: #FDF6F8; }
+  .card b { display: block; font-size: 28px; font-weight: 900; color: var(--cyan-deep); }
+  .card:nth-child(2) b { color: #7E5279; } .card:nth-child(3) b { color: #B9536C; }
+  .card span { display: block; margin-top: 10px; font-size: 15px; font-weight: 700; line-height: 1.35; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Color theme sample: soft cyan · purple · pink</h1>
+  <p>The section cover uses diagonal color areas; content screens use a white page with cyan accents (purple second, pink rarely). Small text is never white on cyan.</p>
+</header>
+<main>
+  <figure>
+    <div class="s cover">
+      <svg viewBox="0 0 560 315" preserveAspectRatio="none">
+        <polygon points="0,0 87,0 413,315 0,315" fill="#DDF1F6"/>
+        <polygon points="225,0 490,0 560,108 560,180" fill="#EADDEB"/>
+        <polygon points="490,0 560,0 560,108" fill="#F6DCE3"/>
+      </svg>
+      <div class="title">Misleading<br>Financial data</div>
+      <div class="sub">Why do backtests turn out fake?</div>
+      <div class="num">01</div>
+    </div>
+    <figcaption>L13 Section cover (start of part 1)</figcaption>
+  </figure>
+  <figure>
+    <div class="s">
+      <div class="kicker">Medallion Fund</div>
+      <div class="big"><div class="n">66%</div><div class="l">1988–2018 <span class="hl">Average yearly</span> return</div></div>
+      <div class="src">Source: Advances in Financial Machine Learning, p. 10</div>
+    </div>
+    <figcaption>L03 Big number + explanation</figcaption>
+  </figure>
+  <figure>
+    <div class="s">
+      <div class="kicker">Explained in three steps</div>
+      <svg class="route" viewBox="0 0 504 160">
+        <path d="M30 90 C 140 20, 200 150, 252 100 S 400 30, 474 80" stroke="#6FC3D6" stroke-width="7" fill="none" stroke-linecap="round"/>
+        <circle cx="30" cy="90" r="13" fill="#6FC3D6"/><circle cx="252" cy="100" r="13" fill="#A47BA0"/><circle cx="474" cy="80" r="13" fill="#DE7C93"/>
+        <text x="30" y="132" font-size="14" font-weight="800" text-anchor="middle" fill="#1F2937">Misleading data</text>
+        <text x="252" y="140" font-size="14" font-weight="800" text-anchor="middle" fill="#1F2937">Working alone fails</text>
+        <text x="474" y="122" font-size="14" font-weight="800" text-anchor="middle" fill="#1F2937">Find it by dividing the work</text>
+      </svg>
+      <div class="cap">Why general AI <em>doesn't work</em> reasons</div>
+      <div class="src">Source: Advances in Financial Machine Learning, ch. 1</div>
+    </div>
+    <figcaption>L04 Picture on top + text below</figcaption>
+  </figure>
+  <figure>
+    <div class="s">
+      <div class="kicker">Three key points</div>
+      <div class="cards">
+        <div class="card"><b>01</b><span>Noisy<br>Short data</span></div>
+        <div class="card"><b>02</b><span>Working alone<br>Fake strategies</span></div>
+        <div class="card"><b>03</b><span>Divide the work<br>Small signals</span></div>
+      </div>
+      <div class="src">Source: Advances in Financial Machine Learning, ch. 1</div>
+    </div>
+    <figcaption>L09 Three slots side by side</figcaption>
+  </figure>
+</main>
+</body>
+</html>

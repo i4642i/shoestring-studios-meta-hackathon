@@ -1,0 +1,13 @@
+{
+  "name": "voice",
+  "description": "VOICE: the narrator's (Wren) voice file per cut (mp3, title = cut id); the renderer takes the voice from here",
+  "map_llm": "qwen3.8-flash-next",
+  "shares": [
+    {
+      "from": "narrator",
+      "to": [
+        "render_part"
+      ]
+    }
+  ]
+}

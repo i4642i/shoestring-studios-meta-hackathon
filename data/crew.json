@@ -1,0 +1,197 @@
+{
+ "_about": "The thirteen Shoestring characters shown on the site (Order, Studio office, PC tab) and the nextop flow blocks each one stands for. Block names are matched without the copy number (photo@3 -> photo). Read by scripts/site_runs.py.",
+ "crew": [
+  {
+   "id": "sales_sam",
+   "name": "Sam",
+   "title": "Sales representative / order consultant",
+   "team": "story",
+   "stage": 0,
+   "appearance": {
+    "variant": "character-female-b.glb",
+    "tint": "#ffffff"
+   },
+   "tools": [
+    "update_form",
+    "finalize_and_send"
+   ],
+   "blocks": [
+    "sam"
+   ]
+  },
+  {
+   "id": "pd_marty",
+   "name": "Marty",
+   "title": "Producer (PD)",
+   "team": "story",
+   "stage": 1,
+   "appearance": {
+    "variant": "character-male-a.glb",
+    "tint": "#ffffff"
+   },
+   "blocks": [
+    "pd"
+   ]
+  },
+  {
+   "id": "explain_cleo",
+   "name": "Cleo",
+   "title": "Concept explainer",
+   "team": "story",
+   "stage": 2,
+   "appearance": {
+    "variant": "character-female-a.glb",
+    "tint": "#ffe3ec"
+   },
+   "blocks": [
+    "explainer"
+   ]
+  },
+  {
+   "id": "case_rex",
+   "name": "Rex",
+   "title": "Case researcher",
+   "team": "story",
+   "stage": 2,
+   "appearance": {
+    "variant": "character-male-b.glb",
+    "tint": "#d8ecff"
+   },
+   "blocks": [
+    "cases"
+   ]
+  },
+  {
+   "id": "plan_ash",
+   "name": "Ash",
+   "title": "Story planner",
+   "team": "story",
+   "stage": 3,
+   "appearance": {
+    "variant": "character-male-c.glb",
+    "tint": "#e4f5e0"
+   },
+   "blocks": [
+    "planner"
+   ]
+  },
+  {
+   "id": "voice_wren",
+   "name": "Wren",
+   "title": "Narrator (voice)",
+   "team": "story",
+   "stage": 5,
+   "appearance": {
+    "variant": "character-female-d.glb",
+    "tint": "#ffe9d6"
+   },
+   "blocks": [
+    "narrator"
+   ]
+  },
+  {
+   "id": "board_penn",
+   "name": "Penn",
+   "title": "Storyboard writer",
+   "team": "story",
+   "stage": 6,
+   "appearance": {
+    "variant": "character-male-d.glb",
+    "tint": "#fff3d6"
+   },
+   "blocks": [
+    "board",
+    "split"
+   ]
+  },
+  {
+   "id": "photo_pia",
+   "name": "Pia",
+   "title": "Photo researcher",
+   "team": "video",
+   "stage": 7,
+   "appearance": {
+    "variant": "character-female-f.glb",
+    "tint": "#e8f4ff"
+   },
+   "blocks": [
+    "photo"
+   ]
+  },
+  {
+   "id": "image_gene",
+   "name": "Gene",
+   "title": "Image generator",
+   "team": "video",
+   "stage": 7,
+   "appearance": {
+    "variant": "character-male-e.glb",
+    "tint": "#f0e6ff"
+   },
+   "blocks": [
+    "gene"
+   ]
+  },
+  {
+   "id": "anim_max",
+   "name": "Max",
+   "title": "Animation maker (charts, formulas, steps, contents)",
+   "team": "video",
+   "stage": 7,
+   "appearance": {
+    "variant": "character-male-f.glb",
+    "tint": "#fff0dd"
+   },
+   "blocks": [
+    "anim"
+   ]
+  },
+  {
+   "id": "board_vera",
+   "name": "Vera",
+   "title": "Screen designer",
+   "team": "video",
+   "stage": 8,
+   "appearance": {
+    "variant": "character-female-c.glb",
+    "tint": "#e9e2ff"
+   },
+   "blocks": [
+    "designer",
+    "check_design"
+   ]
+  },
+  {
+   "id": "slide_remy",
+   "name": "Remy",
+   "title": "Slide builder",
+   "team": "video",
+   "stage": 9,
+   "appearance": {
+    "variant": "character-female-e.glb",
+    "tint": "#e2f5e5"
+   },
+   "blocks": [
+    "editor",
+    "render",
+    "gather",
+    "assemble"
+   ]
+  },
+  {
+   "id": "review_iris",
+   "name": "Iris",
+   "title": "Screen reviewer",
+   "team": "video",
+   "stage": 10,
+   "appearance": {
+    "variant": "character-female-d.glb",
+    "tint": "#dbeafe"
+   },
+   "blocks": [
+    "reviewer",
+    "check_layout"
+   ]
+  }
+ ]
+}

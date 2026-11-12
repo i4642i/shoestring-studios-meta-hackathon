@@ -1,0 +1,107 @@
+{
+  "id": "gene",
+  "name": "Gene",
+  "title": "Image generator",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [
+    "generate_image",
+    "preview_materials"
+  ],
+  "tool_notes": {
+    "generate_image": "Give items [{id, cut_id, prompt}], up to 3 at a time: id = gn-<cut_id>-1, prompt = one concrete English sentence about what to draw (subject, setting, light); the tool adds the style. It returns per item {id, cut_id, file, reused, cost_usd} or {id, error}. At most one new image per cut and 80 new images per run; the same prompt reuses the stored file at no cost. On an error such as \"MODEL_API_KEY is not set\" or a quota error, stop generating and save what you have.",
+    "preview_materials": "Before uploading, look at the generated pictures as they will look on screen: items [{id, file}], up to 6 at a time. Check for garbled text or letters, wrong subjects, or a fake-evidence look (fake documents, fake people presented as real). Every material you save must have been looked at.",
+    "generated_upload": "Upload the pictures, once each (a picture used in several cuts is uploaded once), up to 10 at a time: file = the file generate_image returned, title = material id, description = why_fit, source = \"muse-image-1.0 generated\".",
+    "save_output": "Call it once at the end, after previewing and uploading the pictures with generated_upload. List every content cut once, in scene order, each with its one picture, as the form says."
+  },
+  "inputs": [
+    {
+      "name": "narration"
+    },
+    {
+      "name": "visuals"
+    },
+    {
+      "name": "storyboard"
+    },
+    {
+      "name": "brief"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "gen_candidates",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "part_id": {
+            "type": "string",
+            "description": "the part id of this scene; copy it from the input as is (p1, p2, ...)"
+          },
+          "cuts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cut_id": {
+                  "type": "string",
+                  "description": "a content cut of this scene (every visuals cut that is not the title or end card); copy the input's cut id as is (c01, c02, ...)"
+                },
+                "material": {
+                  "type": "object",
+                  "description": "the one generated picture of this cut (never empty). A picture that fits several cuts is made once and put in each of them.",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "gn-<cut_id>-1 (e.g. gn-c03-1), with the cut_id of the first cut this material is listed in. The same material listed in later cuts keeps this id and is copied identically."
+                    },
+                    "why_fit": {
+                      "type": "string",
+                      "description": "one short sentence on why it fits the cut; the conclusion only, no template or field names; English only"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "generated"
+                      ]
+                    },
+                    "file": {
+                      "type": "string",
+                      "description": "the file generate_image returned, as is"
+                    },
+                    "prompt": {
+                      "type": "string",
+                      "description": "the English prompt the picture was generated from"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "why_fit",
+                    "kind",
+                    "file",
+                    "prompt"
+                  ]
+                }
+              },
+              "required": [
+                "cut_id",
+                "material"
+              ],
+              "additionalProperties": false
+            },
+            "description": "one entry per content cut, every content cut once, in scene order, no other cuts"
+          }
+        },
+        "required": [
+          "part_id",
+          "cuts"
+        ]
+      }
+    }
+  ],
+  "max_calls": 30,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

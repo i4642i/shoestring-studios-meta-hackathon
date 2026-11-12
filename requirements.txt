@@ -1,0 +1,16 @@
+# Shoestring Studios 2 - installed into .venv by start_server.bat (Python 3.11+).
+#
+# The framework (from PyPI; switch blocks need 0.2.0).
+nextop>=0.2.0
+
+# Order intake: PDF -> document package (scripts/pdf_to_package.py)
+pymupdf
+
+# Crew tools and adapters (tools/, functions/, adapters/)
+pillow
+numpy
+lightrag-hku
+# Embeddings on this computer (project.json adapters.embed.cpu, BAAI/bge-m3; ~2.2 GB downloaded on first use)
+sentence-transformers
+
+# Narrator voice: requirements-voice.txt (Kokoro with torch).

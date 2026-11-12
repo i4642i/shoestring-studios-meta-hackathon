@@ -1,0 +1,117 @@
+{
+  "id": "photo",
+  "name": "Pia",
+  "title": "Photo researcher",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [
+    "google_image_search",
+    "fetch_image",
+    "preview_materials"
+  ],
+  "tool_notes": {
+    "google_image_search": "Write English queries with specific names from the line, photo_subject or case (people, companies, institutions, events, places, products, years), e.g. \"Lawrence Berkeley Laboratory cyclotron 1930s\"; a subject from a non-English-speaking country may also be searched in its own language. Never use abstract words that cannot be photographed (concept, success, risk, investment strategy). Put the queries for several cuts in at once, and pick by title, site and size (800 px wide or more preferred). If there are no results or no fitting photo, change the query (a broader subject, different wording, a related place, person or object) and search again. Search for mood photos (a stack of books, a meeting room, a stock price screen) only as a last resort.",
+    "fetch_image": "Download the chosen web images several at once (kind web, source_url = image_url, site = site name). Write the local file path it returns in file, as is. If a download fails, try once more with another result.",
+    "preview_materials": "Before saving, look at the photos as they will look on screen: items [{id, file}], up to 6 at a time. Drop photos that are blurry, have a large watermark, do not show the subject, or are full of text, and find others. Every material you save must have been looked at.",
+    "save_output": "Call it once at the end, after previewing every photo and uploading it with image_upload. List every content cut once, in scene order, each with its one photo or null, as the form says.",
+    "image_upload": "Before saving, upload the previewed photos, once each (a photo used in several cuts is uploaded once), up to 10 at a time. file is the photo file path, title the material id, description the why_fit, source the source_url or ref.",
+    "source_get": "Open picture files (png, jpg) in the input's source list by their fs://source/<number> address. It returns the picture's local path (path). If the picture fits, write that path in file and the address in ref."
+  },
+  "inputs": [
+    {
+      "name": "narration"
+    },
+    {
+      "name": "visuals"
+    },
+    {
+      "name": "storyboard"
+    },
+    {
+      "name": "brief"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "photo_candidates",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "part_id": {
+            "type": "string",
+            "description": "the part id of this scene; copy it from the input as is (p1, p2, ...)"
+          },
+          "cuts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cut_id": {
+                  "type": "string",
+                  "description": "a content cut of this scene (every visuals cut that is not the title or end card); copy the input's cut id as is (c01, c02, ...)"
+                },
+                "material": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "the one photo of this cut, or null when no photo fits it. A photo that fits several cuts is found once and put in each of them.",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "ph-<cut_id>-1 (e.g. ph-c03-1), with the cut_id of the first cut this material is listed in. The same material listed in later cuts keeps this id and is copied identically."
+                    },
+                    "why_fit": {
+                      "type": "string",
+                      "description": "one short sentence on why it fits the cut; the conclusion only, no template or field names; English only"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "source_figure",
+                        "web"
+                      ]
+                    },
+                    "file": {
+                      "type": "string"
+                    },
+                    "ref": {
+                      "type": "string"
+                    },
+                    "source_url": {
+                      "type": "string"
+                    },
+                    "site": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "why_fit",
+                    "kind",
+                    "file"
+                  ]
+                }
+              },
+              "required": [
+                "cut_id",
+                "material"
+              ],
+              "additionalProperties": false
+            },
+            "description": "one entry per content cut, every content cut once, in scene order, no other cuts"
+          }
+        },
+        "required": [
+          "part_id",
+          "cuts"
+        ]
+      }
+    }
+  ],
+  "max_calls": 49,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

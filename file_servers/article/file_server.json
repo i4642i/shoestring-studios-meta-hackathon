@@ -1,0 +1,25 @@
+{
+  "name": "article",
+  "description": "ARTICLE: English news articles the case researcher (Rex) collected for real cases",
+  "map_llm": "qwen3.8-flash-next",
+  "shares": [
+    {
+      "from": "cases",
+      "to": [
+        "planner"
+      ]
+    },
+    {
+      "from": "planner",
+      "to": [
+        "board"
+      ]
+    },
+    {
+      "from": "board",
+      "to": [
+        "photo"
+      ]
+    }
+  ]
+}

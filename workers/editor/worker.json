@@ -1,0 +1,212 @@
+{
+  "id": "editor",
+  "name": "Remy",
+  "title": "Slide builder",
+  "team": "Production",
+  "model": "qwen3.8-flash-next",
+  "llm": "default",
+  "tools": [
+    "preview_slides"
+  ],
+  "tool_notes": {
+    "preview_slides": "Before saving, put in timeline the timeline object exactly as you will save it, in seconds each cut's screen_seconds from timing as it is ({cut_id: screen_seconds}), and in theme the theme of visuals. Materials in slots show exactly as the program fits them to the slot size. Look at the pictures, measured (the measured values) and layout (the measured problems), fix the text size, line breaks and margins of text slots, then look again (do not change slot positions or sizes, and keep every word). At most 5 previews in all.",
+    "image_get": "You do not need to open photos (ph-): use the path given for the file in the image file list of the input. Open a photo by its address (fs://image/N) only when you must see it.",
+    "generated_get": "You do not need to open generated pictures (gn-): use the path given for the file in the generated file list of the input. Open one by its address (fs://generated/N) only when you must see it.",
+    "materials_get": "Open each material in the fill of slide_plan that is not a picture (ch-) once, with the address (fs://materials/N) of the file in the materials list whose title is that candidate id. Move the template and values of the returned json into the layer without changing them. Do not open photos or generated pictures; use their paths from the image and generated lists.",
+    "save_output": "Save timeline and design_spec after the preview check. Write one design_spec entry per screen cut, matching the real layers. In a judgement feedback round, save both fixed values too. Put the timeline value in as a JSON object (an object like {\"cuts\": [...]}). A quoted string is refused with \"must be an object\"; then save the same content again as an object."
+  },
+  "inputs": [
+    {
+      "name": "narration"
+    },
+    {
+      "name": "visuals"
+    },
+    {
+      "name": "timing"
+    },
+    {
+      "name": "slide_plan"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "timeline",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "part_id": {
+            "type": "string",
+            "description": "the part id of this scene, copied from the input (p1, p2, ...)"
+          },
+          "cuts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "cut_id": {
+                  "type": "string"
+                },
+                "layout": {
+                  "type": "string",
+                  "description": "that cut's layout from slide_plan, as it is (L01-L11, title, end)"
+                },
+                "background": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "description": "optional; leave it out (the theme draws the background)"
+                },
+                "layers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "start": {
+                        "type": "number"
+                      },
+                      "end": {
+                        "type": "number"
+                      },
+                      "props": {
+                        "type": "object"
+                      },
+                      "slot": {
+                        "type": "string",
+                        "description": "in a layout cut, the slot id this material goes in (the slot of slide_plan fill). Empty for kicker, source, caption and cards"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "start",
+                      "end",
+                      "props"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "cut_id",
+                "layout",
+                "layers"
+              ]
+            }
+          }
+        },
+        "required": [
+          "part_id",
+          "cuts"
+        ]
+      }
+    },
+    {
+      "name": "design_spec",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "screens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "cut_id": {
+                  "type": "string",
+                  "description": "the id of a screen cut; exactly one entry per screen cut"
+                },
+                "intent": {
+                  "type": "string",
+                  "description": "what the viewer should see first, one sentence"
+                },
+                "layout": {
+                  "type": "string",
+                  "description": "the layout id and what is in each slot, one sentence, e.g. 'L04: main contents route, text two lines of keywords'"
+                },
+                "elements": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "a short name, e.g. 'question line', 'number card'"
+                      },
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "main",
+                          "support",
+                          "label",
+                          "source",
+                          "caption"
+                        ]
+                      },
+                      "where": {
+                        "type": "string",
+                        "description": "the slot id (kicker, source for kicker and source), plus the place inside the slot if any"
+                      },
+                      "size": {
+                        "type": "string",
+                        "description": "the slot size in px, e.g. '1152 x 380'"
+                      },
+                      "font_size": {
+                        "type": "integer",
+                        "description": "px; 0 for a picture or chart"
+                      },
+                      "weight": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          500,
+                          600,
+                          700,
+                          800,
+                          900
+                        ],
+                        "description": "0 for a picture or chart"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "role",
+                      "where",
+                      "size",
+                      "font_size",
+                      "weight"
+                    ]
+                  }
+                },
+                "emphasis": {
+                  "type": "string",
+                  "description": "what was emphasized and how, one sentence"
+                }
+              },
+              "required": [
+                "cut_id",
+                "intent",
+                "layout",
+                "elements",
+                "emphasis"
+              ]
+            }
+          }
+        },
+        "required": [
+          "screens"
+        ]
+      }
+    }
+  ],
+  "max_calls": 30,
+  "knowledge": {
+    "index": "lightrag"
+  }
+}

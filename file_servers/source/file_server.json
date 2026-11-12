@@ -1,0 +1,19 @@
+{
+  "name": "source",
+  "description": "SOURCE: the source documents of the order: the book text (md, page marks [p.N], tables, formulas) and picture files",
+  "llm": "default",
+  "map_llm": "qwen3.8-flash-next",
+  "index": "lightrag",
+  "shares": [
+    {
+      "from": "parser",
+      "to": [
+        "anim",
+        "board",
+        "explainer",
+        "pd",
+        "photo"
+      ]
+    }
+  ]
+}

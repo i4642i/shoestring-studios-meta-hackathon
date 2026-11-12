@@ -1,0 +1,73 @@
+{
+  "format": 1,
+  "name": "shoestring-studios-2",
+  "language": "en",
+  "defaults": {
+    "parallel": 2,
+    "max_calls": 40
+  },
+  "models": [
+    {
+      "name": "qwen3.8-flash-next",
+      "llm": "default"
+    }
+  ],
+  "adapters": {
+    "llm": {
+      "default": {
+        "class": "nextop.adapters.openai_compat:OpenAICompatLLM",
+        "options": {
+          "base_url": "http://127.0.0.1:8010/v1",
+          "key_env": "LOCAL_LLM_API_KEY",
+          "env_file": ".env",
+          "timeout": 300,
+          "features": {
+            "qwen3.8-flash-next": [
+              "vision"
+            ]
+          }
+        }
+      }
+    },
+    "embed": {
+      "jetson": {
+        "class": "nextop.adapters.http_embed:JsonEmbed",
+        "options": {
+          "url": "http://192.168.0.4:8790/embed",
+          "headers": {
+            "X-Embed-Token": "{env:EMBED_TOKEN}"
+          },
+          "env_file": ".env",
+          "body": {
+            "texts": "{texts}"
+          },
+          "vectors": "vectors",
+          "batch": 64,
+          "dim": 1024,
+          "health_url": "http://192.168.0.4:8790/health"
+        }
+      },
+      "cpu": {
+        "class": "adapters.lightrag_index:LocalEmbed",
+        "options": {
+          "model": "BAAI/bge-m3",
+          "device": "cpu"
+        }
+      }
+    },
+    "index": {
+      "lightrag": {
+        "class": "adapters.lightrag_index:LightRAGIndex",
+        "options": {
+          "base_url": "http://127.0.0.1:8010/v1",
+          "key_env": "LOCAL_LLM_API_KEY",
+          "env_file": ".env",
+          "model": "qwen3.8-flash-next",
+          "embed": "cpu",
+          "mode": "mix",
+          "timeout": 300
+        }
+      }
+    }
+  }
+}
