@@ -10,7 +10,6 @@ All code in this repository was written during the Meta Global AI Developer Hack
 - Open to job offers, contract projects and collaborations on AI agents.
 - Website: https://nextop.nextopologix.com/
 - GitHub: https://github.com/i4642i
-- LinkedIn: https://www.linkedin.com/in/sangho-kim-839a4799/
 
 ## Run it (first time)
 
